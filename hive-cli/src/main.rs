@@ -1,3 +1,1 @@
-fn main() {
-  unimplemented!()
-}
+fn main() { unimplemented!() }

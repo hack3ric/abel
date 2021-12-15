@@ -11,3 +11,4 @@ path = "hive-cli/src/main.rs"
 members = ["hive-core"]
 
 [dependencies]
+hive-core = { path = "hive-core" }
