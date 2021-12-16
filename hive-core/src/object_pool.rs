@@ -85,11 +85,10 @@ impl<T: Debug + Send + 'static> Pool<T> {
     }
   }
 
-  pub async fn scope<'a, 'b, F, Fut, U>(&self, f: F) -> Result<U, JoinError>
+  pub async fn scope<'a, F, Fut, U>(&self, f: F) -> Result<U, JoinError>
   where
-    'b: 'a,
     F: FnOnce(Guarded<T>) -> Fut + Send + 'static,
-    Fut: Future<Output = U> + 'b,
+    Fut: Future<Output = U> + 'a,
     U: Send + 'static,
   {
     let lua = self.fetch().await;

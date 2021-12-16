@@ -1,11 +1,17 @@
-use error_chain::error_chain;
+use std::backtrace::Backtrace;
+use thiserror::Error;
 
-error_chain! {
-  types {
-    Error, ErrorKind, ResultExt, HiveResult;
-  }
+pub type HiveResult<T> = Result<T, Error>;
 
-  foreign_links {
-    Lua(mlua::Error);
-  }
+#[derive(Debug, Error)]
+pub enum Error {
+  #[error("service is dropped")]
+  ServiceDropped { backtrace: Backtrace },
+
+  #[error("{source}")]
+  Lua {
+    #[from]
+    source: mlua::Error,
+    backtrace: Backtrace,
+  },
 }
