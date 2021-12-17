@@ -15,3 +15,12 @@ pub enum Error {
     backtrace: Backtrace,
   },
 }
+
+impl From<Error> for mlua::Error {
+  fn from(x: Error) -> Self {
+    match x {
+      Error::Lua { source, .. } => source,
+      _ => mlua::Error::external(x),
+    }
+  }
+}

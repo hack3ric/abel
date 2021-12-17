@@ -1,3 +1,2 @@
 imports_granularity = "Module"
 tab_spaces = 2
-fn_single_line = true

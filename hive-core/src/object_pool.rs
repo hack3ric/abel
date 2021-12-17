@@ -113,9 +113,13 @@ impl<T: Debug + Send + 'static> Drop for Guarded<T> {
 impl<T: Debug + Send + 'static> Deref for Guarded<T> {
   type Target = T;
 
-  fn deref(&self) -> &T { self.inner.as_ref().unwrap() }
+  fn deref(&self) -> &T {
+    self.inner.as_ref().unwrap()
+  }
 }
 
 impl<T: Debug + Send + 'static> DerefMut for Guarded<T> {
-  fn deref_mut(&mut self) -> &mut T { self.inner.as_mut().unwrap() }
+  fn deref_mut(&mut self) -> &mut T {
+    self.inner.as_mut().unwrap()
+  }
 }

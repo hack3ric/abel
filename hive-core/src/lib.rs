@@ -1,6 +1,5 @@
 #![feature(backtrace)]
-#![allow(unused)]
-#![warn(unused_imports)]
+#![feature(once_cell)]
 
 mod error;
 mod lua;

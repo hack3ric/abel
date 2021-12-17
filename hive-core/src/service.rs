@@ -20,11 +20,15 @@ struct ServiceImpl {
 }
 
 impl Hash for ServiceImpl {
-  fn hash<H: Hasher>(&self, state: &mut H) { self.name.hash(state); }
+  fn hash<H: Hasher>(&self, state: &mut H) {
+    self.name.hash(state);
+  }
 }
 
 impl PartialEq for ServiceImpl {
-  fn eq(&self, other: &Self) -> bool { self.name == other.name }
+  fn eq(&self, other: &Self) -> bool {
+    self.name == other.name
+  }
 }
 
 impl Eq for ServiceImpl {}
@@ -38,7 +42,7 @@ impl ServiceImpl {
 }
 
 /// A reference to an inner service.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Service {
   inner: Weak<ServiceImpl>,
 }
@@ -53,9 +57,17 @@ impl Service {
     })
   }
 
-  pub fn upgrade(&self) -> ServiceGuard<'_> { self.try_upgrade().unwrap() }
+  pub fn upgrade(&self) -> ServiceGuard<'_> {
+    self.try_upgrade().unwrap()
+  }
 
-  pub fn is_dropped(&self) -> bool { self.inner.strong_count() == 0 }
+  pub fn is_dropped(&self) -> bool {
+    self.inner.strong_count() == 0
+  }
+
+  pub fn ptr_eq(&self, other: &Self) -> bool {
+    self.inner.ptr_eq(&other.inner)
+  }
 }
 
 /// An RAII guard of shared reference to an inner service.
@@ -66,11 +78,12 @@ pub struct ServiceGuard<'a> {
   _p: PhantomData<&'a ()>,
 }
 
+#[rustfmt::skip]
 impl ServiceGuard<'_> {
-  fn name(&self) -> &str { &self.inner.name }
-  fn paths(&self) -> &[Box<str>] { &self.inner.paths }
-  fn source(&self) -> &Source { &self.inner.source }
-  fn uuid(&self) -> Uuid { self.inner.uuid }
+  pub fn name(&self) -> &str { &self.inner.name }
+  pub fn paths(&self) -> &[Box<str>] { &self.inner.paths }
+  pub fn source(&self) -> &Source { &self.inner.source }
+  pub fn uuid(&self) -> Uuid { self.inner.uuid }
 }
 
 #[derive(Clone)]
@@ -94,11 +107,8 @@ impl ServicePool {
     let name = name.into();
     let service_impl = sandbox_pool
       .scope(move |mut sandbox| async move {
-        let paths_with_key = sandbox.pre_create_service(&name, source.clone()).await?;
-        let paths = paths_with_key
-          .iter()
-          .map(|(name, _)| name.clone())
-          .collect();
+        let (paths, local_env, internal) =
+          sandbox.pre_create_service(&name, source.clone()).await?;
         let service_impl = Arc::new(ServiceImpl {
           name: name.into_boxed_str(),
           paths,
@@ -106,7 +116,12 @@ impl ServicePool {
           uuid: Uuid::new_v4(),
         });
         sandbox
-          .finish_create_service(&service_impl.name, service_impl.downgrade(), paths_with_key)
+          .finish_create_service(
+            &service_impl.name,
+            service_impl.downgrade(),
+            local_env,
+            internal,
+          )
           .await?;
         Ok::<_, crate::Error>(service_impl)
       })

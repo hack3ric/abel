@@ -1,34 +1,28 @@
-use super::Sandbox;
 use crate::HiveResult;
 use mlua::{Function, Lua, Table, Value};
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::lazy::SyncLazy;
 
-impl Sandbox {
-  pub(super) fn create_local_env(
-    &self,
-    service_name: impl AsRef<str>,
-  ) -> HiveResult<(Table, Table)> {
-    let local_env = self.lua.create_table()?;
-    apply_whitelist(&self.lua, &local_env)?;
+pub(super) fn create_local_env(
+  lua: &Lua,
+  _service_name: impl AsRef<str>,
+) -> HiveResult<(Table, Table)> {
+  let local_env = lua.create_table()?;
+  apply_whitelist(&lua, &local_env)?;
 
-    let internal = self.lua.create_table()?;
-    internal.raw_set("paths", self.lua.create_table()?)?;
-    internal.raw_set("sealed", false)?;
+  let internal = lua.create_table()?;
+  internal.raw_set("paths", lua.create_table()?)?;
+  internal.raw_set("sealed", false)?;
 
-    let hive = self.lua.create_table()?;
-    hive.raw_set(
-      "register",
-      create_register_fn(&self.lua, local_env.clone(), internal.clone())?,
-    )?;
-    local_env.raw_set("hive", hive)?;
+  let hive = lua.create_table()?;
+  hive.raw_set("register", create_register_fn(&lua, internal.clone())?)?;
+  local_env.raw_set("hive", hive)?;
 
-    Ok((local_env, internal))
-  }
+  Ok((local_env, internal))
 }
 
 #[rustfmt::skip]
-static LUA_GLOBAL_WHITELIST: Lazy<HashMap<&'static str, &'static [&'static str]>> = Lazy::new(|| {
+static LUA_GLOBAL_WHITELIST: SyncLazy<HashMap<&'static str, &'static [&'static str]>> = SyncLazy::new(|| {
   let mut whitelist = HashMap::new();
 
   whitelist.insert("", &[
@@ -85,11 +79,7 @@ fn apply_whitelist(lua: &Lua, local_env: &Table) -> HiveResult<()> {
   Ok(())
 }
 
-fn create_register_fn<'a>(
-  lua: &'a Lua,
-  local_env: Table<'a>,
-  internal: Table<'a>,
-) -> HiveResult<Function<'a>> {
+fn create_register_fn<'a>(lua: &'a Lua, internal: Table<'a>) -> HiveResult<Function<'a>> {
   let register_fn: Function = lua
     .load(mlua::chunk! {
       return function(path, handler)
