@@ -1,5 +1,8 @@
 #![feature(backtrace)]
 #![feature(once_cell)]
+#![feature(if_let_guard)]
+
+pub mod path;
 
 mod error;
 mod lua;
