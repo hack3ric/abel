@@ -3,6 +3,7 @@ mod global_env;
 mod local_env;
 
 use super::LuaTableExt;
+use crate::path::PathMatcher;
 use crate::service::Service;
 use crate::source::Source;
 use crate::Error::*;
@@ -61,7 +62,7 @@ impl Sandbox {
     &self,
     name: &str,
     source: Source,
-  ) -> HiveResult<(Vec<Box<str>>, RegistryKey, RegistryKey)> {
+  ) -> HiveResult<(Vec<PathMatcher>, RegistryKey, RegistryKey)> {
     // TODO: name check
     let (local_env, internal_key, internal) = self.run_source(name, source).await?;
 
@@ -71,7 +72,8 @@ impl Sandbox {
       .sequence_values::<Table>()
     {
       let path = f?.raw_get::<_, String>(1u8)?;
-      paths.push(path.into_boxed_str());
+      let path = PathMatcher::new(&path)?;
+      paths.push(path);
     }
 
     Ok((paths, local_env, internal_key))

@@ -2,6 +2,7 @@ use crate::error::Error::*;
 use crate::error::HiveResult;
 use crate::lua::Sandbox;
 use crate::object_pool::Pool;
+use crate::path::PathMatcher;
 use crate::source::Source;
 use std::backtrace::Backtrace;
 use std::collections::HashSet;
@@ -14,7 +15,7 @@ use uuid::Uuid;
 #[derive(Debug)]
 struct ServiceImpl {
   name: Box<str>,
-  paths: Vec<Box<str>>,
+  paths: Vec<PathMatcher>,
   source: Source,
   uuid: Uuid,
 }
@@ -81,7 +82,7 @@ pub struct ServiceGuard<'a> {
 #[rustfmt::skip]
 impl ServiceGuard<'_> {
   pub fn name(&self) -> &str { &self.inner.name }
-  pub fn paths(&self) -> &[Box<str>] { &self.inner.paths }
+  pub fn paths(&self) -> &[PathMatcher] { &self.inner.paths }
   pub fn source(&self) -> &Source { &self.inner.source }
   pub fn uuid(&self) -> Uuid { self.inner.uuid }
 }

@@ -1,14 +1,15 @@
 pub use regex::Error as RegexError;
 
-use std::lazy::SyncLazy;
 use regex::Regex;
 use std::collections::HashMap;
+use std::lazy::SyncLazy;
 
 static PATH_PARAMS_REGEX: SyncLazy<Regex> = SyncLazy::new(|| Regex::new(r":([^/]+)|\*").unwrap());
 
+#[derive(Debug)]
 pub struct PathMatcher {
   regex: Regex,
-  param_names: Vec<Box<str>>
+  param_names: Vec<Box<str>>,
 }
 
 impl PathMatcher {
@@ -31,13 +32,17 @@ impl PathMatcher {
     }
     regex += "$";
 
-    Ok(Self { regex: Regex::new(&regex)?, param_names })
+    Ok(Self {
+      regex: Regex::new(&regex)?,
+      param_names,
+    })
   }
 
   pub fn gen_params(&self, path: &str) -> Option<HashMap<Box<str>, Box<str>>> {
     self.regex.captures(path).map(|captures| {
       let mut params = HashMap::new();
-      self.param_names
+      self
+        .param_names
         .iter()
         .zip(captures.iter().skip(1))
         .for_each(|(name, match_)| {

@@ -14,6 +14,12 @@ pub enum Error {
     source: mlua::Error,
     backtrace: Backtrace,
   },
+  #[error("{source}")]
+  Regex {
+    #[from]
+    source: regex::Error,
+    backtrace: Backtrace,
+  },
 }
 
 impl From<Error> for mlua::Error {
