@@ -1,4 +1,4 @@
-use crate::HiveResult;
+use crate::Result;
 use mlua::{Function, Lua, Table, Value};
 use std::collections::HashMap;
 use std::lazy::SyncLazy;
@@ -6,7 +6,7 @@ use std::lazy::SyncLazy;
 pub(super) fn create_local_env(
   lua: &Lua,
   _service_name: impl AsRef<str>,
-) -> HiveResult<(Table, Table)> {
+) -> Result<(Table, Table)> {
   let local_env = lua.create_table()?;
   apply_whitelist(&lua, &local_env)?;
 
@@ -60,7 +60,7 @@ static LUA_GLOBAL_WHITELIST: SyncLazy<HashMap<&'static str, &'static [&'static s
   whitelist
 });
 
-fn apply_whitelist(lua: &Lua, local_env: &Table) -> HiveResult<()> {
+fn apply_whitelist(lua: &Lua, local_env: &Table) -> Result<()> {
   let globals = lua.globals();
   for (&k, &v) in LUA_GLOBAL_WHITELIST.iter() {
     if k.is_empty() {
@@ -79,7 +79,7 @@ fn apply_whitelist(lua: &Lua, local_env: &Table) -> HiveResult<()> {
   Ok(())
 }
 
-fn create_register_fn<'a>(lua: &'a Lua, internal: Table<'a>) -> HiveResult<Function<'a>> {
+fn create_register_fn<'a>(lua: &'a Lua, internal: Table<'a>) -> Result<Function<'a>> {
   let register_fn: Function = lua
     .load(mlua::chunk! {
       return function(path, handler)

@@ -10,7 +10,7 @@ mod object_pool;
 mod service;
 mod source;
 
-pub use error::{Error, HiveResult};
+pub use error::{Error, Result};
 pub use service::{Service, ServiceGuard};
 pub use source::Source;
 
@@ -25,7 +25,7 @@ pub struct Hive {
 }
 
 impl Hive {
-  pub fn new() -> HiveResult<Self> {
+  pub fn new() -> Result<Self> {
     Ok(Self {
       sandbox_pool: Pool::with_capacity(8, Sandbox::new)?,
       service_pool: ServicePool::new(),
@@ -36,7 +36,7 @@ impl Hive {
     &self,
     name: impl Into<String>,
     source: Source,
-  ) -> HiveResult<Service> {
+  ) -> Result<Service> {
     self
       .service_pool
       .create_service(&self.sandbox_pool, name, source)

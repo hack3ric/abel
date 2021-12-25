@@ -1,4 +1,4 @@
-use crate::error::HiveResult;
+use crate::error::Result;
 use futures::Future;
 use std::collections::VecDeque;
 use std::fmt::Debug;
@@ -31,8 +31,8 @@ struct Inner<T: Debug + Send + 'static> {
 impl<T: Debug + Send + 'static> Pool<T> {
   pub fn with_capacity(
     capacity: usize,
-    constructor: impl Fn() -> HiveResult<T>,
-  ) -> HiveResult<Self> {
+    constructor: impl Fn() -> Result<T>,
+  ) -> Result<Self> {
     let (tx, mut rx) = mpsc::unbounded_channel::<T>();
     let mut inner = Inner {
       available: Vec::with_capacity(capacity),

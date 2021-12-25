@@ -1,7 +1,7 @@
 use std::backtrace::Backtrace;
 use thiserror::Error;
 
-pub type HiveResult<T> = Result<T, Error>;
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Error)]
 pub enum Error {

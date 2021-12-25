@@ -1,4 +1,4 @@
-use hive_core::{Hive, HiveResult, Source};
+use hive_core::{Hive, Result, Source};
 use hyper::{Request, Body, Response};
 use multer::{Constraints, SizeLimit, Multipart};
 use std::backtrace::Backtrace;
@@ -48,7 +48,7 @@ pub async fn run(
   hive: &Hive,
   req: Request<Body>,
   name: Option<Box<str>>,
-) -> HiveResult<Response<Body>> {
+) -> Result<Response<Body>> {
   match upload(hive, req, name).await {
     Ok(x) => Ok(x),
     Err(UploadError::Hive { .. }) => Ok(Response::builder().status(500).body("body".into()).unwrap()),

@@ -6,7 +6,7 @@ use crate::path::PathMatcher;
 use crate::service::Service;
 use crate::source::Source;
 use crate::Error::*;
-use crate::HiveResult;
+use crate::Result;
 use global_env::modify_global_env;
 use local_env::create_local_env;
 use mlua::{Function, Lua, RegistryKey, Table};
@@ -32,7 +32,7 @@ struct LoadedService {
 }
 
 impl Sandbox {
-  pub fn new() -> HiveResult<Self> {
+  pub fn new() -> Result<Self> {
     let lua = Lua::new();
     let loaded = HashMap::new();
     modify_global_env(&lua)?;
@@ -47,7 +47,7 @@ impl Sandbox {
     &self,
     name: &str,
     source: Source,
-  ) -> HiveResult<(Vec<PathMatcher>, RegistryKey, RegistryKey)> {
+  ) -> Result<(Vec<PathMatcher>, RegistryKey, RegistryKey)> {
     if !NAME_CHECK_REGEX.is_match(name) {
       return Err(InvalidServiceName { name: name.into() });
     }
@@ -73,7 +73,7 @@ impl Sandbox {
     service: Service,
     local_env: RegistryKey,
     internal: RegistryKey,
-  ) -> HiveResult<()> {
+  ) -> Result<()> {
     if service.is_dropped() {
       return Err(ServiceDropped {
         backtrace: Backtrace::capture(),
@@ -89,7 +89,7 @@ impl Sandbox {
     Ok(())
   }
 
-  async fn run_start(&mut self, service: Service) -> HiveResult<()> {
+  async fn run_start(&mut self, service: Service) -> Result<()> {
     let loaded = load_service(&self.lua, &mut self.loaded, service).await?;
     let start_fn: Function = self
       .lua
@@ -99,7 +99,7 @@ impl Sandbox {
     Ok(())
   }
 
-  async fn run_stop(&mut self, service: Service) -> HiveResult<()> {
+  async fn run_stop(&mut self, service: Service) -> Result<()> {
     let loaded = load_service(&self.lua, &mut self.loaded, service).await?;
     let stop_fn: Function = self
       .lua
@@ -118,7 +118,7 @@ async fn run_source<'a>(
   self_lua: &'a Lua,
   name: &str,
   source: Source,
-) -> HiveResult<(RegistryKey, RegistryKey, Table<'a>)> {
+) -> Result<(RegistryKey, RegistryKey, Table<'a>)> {
   let (local_env, internal) = create_local_env(self_lua, name)?;
   let main = source.get("/main.lua").unwrap();
   self_lua
@@ -137,7 +137,7 @@ async fn load_service<'a>(
   self_lua: &'a Lua,
   self_loaded: &'a mut HashMap<Box<str>, LoadedService>,
   service: Service,
-) -> HiveResult<&'a LoadedService> {
+) -> Result<&'a LoadedService> {
   let service_guard = service.try_upgrade()?;
   let name = service_guard.name();
   if let Some((name_owned, loaded)) = self_loaded.remove_entry(name) {

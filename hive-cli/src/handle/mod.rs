@@ -1,14 +1,14 @@
 mod upload;
 
 use hive_core::path::PathMatcher;
-use hive_core::{Hive, HiveResult};
+use hive_core::{Hive, Result};
 use hyper::{Body, Method, Request, Response};
 use std::lazy::SyncLazy;
 
 static SERVICES_WITH_NAME: SyncLazy<PathMatcher> =
   SyncLazy::new(|| PathMatcher::new("/services/:name").unwrap());
 
-pub async fn handle(hive: Hive, req: Request<Body>) -> HiveResult<Response<Body>> {
+pub async fn handle(hive: Hive, req: Request<Body>) -> Result<Response<Body>> {
   let path = req.uri().path();
   let method = req.method();
 

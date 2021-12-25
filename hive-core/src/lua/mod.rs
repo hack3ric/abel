@@ -2,11 +2,11 @@ mod sandbox;
 
 pub use sandbox::Sandbox;
 
-use crate::HiveResult;
+use crate::Result;
 use mlua::{FromLua, Table};
 
 pub trait LuaTableExt<'a> {
-  fn raw_get_path<T: FromLua<'a>>(&self, base: &str, path: &[&str]) -> HiveResult<T>;
+  fn raw_get_path<T: FromLua<'a>>(&self, base: &str, path: &[&str]) -> Result<T>;
 }
 
 fn raw_get_path<'a, T: FromLua<'a>>(
@@ -26,7 +26,7 @@ fn raw_get_path<'a, T: FromLua<'a>>(
 }
 
 impl<'a> LuaTableExt<'a> for Table<'a> {
-  fn raw_get_path<T: FromLua<'a>>(&self, base: &str, path: &[&str]) -> HiveResult<T> {
+  fn raw_get_path<T: FromLua<'a>>(&self, base: &str, path: &[&str]) -> Result<T> {
     let result = raw_get_path(self, base, path).map_err(|mut error| {
       if let mlua::Error::FromLuaConversionError { message, .. } = &mut error {
         *message = Some(base.to_string());

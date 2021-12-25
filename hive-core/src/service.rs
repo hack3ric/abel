@@ -1,5 +1,5 @@
 use crate::error::Error::*;
-use crate::error::HiveResult;
+use crate::error::Result;
 use crate::lua::Sandbox;
 use crate::object_pool::Pool;
 use crate::path::PathMatcher;
@@ -66,7 +66,7 @@ pub struct Service {
 }
 
 impl Service {
-  pub fn try_upgrade(&self) -> HiveResult<ServiceGuard<'_>> {
+  pub fn try_upgrade(&self) -> Result<ServiceGuard<'_>> {
     Ok(ServiceGuard {
       inner: self.inner.upgrade().ok_or(ServiceDropped {
         backtrace: Backtrace::capture(),
@@ -121,7 +121,7 @@ impl ServicePool {
     sandbox_pool: &Pool<Sandbox>,
     name: impl Into<String>,
     source: Source,
-  ) -> HiveResult<Service> {
+  ) -> Result<Service> {
     let name = name.into();
     let service_impl = sandbox_pool
       .scope(move |mut sandbox| async move {
