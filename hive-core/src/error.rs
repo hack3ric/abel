@@ -5,6 +5,9 @@ pub type HiveResult<T> = Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
+  #[error("invalid service name")]
+  InvalidServiceName { name: Box<str> },
+  // LuaCustom
   #[error("service is dropped")]
   ServiceDropped { backtrace: Backtrace },
 
@@ -20,6 +23,8 @@ pub enum Error {
     source: regex::Error,
     backtrace: Backtrace,
   },
+  #[error(transparent)]
+  Other(#[from] anyhow::Error)
 }
 
 impl From<Error> for mlua::Error {

@@ -18,7 +18,7 @@ impl Source {
     }
   }
 
-  pub fn get(&self, path: &str) -> Option<&[u8]> {
+  pub(crate) fn get(&self, path: &str) -> Option<&[u8]> {
     let segments: Vec<_> = path.split("/").filter(|x| !x.is_empty()).collect();
     match &self.inner {
       SourceInner::Single(main) if segments.len() == 1 && segments[0] == "main.lua" => Some(&main),

@@ -5,6 +5,7 @@ use crate::object_pool::Pool;
 use crate::path::PathMatcher;
 use crate::source::Source;
 use std::backtrace::Backtrace;
+use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -34,11 +35,27 @@ impl PartialEq for ServiceImpl {
 
 impl Eq for ServiceImpl {}
 
+impl Borrow<Str> for Arc<ServiceImpl> {
+  fn borrow(&self) -> &Str {
+    self.name.as_ref().into()
+  }
+}
+
 impl ServiceImpl {
   fn downgrade(self: &Arc<Self>) -> Service {
     Service {
       inner: Arc::downgrade(self),
     }
+  }
+}
+
+/// Helper struct for implementing `Borrow` for `Arc<ServiceImpl>`.
+#[derive(Hash, PartialEq, Eq)]
+struct Str(str);
+
+impl<'a> From<&'a str> for &'a Str {
+  fn from(x: &str) -> &Str {
+    unsafe { &*(x as *const str as *const Str) }
   }
 }
 
@@ -132,5 +149,14 @@ impl ServicePool {
     let service = service_impl.downgrade();
     services.insert(service_impl);
     Ok(service)
+  }
+
+  pub async fn get_service(&self, name: impl AsRef<str>) -> Option<Service> {
+    self
+      .services
+      .read()
+      .await
+      .get::<Str>(name.as_ref().into())
+      .map(ServiceImpl::downgrade)
   }
 }
