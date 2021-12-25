@@ -12,9 +12,11 @@ members = ["hive-core"]
 
 [dependencies]
 anyhow = "1.0.51"
-hive-core = { path = "hive-core" }
+hive-core = { path = "hive-core", features = ["multer"] }
 hyper = { version = "0.14.16", features = ["full"] }
 multer = "2.0.2"
+serde = "1.0.132"
+serde_json = "1.0.73"
 slug = "0.1.4"
 thiserror = "1.0.30"
 tokio = { version = "1.15.0", features = ["full"] }

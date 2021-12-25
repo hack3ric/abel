@@ -5,7 +5,7 @@
 
 mod handle;
 
-use hive_core::{Error as HiveError, Hive};
+use hive_core::Hive;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use std::net::SocketAddr;
@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
 
   let make_svc = make_service_fn(move |_conn| {
     let hive = hive.clone();
-    async move { Ok::<_, HiveError>(service_fn(move |req| handle::handle(hive.clone(), req))) }
+    async move { Ok::<_, hive_core::Error>(service_fn(move |req| handle::handle(hive.clone(), req))) }
   });
 
   let server = Server::bind(&addr).serve(make_svc);

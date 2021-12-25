@@ -29,10 +29,7 @@ struct Inner<T: Debug + Send + 'static> {
 }
 
 impl<T: Debug + Send + 'static> Pool<T> {
-  pub fn with_capacity(
-    capacity: usize,
-    constructor: impl Fn() -> Result<T>,
-  ) -> Result<Self> {
+  pub fn with_capacity(capacity: usize, constructor: impl Fn() -> Result<T>) -> Result<Self> {
     let (tx, mut rx) = mpsc::unbounded_channel::<T>();
     let mut inner = Inner {
       available: Vec::with_capacity(capacity),

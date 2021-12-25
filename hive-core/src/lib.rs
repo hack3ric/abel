@@ -10,7 +10,7 @@ mod object_pool;
 mod service;
 mod source;
 
-pub use error::{Error, Result};
+pub use error::{Error, RawError, Result};
 pub use service::{Service, ServiceGuard};
 pub use source::Source;
 
@@ -32,11 +32,7 @@ impl Hive {
     })
   }
 
-  pub async fn create_service(
-    &self,
-    name: impl Into<String>,
-    source: Source,
-  ) -> Result<Service> {
+  pub async fn create_service(&self, name: impl Into<String>, source: Source) -> Result<Service> {
     self
       .service_pool
       .create_service(&self.sandbox_pool, name, source)
