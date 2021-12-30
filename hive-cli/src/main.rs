@@ -1,8 +1,3 @@
-#![feature(never_type)]
-#![feature(once_cell)]
-#![feature(let_else)]
-#![feature(backtrace)]
-
 mod handle;
 
 use hive_core::Hive;

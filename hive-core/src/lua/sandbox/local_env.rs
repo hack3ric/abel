@@ -1,7 +1,7 @@
 use crate::Result;
 use mlua::{Function, Lua, Table, Value};
 use std::collections::HashMap;
-use std::lazy::SyncLazy;
+use once_cell::sync::Lazy;
 
 pub(super) fn create_local_env(
   lua: &Lua,
@@ -22,7 +22,7 @@ pub(super) fn create_local_env(
 }
 
 #[rustfmt::skip]
-static LUA_GLOBAL_WHITELIST: SyncLazy<HashMap<&'static str, &'static [&'static str]>> = SyncLazy::new(|| {
+static LUA_GLOBAL_WHITELIST: Lazy<HashMap<&'static str, &'static [&'static str]>> = Lazy::new(|| {
   let mut whitelist = HashMap::new();
 
   whitelist.insert("", &[

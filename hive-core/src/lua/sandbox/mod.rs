@@ -11,12 +11,11 @@ use global_env::modify_global_env;
 use local_env::create_local_env;
 use mlua::{Function, Lua, RegistryKey, Table};
 use regex::Regex;
-use std::backtrace::Backtrace;
 use std::collections::HashMap;
-use std::lazy::SyncLazy;
+use once_cell::sync::Lazy;
 
-static NAME_CHECK_REGEX: SyncLazy<Regex> =
-  SyncLazy::new(|| Regex::new("^[a-z0-9-]{1,64}$").unwrap());
+static NAME_CHECK_REGEX: Lazy<Regex> =
+  Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}$").unwrap());
 
 #[derive(Debug)]
 pub struct Sandbox {
@@ -75,9 +74,7 @@ impl Sandbox {
     internal: RegistryKey,
   ) -> Result<()> {
     if service.is_dropped() {
-      return Err(ServiceDropped {
-        backtrace: Backtrace::capture(),
-      });
+      return Err(ServiceDropped);
     }
     self.run_start(service.clone()).await?;
     let loaded = LoadedService {

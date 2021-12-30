@@ -1,38 +1,29 @@
 use erased_serde::Serialize;
 use hyper::StatusCode;
 use serde_json::json;
-use std::backtrace::Backtrace;
-use std::error::Error as StdError;
 use thiserror::Error;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
+// TODO: refactor `Error` type to `Error` struct with `ErrorKind` enum and optional backtrace
 #[derive(Debug, Error)]
 pub enum Error {
   #[error("invalid service name")]
   InvalidServiceName { name: Box<str> },
 
   #[error("service is dropped")]
-  ServiceDropped { backtrace: Backtrace },
+  ServiceDropped,
 
-  #[error("{source}")]
-  Lua {
-    #[from]
-    source: mlua::Error,
-    backtrace: Backtrace,
-  },
-  #[error("{source}")]
-  Regex {
-    #[from]
-    source: regex::Error,
-    backtrace: Backtrace,
-  },
+  #[error(transparent)]
+  Lua(#[from] mlua::Error),
+  #[error(transparent)]
+  Regex(#[from] regex::Error)
 }
 
 impl From<Error> for mlua::Error {
   fn from(x: Error) -> Self {
     match x {
-      Error::Lua { source, .. } => source,
+      Error::Lua(source) => source,
       _ => mlua::Error::external(x),
     }
   }
@@ -43,20 +34,20 @@ pub struct RawError {
   pub code: Box<str>,
   pub msg: Box<str>,
   pub detail: Box<dyn Serialize>,
-  pub backtrace: Option<Box<str>>,
+  // pub backtrace: Option<Box<str>>,
   pub sensitive: bool,
 }
 
 impl From<Error> for RawError {
   fn from(x: Error) -> Self {
     use Error::*;
-    let (status, code, msg, detail, backtrace, sensitive) = match x {
+    let (status, code, msg, detail, /* backtrace, */ sensitive) = match x {
       InvalidServiceName { name } => (
         StatusCode::BAD_REQUEST,
         "hive::INVALID_SERVICE_NAME",
         "service name is invalid",
         Box::new(json!({ "name": name })) as Box<dyn Serialize>,
-        None,
+        // None,
         false,
       ),
       _ => (
@@ -64,7 +55,7 @@ impl From<Error> for RawError {
         "hive::INTERNAL_SERVER_ERROR",
         "internal server error",
         Box::new(x.to_string()) as Box<dyn Serialize>,
-        x.backtrace(),
+        // x.backtrace(),
         true,
       ),
     };
@@ -73,7 +64,7 @@ impl From<Error> for RawError {
       code: code.into(),
       msg: msg.into(),
       detail,
-      backtrace: backtrace.map(|x| x.to_string().into()),
+      // backtrace: backtrace.map(|x| x.to_string().into()),
       sensitive,
     }
   }
@@ -87,7 +78,7 @@ impl From<multer::Error> for RawError {
       code: "hive::MULTIPART_ERROR".into(),
       msg: "error reading multipart body".into(),
       detail: Box::new(x.to_string()),
-      backtrace: None,
+      // backtrace: None,
       sensitive: true,
     }
   }

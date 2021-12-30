@@ -4,7 +4,6 @@ use crate::lua::Sandbox;
 use crate::object_pool::Pool;
 use crate::path::PathMatcher;
 use crate::source::Source;
-use std::backtrace::Backtrace;
 use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
@@ -68,9 +67,7 @@ pub struct Service {
 impl Service {
   pub fn try_upgrade(&self) -> Result<ServiceGuard<'_>> {
     Ok(ServiceGuard {
-      inner: self.inner.upgrade().ok_or(ServiceDropped {
-        backtrace: Backtrace::capture(),
-      })?,
+      inner: self.inner.upgrade().ok_or(ServiceDropped)?,
       _p: PhantomData,
     })
   }

@@ -2,9 +2,9 @@ pub use regex::Error as RegexError;
 
 use regex::Regex;
 use std::collections::HashMap;
-use std::lazy::SyncLazy;
+use once_cell::sync::Lazy;
 
-static PATH_PARAMS_REGEX: SyncLazy<Regex> = SyncLazy::new(|| Regex::new(r":([^/]+)|\*").unwrap());
+static PATH_PARAMS_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r":([^/]+)|\*").unwrap());
 
 #[derive(Debug)]
 pub struct PathMatcher {
