@@ -1,8 +1,8 @@
 pub use regex::Error as RegexError;
 
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
-use once_cell::sync::Lazy;
 
 static PATH_PARAMS_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r":([^/]+)|\*").unwrap());
 

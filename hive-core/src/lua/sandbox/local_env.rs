@@ -1,7 +1,7 @@
 use crate::Result;
 use mlua::{Function, Lua, Table, Value};
-use std::collections::HashMap;
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 
 pub(super) fn create_local_env(
   lua: &Lua,

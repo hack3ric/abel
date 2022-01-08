@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+backtrace = "0.3.63"
 erased-serde = "0.3.16"
 futures = "0.3.17"
 mlua = { version = "0.7.0", features = ["lua54", "send", "async", "macros"] }

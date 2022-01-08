@@ -6,7 +6,7 @@ mod object_pool;
 mod service;
 mod source;
 
-pub use error::{Error, Result};
+pub use error::{Error, ErrorKind, Result};
 pub use service::{Service, ServiceGuard};
 pub use source::Source;
 

@@ -5,17 +5,16 @@ use super::LuaTableExt;
 use crate::path::PathMatcher;
 use crate::service::Service;
 use crate::source::Source;
-use crate::Error::*;
+use crate::ErrorKind::*;
 use crate::Result;
 use global_env::modify_global_env;
 use local_env::create_local_env;
 use mlua::{Function, Lua, RegistryKey, Table};
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
-use once_cell::sync::Lazy;
 
-static NAME_CHECK_REGEX: Lazy<Regex> =
-  Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}$").unwrap());
+static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}$").unwrap());
 
 #[derive(Debug)]
 pub struct Sandbox {
@@ -48,7 +47,7 @@ impl Sandbox {
     source: Source,
   ) -> Result<(Vec<PathMatcher>, RegistryKey, RegistryKey)> {
     if !NAME_CHECK_REGEX.is_match(name) {
-      return Err(InvalidServiceName(name.into()));
+      return Err(InvalidServiceName(name.into()))?;
     }
 
     let (local_env, internal_key, internal) = run_source(&self.lua, name, source).await?;
@@ -74,7 +73,7 @@ impl Sandbox {
     internal: RegistryKey,
   ) -> Result<()> {
     if service.is_dropped() {
-      return Err(ServiceDropped);
+      return Err(ServiceDropped)?;
     }
     self.run_start(service.clone()).await?;
     let loaded = LoadedService {

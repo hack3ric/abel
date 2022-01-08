@@ -1,9 +1,9 @@
-use crate::error::Error::*;
 use crate::error::Result;
 use crate::lua::Sandbox;
 use crate::object_pool::Pool;
 use crate::path::PathMatcher;
 use crate::source::Source;
+use crate::ErrorKind::*;
 use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
