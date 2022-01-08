@@ -2,12 +2,14 @@ pub use regex::Error as RegexError;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
+use serde::Serialize;
 use std::collections::HashMap;
 
 static PATH_PARAMS_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r":([^/]+)|\*").unwrap());
 
 #[derive(Debug)]
 pub struct PathMatcher {
+  path: Box<str>,
   regex: Regex,
   param_names: Vec<Box<str>>,
 }
@@ -33,6 +35,7 @@ impl PathMatcher {
     regex += "$";
 
     Ok(Self {
+      path: matcher.into(),
       regex: Regex::new(&regex)?,
       param_names,
     })
@@ -52,5 +55,15 @@ impl PathMatcher {
         });
       params
     })
+  }
+
+  pub fn as_str(&self) -> &str {
+    &self.path
+  }
+}
+
+impl Serialize for PathMatcher {
+  fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(self.as_str())
   }
 }

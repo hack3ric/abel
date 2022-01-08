@@ -8,6 +8,8 @@ pub async fn run(
   mut req: Request<Body>,
   name: Option<Box<str>>,
 ) -> Result<Response<Body>> {
+  let name_provided = name.is_some();
+
   let content_type = req
     .headers()
     .get("Content-Type")
@@ -21,16 +23,29 @@ pub async fn run(
     .size_limit(SizeLimit::new().for_field("source", 1024u64.pow(3)));
   let mut multipart = Multipart::with_constraints(req.body_mut(), boundary, constraints);
 
-  let source = multipart
+  let field = multipart
     .next_field()
     .await?
     .ok_or("no source code uploaded")?;
   let name = name
-    .or_else(|| source.file_name().map(|x| slug::slugify(x).into()))
+    .or_else(|| {
+      field.file_name().map(|mut x| {
+        let len = x.len();
+        if &x[len - 4..] == ".lua" {
+          x = &x[..len - 4];
+        }
+        slug::slugify(x).into()
+      })
+    })
     .ok_or("no service name provided")?;
-  let source = Source::new_single(source.bytes().await?.as_ref());
 
-  hive.create_service(name, source).await?;
+  if !name_provided && hive.get_service(&name).await.is_some() {
+    return Err((409, format!("service '{}' already exists", name)))?;
+  }
 
-  Ok(Response::new("upload".into()))
+  let source = Source::new_single(field.bytes().await?.as_ref());
+  let service = hive.create_service(name, source).await?;
+  let service = service.upgrade();
+
+  Ok(Response::new(serde_json::to_string(&service)?.into()))
 }

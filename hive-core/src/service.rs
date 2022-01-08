@@ -4,8 +4,10 @@ use crate::object_pool::Pool;
 use crate::path::PathMatcher;
 use crate::source::Source;
 use crate::ErrorKind::*;
+use serde::ser::SerializeStruct;
+use serde::Serialize;
 use std::borrow::Borrow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::sync::{Arc, Weak};
@@ -50,7 +52,7 @@ impl ServiceImpl {
 
 /// Helper struct for implementing `Borrow` for `Arc<ServiceImpl>`.
 #[derive(Hash, PartialEq, Eq)]
-struct Str(str);
+pub(crate) struct Str(str);
 
 impl<'a> From<&'a str> for &'a Str {
   fn from(x: &str) -> &Str {
@@ -101,6 +103,16 @@ impl ServiceGuard<'_> {
   pub fn uuid(&self) -> Uuid { self.inner.uuid }
 }
 
+impl Serialize for ServiceGuard<'_> {
+  fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    let mut x = serializer.serialize_struct("Service", 3)?;
+    x.serialize_field("name", self.name())?;
+    x.serialize_field("paths", self.paths())?;
+    x.serialize_field("uuid", &self.uuid())?;
+    x.end()
+  }
+}
+
 #[derive(Clone)]
 pub struct ServicePool {
   services: Arc<RwLock<HashSet<Arc<ServiceImpl>>>>,
@@ -113,6 +125,7 @@ impl ServicePool {
     }
   }
 
+  /// Creates a new service from source, replacing the old one.
   pub async fn create_service(
     &self,
     sandbox_pool: &Pool<Sandbox>,
@@ -120,6 +133,18 @@ impl ServicePool {
     source: Source,
   ) -> Result<Service> {
     let name = name.into();
+    let mut services = self.services.write().await;
+
+    if let Some(old_service_impl) = services.take(<&Str>::from(&*name)) {
+      sandbox_pool
+        .scope(move |mut sandbox| async move {
+          sandbox.run_stop(old_service_impl.downgrade()).await?;
+          Ok::<_, crate::Error>(())
+        })
+        .await
+        .unwrap()?;
+    }
+
     let service_impl = sandbox_pool
       .scope(move |mut sandbox| async move {
         let (paths, local_env, internal) =
@@ -142,9 +167,8 @@ impl ServicePool {
       })
       .await
       .unwrap()?;
-    let mut services = self.services.write().await;
     let service = service_impl.downgrade();
-    services.insert(service_impl);
+    assert!(services.insert(service_impl));
     Ok(service)
   }
 
@@ -155,5 +179,15 @@ impl ServicePool {
       .await
       .get::<Str>(name.as_ref().into())
       .map(ServiceImpl::downgrade)
+  }
+
+  pub async fn list(&self) -> Vec<Service> {
+    self
+      .services
+      .read()
+      .await
+      .iter()
+      .map(|x| x.downgrade())
+      .collect()
   }
 }

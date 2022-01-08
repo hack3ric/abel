@@ -1,6 +1,7 @@
 use backtrace::Backtrace;
 use hyper::{Body, Response, StatusCode};
 use serde_json::json;
+use std::borrow::Cow;
 
 #[derive(Debug, thiserror::Error)]
 #[error("{kind}")]
@@ -13,11 +14,13 @@ pub struct Error {
 #[derive(Debug, thiserror::Error)]
 pub enum ErrorKind {
   #[error("{0}")]
-  Simple(&'static str),
+  Simple(Cow<'static, str>),
   #[error(transparent)]
   HiveCore(#[from] hive_core::Error),
   #[error(transparent)]
   Multer(#[from] multer::Error),
+  #[error(transparent)]
+  Serde(#[from] serde_json::Error),
 }
 
 impl Error {
@@ -105,8 +108,19 @@ impl From<multer::Error> for Error {
   }
 }
 
+impl From<serde_json::Error> for Error {
+  fn from(error: serde_json::Error) -> Self {
+    (500, error).into()
+  }
+}
+
 impl From<&'static str> for ErrorKind {
   fn from(x: &'static str) -> Self {
-    Self::Simple(x)
+    Self::Simple(x.into())
+  }
+}
+impl From<String> for ErrorKind {
+  fn from(x: String) -> Self {
+    Self::Simple(x.into())
   }
 }

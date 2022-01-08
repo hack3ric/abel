@@ -87,21 +87,25 @@ impl Sandbox {
 
   async fn run_start(&mut self, service: Service) -> Result<()> {
     let loaded = load_service(&self.lua, &mut self.loaded, service).await?;
-    let start_fn: Function = self
+    let start_fn: Option<Function> = self
       .lua
       .registry_value::<Table>(&loaded.local_env)?
       .raw_get_path("<local_env>", &["hive", "start"])?;
-    start_fn.call_async(()).await?;
+    if let Some(f) = start_fn {
+      f.call_async(()).await?;
+    }
     Ok(())
   }
 
-  async fn run_stop(&mut self, service: Service) -> Result<()> {
+  pub(crate) async fn run_stop(&mut self, service: Service) -> Result<()> {
     let loaded = load_service(&self.lua, &mut self.loaded, service).await?;
-    let stop_fn: Function = self
+    let stop_fn: Option<Function> = self
       .lua
       .registry_value::<Table>(&loaded.local_env)?
       .raw_get_path("<local_env>", &["hive", "stop"])?;
-    stop_fn.call_async(()).await?;
+    if let Some(f) = stop_fn {
+      f.call_async(()).await?;
+    }
     // TODO: Call modules' `stop`
     Ok(())
   }

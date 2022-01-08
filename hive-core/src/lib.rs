@@ -38,4 +38,8 @@ impl Hive {
   pub async fn get_service(&self, name: impl AsRef<str>) -> Option<Service> {
     self.service_pool.get_service(name).await
   }
+
+  pub async fn list(&self) -> Vec<Service> {
+    self.service_pool.list().await
+  }
 }
