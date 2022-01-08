@@ -1,5 +1,5 @@
 use hive_core::path::PathMatcher;
-use hive_core::{Hive, Result, RawError, Source};
+use hive_core::{Hive, Result, Source};
 use hyper::{Body, Method, Request, Response};
 use once_cell::sync::Lazy;
 use multer::{Constraints, SizeLimit, Multipart};
@@ -40,7 +40,7 @@ async fn upload(
   hive: &Hive,
   mut req: Request<Body>,
   name: Option<Box<str>>,
-) -> Result<Response<Body>, RawError> {
+) -> Result<Response<Body>, anyhow::Error> {
   let boundary = multer::parse_boundary(req.headers()["content-type"].to_str().unwrap())?;
   let constraints = Constraints::new()
     .allowed_fields(vec!["source"])

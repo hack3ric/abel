@@ -48,7 +48,7 @@ impl Sandbox {
     source: Source,
   ) -> Result<(Vec<PathMatcher>, RegistryKey, RegistryKey)> {
     if !NAME_CHECK_REGEX.is_match(name) {
-      return Err(InvalidServiceName { name: name.into() });
+      return Err(InvalidServiceName(name.into()));
     }
 
     let (local_env, internal_key, internal) = run_source(&self.lua, name, source).await?;
