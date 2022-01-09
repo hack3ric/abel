@@ -67,3 +67,13 @@ impl Serialize for PathMatcher {
     serializer.serialize_str(self.as_str())
   }
 }
+
+pub type LazyPath = Lazy<PathMatcher>;
+
+#[macro_export]
+macro_rules! lazy_path {
+  ($matcher:expr) => {{
+    use once_cell::sync::Lazy;
+    Lazy::new(|| PathMatcher::new($matcher).unwrap())
+  }};
+}

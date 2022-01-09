@@ -10,8 +10,6 @@ pub struct Error {
   backtrace: Option<Backtrace>,
 }
 
-// TODO: refactor `Error` type to `Error` struct with `ErrorKind` enum and
-// optional backtrace
 #[derive(Debug, Error)]
 pub enum ErrorKind {
   #[error("invalid service name: {0}")]
@@ -33,6 +31,10 @@ impl Error {
 
   pub fn backtrace(&self) -> Option<&Backtrace> {
     self.backtrace.as_ref()
+  }
+
+  pub fn into_backtrace(self) -> Option<Backtrace> {
+    self.backtrace
   }
 }
 
