@@ -40,6 +40,39 @@ impl Sandbox {
 
 // Creating and loading services
 impl Sandbox {
+  pub async fn run(&mut self, service: Service, path: &str) -> Result<()> {
+    let guard = service.try_upgrade()?;
+    let (_params, matcher) = guard
+      .paths()
+      .iter()
+      .find_map(|m| {
+        println!("{} => {}", m.as_str(), m.as_regex_str());
+        m.gen_params(path).map(|p| (p, m))
+      })
+      .ok_or_else(|| PathNotFound {
+        service: guard.name().into(),
+        path: path.into(),
+      })?;
+
+    let loaded = load_service(&self.lua, &mut self.loaded, service.clone()).await?;
+    let internal: Table = self.lua.registry_value(&loaded.internal)?;
+
+    for f in internal
+      .raw_get_path::<Table>("<internal>", &["paths"])?
+      .sequence_values::<Table>()
+    {
+      let f = f?;
+      let path = f.raw_get::<u8, String>(1)?;
+      if path == matcher.as_str() {
+        let handler = f.raw_get::<u8, Function>(2)?;
+        // TODO: pass parameters and get result
+        handler.call_async(()).await?;
+        return Ok(());
+      }
+    }
+    panic!("path matched but no handler found; this is a bug")
+  }
+
   /// Extracts information from the code, but does not create the service yet
   pub(crate) async fn pre_create_service(
     &self,
@@ -47,7 +80,7 @@ impl Sandbox {
     source: Source,
   ) -> Result<(Vec<PathMatcher>, RegistryKey, RegistryKey)> {
     if !NAME_CHECK_REGEX.is_match(name) {
-      return Err(InvalidServiceName(name.into()))?;
+      return Err(InvalidServiceName(name.into()).into());
     }
 
     let (local_env, internal_key, internal) = run_source(&self.lua, name, source).await?;

@@ -1,8 +1,7 @@
-pub mod path;
-
 mod error;
 mod lua;
 mod object_pool;
+mod path;
 mod service;
 mod source;
 
@@ -35,8 +34,26 @@ impl Hive {
       .await
   }
 
-  pub async fn get_service(&self, name: impl AsRef<str>) -> Option<Service> {
-    self.service_pool.get_service(name).await
+  pub async fn get_service(&self, name: impl AsRef<str>) -> Result<Service> {
+    let name = name.as_ref();
+    self
+      .service_pool
+      .get_service(name)
+      .await
+      .ok_or_else(|| ErrorKind::ServiceNotFound(name.into()).into())
+  }
+
+  pub async fn run_service(&self, name: &str, path: String) -> Result<()> {
+    let service = self.get_service(name).await?;
+    self
+      .sandbox_pool
+      .scope(move |mut sandbox| async move {
+        sandbox.run(service, &path).await?;
+        Ok::<_, Error>(())
+      })
+      .await
+      .unwrap()?;
+    Ok(())
   }
 
   pub async fn list(&self) -> Vec<Service> {

@@ -7,7 +7,7 @@ use crate::ErrorKind::*;
 use serde::ser::SerializeStruct;
 use serde::Serialize;
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::sync::{Arc, Weak};

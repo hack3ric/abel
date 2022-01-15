@@ -14,6 +14,10 @@ pub struct Error {
 pub enum ErrorKind {
   #[error("invalid service name: {0}")]
   InvalidServiceName(Box<str>),
+  #[error("service not found: {0}")]
+  ServiceNotFound(Box<str>),
+  #[error("path not found in service '{service}': {path}")]
+  PathNotFound { service: Box<str>, path: Box<str> },
 
   #[error("service is dropped")]
   ServiceDropped,
@@ -42,7 +46,7 @@ impl From<ErrorKind> for Error {
   fn from(kind: ErrorKind) -> Self {
     use ErrorKind::*;
     let backtrace = match kind {
-      InvalidServiceName { .. } => None,
+      InvalidServiceName(_) | ServiceNotFound(_) | PathNotFound { .. } => None,
       _ => Some(Backtrace::new()),
     };
     Self { kind, backtrace }

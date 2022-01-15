@@ -73,6 +73,12 @@ impl From<hive_core::Error> for Error {
     use hive_core::ErrorKind::*;
     let (status, error_, detail) = match error.kind() {
       InvalidServiceName(name) => (400, "invalid service name", json!({ "name": name })),
+      ServiceNotFound(name) => (404, "service not found", json!({ "name": name })),
+      PathNotFound { service, path } => (
+        404,
+        "service found but path not found",
+        json!({ "service": service, "path": path }),
+      ),
       Lua(error) => (500, "Lua error", simple_msg(error)),
       _ => (500, "hive core error", simple_msg(&error)),
     };
@@ -107,10 +113,9 @@ fn simple_msg(x: impl ToString) -> serde_json::Value {
 }
 
 pub fn method_not_allowed(expected: &[&'static str], got: &Method) -> Error {
-  (
+  From::from((
     405,
     "method not allowed",
     json!({ "expected": expected, "got": got.as_str() }),
-  )
-    .into()
+  ))
 }

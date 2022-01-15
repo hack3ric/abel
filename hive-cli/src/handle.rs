@@ -25,20 +25,15 @@ pub async fn handle(hive: Hive, req: Request<Body>) -> Result<Response<Body>, In
     (GET, ["services"]) => list(&hive).await,
     (POST, ["services"]) => upload(&hive, None, req).await,
     (_, ["services"]) => Err(method_not_allowed(&["GET", "POST"], method)),
+
     (GET, ["services", name]) => get_service(&hive, name).await,
     (PUT, ["services", name]) => upload(&hive, Some((*name).into()), req).await,
     (DELETE, ["services", _name]) => unimplemented!("DELETE /services/:name"),
     (_, ["services", _name]) => Err(method_not_allowed(&["GET", "PUT", "DELETE"], method)),
+
     (_, ["services", ..]) => Err((404, "hive path not found", json!({ "path": path })).into()),
 
-    // TODO: run service
-    (_, [service_name, ..]) => {
-      if let Some(service) = hive.get_service(service_name).await {
-        unimplemented!("run service")
-      } else {
-        Err((404, "service not found", json!({ "name": service_name })).into())
-      }
-    }
+    (_, [service_name, ..]) => run_service(&hive, service_name, path).await,
 
     _ => Err((404, "hive path not found", json!({ "path": path })).into()),
   };
@@ -53,12 +48,10 @@ async fn list(hive: &Hive) -> Result<Response<Body>> {
 }
 
 async fn get_service(hive: &Hive, name: &str) -> Result<Response<Body>> {
-  match hive.get_service(name).await {
-    Some(service) => Ok(Response::new(
-      serde_json::to_string(&service.upgrade())?.into(),
-    )),
-    None => Err((404, "service not found", json!({ "name": name })).into()),
-  }
+  let service = hive.get_service(name).await?;
+  Ok(Response::new(
+    serde_json::to_string(&service.try_upgrade()?)?.into(),
+  ))
 }
 
 pub async fn upload(
@@ -97,7 +90,7 @@ pub async fn upload(
     })
     .ok_or("no service name provided")?;
 
-  if !name_provided && hive.get_service(&name).await.is_some() {
+  if !name_provided && hive.get_service(&name).await.is_ok() {
     return Err((409, "service already exists", json!({ "name": name })).into());
   }
 
@@ -106,4 +99,14 @@ pub async fn upload(
   let service = service.upgrade();
 
   Ok(Response::new(serde_json::to_string(&service)?.into()))
+}
+
+pub async fn run_service(
+  hive: &Hive,
+  service_name: &str,
+  whole_path: &str,
+) -> Result<Response<Body>> {
+  let sub_path = "/".to_string() + whole_path[1..].split_once("/").unwrap_or(("", "")).1;
+  let _result = hive.run_service(service_name, sub_path).await?;
+  Ok(Response::new("\"Done\"".into()))
 }

@@ -18,21 +18,25 @@ impl PathMatcher {
   pub fn new(matcher: &str) -> Result<Self, RegexError> {
     let mut regex = "^".to_owned();
     let mut param_names = Vec::new();
-    let mut start_pos = 0;
 
-    for captures in PATH_PARAMS_REGEX.captures_iter(matcher) {
-      let whole = captures.get(0).unwrap();
-      regex += &regex::escape(&matcher[start_pos..whole.start()]);
-      if whole.as_str() == "*" {
-        regex += r"(.*)";
-        param_names.push("*".into())
-      } else {
-        regex += r"([^/]+)";
-        param_names.push(captures[1].into());
+    if matcher == "/" {
+      regex += "/$";
+    } else {
+      let mut start_pos = 0;
+      for captures in PATH_PARAMS_REGEX.captures_iter(matcher) {
+        let whole = captures.get(0).unwrap();
+        regex += &regex::escape(&matcher[start_pos..whole.start()]);
+        if whole.as_str() == "*" {
+          regex += r"(.*)";
+          param_names.push("*".into())
+        } else {
+          regex += r"([^/]+)";
+          param_names.push(captures[1].into());
+        }
+        start_pos = whole.end();
       }
-      start_pos = whole.end();
+      regex += "$";
     }
-    regex += "$";
 
     Ok(Self {
       path: matcher.into(),
@@ -60,20 +64,14 @@ impl PathMatcher {
   pub fn as_str(&self) -> &str {
     &self.path
   }
+
+  pub fn as_regex_str(&self) -> &str {
+    self.regex.as_str()
+  }
 }
 
 impl Serialize for PathMatcher {
   fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
     serializer.serialize_str(self.as_str())
   }
-}
-
-pub type LazyPath = Lazy<PathMatcher>;
-
-#[macro_export]
-macro_rules! lazy_path {
-  ($matcher:expr) => {{
-    use once_cell::sync::Lazy;
-    Lazy::new(|| PathMatcher::new($matcher).unwrap())
-  }};
 }
