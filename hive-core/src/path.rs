@@ -2,6 +2,7 @@ pub use regex::Error as RegexError;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
+use serde::ser::SerializeStruct;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -19,24 +20,25 @@ impl PathMatcher {
     let mut regex = "^".to_owned();
     let mut param_names = Vec::new();
 
-    if matcher == "/" {
-      regex += "/$";
-    } else {
-      let mut start_pos = 0;
-      for captures in PATH_PARAMS_REGEX.captures_iter(matcher) {
-        let whole = captures.get(0).unwrap();
-        regex += &regex::escape(&matcher[start_pos..whole.start()]);
-        if whole.as_str() == "*" {
-          regex += r"(.*)";
-          param_names.push("*".into())
-        } else {
-          regex += r"([^/]+)";
-          param_names.push(captures[1].into());
-        }
-        start_pos = whole.end();
-      }
-      regex += "$";
+    if !matcher.starts_with('/') {
+      regex += "/";
     }
+
+    let mut start_pos = 0;
+    for captures in PATH_PARAMS_REGEX.captures_iter(matcher) {
+      let whole = captures.get(0).unwrap();
+      regex += &regex::escape(&matcher[start_pos..whole.start()]);
+      if whole.as_str() == "*" {
+        regex += r"(.*)";
+        param_names.push("*".into())
+      } else {
+        regex += r"([^/]+)";
+        param_names.push(captures[1].into());
+      }
+      start_pos = whole.end();
+    }
+    regex += &regex::escape(&matcher[start_pos..]);
+    regex += "$";
 
     Ok(Self {
       path: matcher.into(),
@@ -47,17 +49,12 @@ impl PathMatcher {
 
   pub fn gen_params(&self, path: &str) -> Option<HashMap<Box<str>, Box<str>>> {
     self.regex.captures(path).map(|captures| {
-      let mut params = HashMap::new();
       self
         .param_names
         .iter()
         .zip(captures.iter().skip(1))
-        .for_each(|(name, match_)| {
-          if let Some(match_) = match_ {
-            params.insert(name.clone(), match_.as_str().into());
-          }
-        });
-      params
+        .filter_map(|(n, m)| m.map(|m| (n.clone(), m.as_str().into())))
+        .collect()
     })
   }
 
@@ -72,6 +69,9 @@ impl PathMatcher {
 
 impl Serialize for PathMatcher {
   fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(self.as_str())
+    let mut x = serializer.serialize_struct("PathMatcher", 2)?;
+    x.serialize_field("pattern", self.as_str())?;
+    x.serialize_field("regex", self.as_regex_str())?;
+    x.end()
   }
 }
