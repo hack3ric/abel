@@ -1,5 +1,7 @@
 mod error;
 mod handle;
+#[macro_use]
+mod util;
 
 use hive_core::Hive;
 use hyper::service::{make_service_fn, service_fn};

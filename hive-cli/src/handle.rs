@@ -1,5 +1,5 @@
 use crate::error::method_not_allowed;
-use crate::Result;
+use crate::{json_response, Result};
 use hive_core::{Hive, Service, Source};
 use hyper::{Body, Method, Request, Response};
 use multer::{Constraints, Multipart, SizeLimit};
@@ -44,14 +44,12 @@ pub async fn handle(hive: Hive, req: Request<Body>) -> Result<Response<Body>, In
 async fn list(hive: &Hive) -> Result<Response<Body>> {
   let x = hive.list().await;
   let y = x.iter().map(Service::upgrade).collect::<Vec<_>>();
-  Ok(Response::new(serde_json::to_string(&y)?.into()))
+  Ok(json_response!(y))
 }
 
 async fn get_service(hive: &Hive, name: &str) -> Result<Response<Body>> {
   let service = hive.get_service(name).await?;
-  Ok(Response::new(
-    serde_json::to_string(&service.try_upgrade()?)?.into(),
-  ))
+  Ok(json_response!(service.try_upgrade()?))
 }
 
 pub async fn upload(
@@ -98,7 +96,7 @@ pub async fn upload(
   let service = hive.create_service(name, source).await?;
   let service = service.upgrade();
 
-  Ok(Response::new(serde_json::to_string(&service)?.into()))
+  Ok(json_response!({ "new_service": &service }))
 }
 
 pub async fn run_service(
@@ -108,5 +106,5 @@ pub async fn run_service(
 ) -> Result<Response<Body>> {
   let sub_path = "/".to_string() + whole_path[1..].split_once("/").unwrap_or(("", "")).1;
   let _result = hive.run_service(service_name, sub_path).await?;
-  Ok(Response::new("\"Done\"".into()))
+  Ok(json_response!("Done"))
 }

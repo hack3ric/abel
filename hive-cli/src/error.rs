@@ -1,3 +1,4 @@
+use crate::json_response;
 use backtrace::Backtrace;
 use hyper::{Body, Method, Response, StatusCode};
 use serde_json::json;
@@ -35,10 +36,7 @@ impl Error {
       })
     };
 
-    Response::builder()
-      .status(self.status)
-      .body(body.to_string().into())
-      .unwrap()
+    json_response!(self.status, body)
   }
 }
 
