@@ -1,3 +1,4 @@
+use crate::lua::response::create_fn_create_response;
 use crate::Result;
 use mlua::{Function, Lua, Table, Value};
 use once_cell::sync::Lazy;
@@ -15,7 +16,8 @@ pub(super) fn create_local_env(
   internal.raw_set("sealed", false)?;
 
   let hive = lua.create_table()?;
-  hive.raw_set("register", create_register_fn(&lua, internal.clone())?)?;
+  hive.raw_set("register", create_fn_register(&lua, internal.clone())?)?;
+  hive.raw_set("create_response", create_fn_create_response(lua)?)?;
   local_env.raw_set("hive", hive)?;
 
   Ok((local_env, internal))
@@ -79,7 +81,7 @@ fn apply_whitelist(lua: &Lua, local_env: &Table) -> Result<()> {
   Ok(())
 }
 
-fn create_register_fn<'a>(lua: &'a Lua, internal: Table<'a>) -> Result<Function<'a>> {
+fn create_fn_register<'a>(lua: &'a Lua, internal: Table<'a>) -> Result<Function<'a>> {
   let register_fn: Function = lua
     .load(mlua::chunk! {
       return function(path, handler)
