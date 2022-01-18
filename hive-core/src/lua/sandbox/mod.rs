@@ -6,7 +6,7 @@ use crate::path::PathMatcher;
 use crate::service::Service;
 use crate::source::Source;
 use crate::ErrorKind::*;
-use crate::Result;
+use crate::{Response, Result};
 use global_env::modify_global_env;
 use local_env::create_local_env;
 use mlua::{Function, Lua, RegistryKey, Table};
@@ -40,7 +40,7 @@ impl Sandbox {
 
 // Creating and loading services
 impl Sandbox {
-  pub async fn run(&mut self, service: Service, path: &str) -> Result<()> {
+  pub async fn run(&mut self, service: Service, path: &str) -> Result<Response> {
     let guard = service.try_upgrade()?;
     let (_params, matcher) = guard
       .paths()
@@ -65,9 +65,10 @@ impl Sandbox {
       let path = f.raw_get::<u8, String>(1)?;
       if path == matcher.as_str() {
         let handler = f.raw_get::<u8, Function>(2)?;
-        // TODO: pass parameters and get result
-        handler.call_async(()).await?;
-        return Ok(());
+        // TODO: pass parameters
+        let result: mlua::Value = handler.call_async(()).await?;
+        let resp = Response::from_value(&self.lua, result)?;
+        return Ok(resp);
       }
     }
     panic!("path matched but no handler found; this is a bug")

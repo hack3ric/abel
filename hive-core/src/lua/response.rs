@@ -1,11 +1,30 @@
 use http::header::HeaderName;
 use http::{HeaderMap, HeaderValue, StatusCode};
-use mlua::{ExternalResult, Function, Lua, LuaSerdeExt, Table, UserData};
+use mlua::{ExternalError, ExternalResult, Function, Lua, LuaSerdeExt, Table, UserData};
 
 pub struct Response {
   pub status: StatusCode,
   pub headers: HeaderMap,
   pub body: serde_json::Value,
+}
+
+impl Response {
+  pub(crate) fn from_value(lua: &Lua, value: mlua::Value) -> mlua::Result<Self> {
+    use mlua::Value::*;
+    match value {
+      Table(_) => {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", HeaderValue::from_static("application/json"));
+        Ok(Self {
+          status: StatusCode::OK,
+          headers,
+          body: lua.from_value(value)?,
+        })
+      }
+      UserData(x) => x.take::<Self>(),
+      _ => Err("cannot convert to response".to_lua_err()),
+    }
+  }
 }
 
 impl UserData for Response {}
@@ -21,7 +40,7 @@ pub fn create_fn_create_response(lua: &Lua) -> mlua::Result<Function> {
       })
       .unwrap_or(Ok(StatusCode::OK))?;
 
-    let headers = params
+    let mut headers = params
       .raw_get::<_, Option<Table>>("headers")?
       .map(|t| -> mlua::Result<_> {
         let mut header_map = HeaderMap::new();
@@ -45,6 +64,8 @@ pub fn create_fn_create_response(lua: &Lua) -> mlua::Result<Function> {
       .ok_or("missing body in response")
       .to_lua_err()?;
     let body = lua.from_value::<serde_json::Value>(body)?;
+
+    headers.insert("Content-Type", HeaderValue::from_static("application/json"));
 
     Ok(Response {
       status,

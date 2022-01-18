@@ -47,7 +47,8 @@ impl From<ErrorKind> for Error {
     use ErrorKind::*;
     let backtrace = match kind {
       InvalidServiceName(_) | ServiceNotFound(_) | PathNotFound { .. } => None,
-      _ => Some(Backtrace::new()),
+      // _ => Some(Backtrace::new()),
+      _ => None,
     };
     Self { kind, backtrace }
   }
