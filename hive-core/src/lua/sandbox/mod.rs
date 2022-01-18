@@ -6,8 +6,9 @@ use crate::path::PathMatcher;
 use crate::service::Service;
 use crate::source::Source;
 use crate::ErrorKind::*;
-use crate::{Response, Result};
+use crate::{Request, Response, Result};
 use global_env::modify_global_env;
+use hyper::Body;
 use local_env::create_local_env;
 use mlua::{Function, Lua, RegistryKey, Table};
 use once_cell::sync::Lazy;
@@ -40,15 +41,17 @@ impl Sandbox {
 
 // Creating and loading services
 impl Sandbox {
-  pub async fn run(&mut self, service: Service, path: &str) -> Result<Response> {
+  pub async fn run(
+    &mut self,
+    service: Service,
+    path: &str,
+    req: hyper::Request<Body>,
+  ) -> Result<Response> {
     let guard = service.try_upgrade()?;
-    let (_params, matcher) = guard
+    let (params, matcher) = guard
       .paths()
       .iter()
-      .find_map(|m| {
-        println!("{} => {}", m.as_str(), m.as_regex_str());
-        m.gen_params(path).map(|p| (p, m))
-      })
+      .find_map(|m| m.gen_params(path).map(|p| (p, m)))
       .ok_or_else(|| PathNotFound {
         service: guard.name().into(),
         path: path.into(),
@@ -65,8 +68,8 @@ impl Sandbox {
       let path = f.raw_get::<u8, String>(1)?;
       if path == matcher.as_str() {
         let handler = f.raw_get::<u8, Function>(2)?;
-        // TODO: pass parameters
-        let result: mlua::Value = handler.call_async(()).await?;
+        let req = Request::new(params, req);
+        let result: mlua::Value = handler.call_async(req).await?;
         let resp = Response::from_value(&self.lua, result)?;
         return Ok(resp);
       }

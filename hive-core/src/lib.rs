@@ -6,10 +6,12 @@ mod service;
 mod source;
 
 pub use error::{Error, ErrorKind, Result};
+pub use lua::request::Request;
 pub use lua::response::Response;
 pub use service::{Service, ServiceGuard};
 pub use source::Source;
 
+use hyper::Body;
 use lua::Sandbox;
 use object_pool::Pool;
 use service::ServicePool;
@@ -44,11 +46,16 @@ impl Hive {
       .ok_or_else(|| ErrorKind::ServiceNotFound(name.into()).into())
   }
 
-  pub async fn run_service(&self, name: &str, path: String) -> Result<Response> {
+  pub async fn run_service(
+    &self,
+    name: &str,
+    path: String,
+    req: hyper::Request<Body>,
+  ) -> Result<Response> {
     let service = self.get_service(name).await?;
     self
       .sandbox_pool
-      .scope(move |mut sandbox| async move { sandbox.run(service, &path).await })
+      .scope(move |mut sandbox| async move { sandbox.run(service, &path, req).await })
       .await
       .unwrap()
   }

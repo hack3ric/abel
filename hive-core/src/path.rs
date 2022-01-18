@@ -8,6 +8,8 @@ use std::collections::HashMap;
 
 static PATH_PARAMS_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r":([^/]+)|\*").unwrap());
 
+pub type Params = HashMap<Box<str>, Box<str>>;
+
 #[derive(Debug)]
 pub struct PathMatcher {
   path: Box<str>,
@@ -47,7 +49,7 @@ impl PathMatcher {
     })
   }
 
-  pub fn gen_params(&self, path: &str) -> Option<HashMap<Box<str>, Box<str>>> {
+  pub fn gen_params(&self, path: &str) -> Option<Params> {
     self.regex.captures(path).map(|captures| {
       self
         .param_names

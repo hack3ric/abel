@@ -1,5 +1,6 @@
-use http::header::HeaderName;
-use http::{HeaderMap, HeaderValue, StatusCode};
+use hyper::header::HeaderName;
+use hyper::http::{HeaderMap, HeaderValue, StatusCode};
+use hyper::Body;
 use mlua::{ExternalError, ExternalResult, Function, Lua, LuaSerdeExt, Table, UserData};
 
 pub struct Response {
@@ -28,6 +29,14 @@ impl Response {
 }
 
 impl UserData for Response {}
+
+impl From<Response> for hyper::Response<Body> {
+  fn from(x: Response) -> Self {
+    let mut builder = hyper::Response::builder().status(x.status);
+    *builder.headers_mut().unwrap() = x.headers;
+    builder.body(x.body.to_string().into()).unwrap()
+  }
+}
 
 pub fn create_fn_create_response(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, params: Table| {

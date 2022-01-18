@@ -33,7 +33,10 @@ pub async fn handle(hive: Hive, req: Request<Body>) -> Result<Response<Body>, In
 
     (_, ["services", ..]) => Err((404, "hive path not found", json!({ "path": path })).into()),
 
-    (_, [service_name, ..]) => run_service(&hive, service_name, path).await,
+    // TODO: solve self-referencing issue
+    (_, [service_name, ..]) => {
+      run_service(&hive, &service_name.to_string(), &path.to_string(), req).await
+    }
 
     _ => Err((404, "hive path not found", json!({ "path": path })).into()),
   };
@@ -103,8 +106,9 @@ pub async fn run_service(
   hive: &Hive,
   service_name: &str,
   whole_path: &str,
+  req: Request<Body>,
 ) -> Result<Response<Body>> {
   let sub_path = "/".to_string() + whole_path[1..].split_once("/").unwrap_or(("", "")).1;
-  let _result = hive.run_service(service_name, sub_path).await?;
-  Ok(json_response!("Done"))
+  let result = hive.run_service(service_name, sub_path, req).await?;
+  Ok(result.into())
 }
