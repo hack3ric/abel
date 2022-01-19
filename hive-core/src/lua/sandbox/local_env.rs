@@ -3,10 +3,11 @@ use crate::Result;
 use mlua::{Function, Lua, Table, Value};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use crate::lua::context::create_fn_context;
 
 pub(super) fn create_local_env(
   lua: &Lua,
-  _service_name: impl AsRef<str>,
+  service_name: impl AsRef<str>,
 ) -> Result<(Table, Table)> {
   let local_env = lua.create_table()?;
   apply_whitelist(&lua, &local_env)?;
@@ -18,6 +19,7 @@ pub(super) fn create_local_env(
   let hive = lua.create_table()?;
   hive.raw_set("register", create_fn_register(&lua, internal.clone())?)?;
   hive.raw_set("create_response", create_fn_create_response(lua)?)?;
+  hive.raw_set("context", create_fn_context(lua, service_name.as_ref().into())?)?;
   local_env.raw_set("hive", hive)?;
 
   Ok((local_env, internal))

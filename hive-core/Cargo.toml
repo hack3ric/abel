@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 backtrace = "0.3.63"
+dashmap = "5.0.0"
 erased-serde = "0.3.16"
 futures = "0.3.17"
 hyper = "0.14.16"
