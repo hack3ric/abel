@@ -1,6 +1,7 @@
 mod global_env;
 mod local_env;
 
+use super::context::remove_service_contexts;
 use super::LuaTableExt;
 use crate::path::PathMatcher;
 use crate::service::Service;
@@ -14,7 +15,6 @@ use mlua::{Function, Lua, RegistryKey, Table};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
-use super::context::remove_service_contexts;
 
 static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}$").unwrap());
 

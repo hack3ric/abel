@@ -1,11 +1,11 @@
+use super::value::{Key, Value};
 use dashmap::DashMap;
-use mlua::{ExternalResult, Function, Lua, LuaSerdeExt, String as LuaString, UserData};
+use mlua::Value::Nil;
+use mlua::{ExternalResult, Function, Lua, LuaSerdeExt, UserData};
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Weak};
-use mlua::Value::Nil;
 
-type Key = Box<str>;
-type Context = DashMap<Key, serde_json::Value>;
+type Context = DashMap<Key, Value>;
 type ContextStore = Arc<DashMap<ContextStoreKey, Arc<Context>>>;
 
 #[derive(Debug, Hash, PartialEq, Eq)]
@@ -16,7 +16,7 @@ struct ContextStoreKey {
 
 static CONTEXT_STORE: Lazy<ContextStore> = Lazy::new(|| Arc::new(DashMap::new()));
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct ContextRef {
   inner: Weak<Context>,
 }
@@ -33,33 +33,37 @@ impl ContextRef {
 
 impl UserData for ContextRef {
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-    methods.add_method("get", |lua, this, key: LuaString| {
+    methods.add_method("get", |lua, this, key: Key| {
       this
         .get()?
-        .get(key.to_str()?)
+        .get(&key)
         .map(|x| lua.to_value(x.value()))
         .unwrap_or(Ok(Nil))
     });
 
     methods.add_async_method(
       "set",
-      |lua, this, (key, value): (LuaString, mlua::Value)| async move {
+      |lua, this, (key, value): (Key, mlua::Value)| async move {
         let this = this.get()?;
-        let key = key.to_str()?;
         if let mlua::Value::Function(f) = value {
-          if let Some(mut r) = this.get_mut(key) {
+          if let Some(mut r) = this.get_mut(&key) {
             let old_value = lua.to_value(r.value())?;
             let new_value: mlua::Value = f.call_async(old_value.clone()).await?;
             *r.value_mut() = lua.from_value(new_value.clone())?;
             Ok((old_value, new_value))
           } else {
             let result: mlua::Value = f.call_async(Nil).await?;
-            this.insert(key.into(), lua.from_value(result.clone())?);
+            this.insert(key, lua.from_value(result.clone())?);
             Ok((Nil, result))
           }
         } else {
-          let result = this.insert(key.into(), lua.from_value(value.clone())?);
-          Ok((result.map(|old_value| lua.to_value(&old_value)).unwrap_or(Ok(Nil))?, value))
+          let result = this.insert(key, lua.from_value(value.clone())?);
+          Ok((
+            result
+              .map(|old_value| lua.to_value(&old_value))
+              .unwrap_or(Ok(Nil))?,
+            value,
+          ))
         }
       },
     );
