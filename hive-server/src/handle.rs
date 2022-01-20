@@ -2,6 +2,7 @@ use crate::error::method_not_allowed;
 use crate::{json_response, Result};
 use hive_core::{Hive, Service, Source};
 use hyper::{Body, Method, Request, Response};
+use log::error;
 use multer::{Constraints, Multipart, SizeLimit};
 use serde_json::json;
 use std::convert::Infallible;
@@ -41,7 +42,10 @@ pub async fn handle(hive: Hive, req: Request<Body>) -> Result<Response<Body>, In
     _ => Err((404, "hive path not found", json!({ "path": path })).into()),
   };
 
-  Ok(result.unwrap_or_else(|error| error.into_response(true)))
+  Ok(result.unwrap_or_else(|error| {
+    error!("{}", error);
+    error.into_response(true)
+  }))
 }
 
 async fn list(hive: &Hive) -> Result<Response<Body>> {
