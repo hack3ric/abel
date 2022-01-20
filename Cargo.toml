@@ -1,11 +1,11 @@
 [package]
-name = "hive-cli"
+name = "hive-server"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
 name = "hive"
-path = "hive-cli/src/main.rs"
+path = "hive-server/src/main.rs"
 
 [workspace]
 members = ["hive-core"]
