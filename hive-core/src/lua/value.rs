@@ -55,7 +55,7 @@ pub enum Value {
   Boolean(bool),
   Integer(i64),
   Number(f64),
-  String(#[serde(with = "serde_bytes")] Box<[u8]>),
   Array(Vec<Value>),
+  String(#[serde(with = "serde_bytes")] Box<[u8]>),
   Map(HashMap<Key, Value>),
 }
