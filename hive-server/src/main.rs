@@ -4,7 +4,7 @@ mod handle;
 mod util;
 
 use crate::handle::handle;
-use hive_core::Hive;
+use hive_core::{Hive, HiveOptions};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use log::{error, info};
@@ -28,7 +28,9 @@ async fn main() -> anyhow::Result<()> {
   pretty_env_logger::init();
   let opt = Opt::from_args();
 
-  let hive = Hive::new()?;
+  let hive = Hive::new(HiveOptions {
+    sandbox_pool_size: 8,
+  })?;
 
   let make_svc = make_service_fn(move |_conn| {
     let hive = hive.clone();

@@ -22,10 +22,14 @@ pub struct Hive {
   service_pool: ServicePool,
 }
 
+pub struct HiveOptions {
+  pub sandbox_pool_size: usize,
+}
+
 impl Hive {
-  pub fn new() -> Result<Self> {
+  pub fn new(options: HiveOptions) -> Result<Self> {
     Ok(Self {
-      sandbox_pool: Pool::with_capacity(8, Sandbox::new)?,
+      sandbox_pool: Pool::with_capacity(options.sandbox_pool_size, Sandbox::new)?,
       service_pool: ServicePool::new(),
     })
   }
