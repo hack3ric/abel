@@ -3,7 +3,6 @@ use crate::Result;
 use futures::{Future, FutureExt};
 use std::any::Any;
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -28,11 +27,6 @@ impl<T: Send + 'static> Pool<T> {
     let x = Arc::new(Mutex::new(Some(Box::new(|t| {
       async move { Box::new(task(t).await) as Box<dyn Any + Send> }.boxed_local()
     }) as Box<_>)));
-    let y = self.executors[0].push::<R>(x);
-    let c = self.executors[0].task_count.load(Ordering::Relaxed);
-    // if c > 1 {
-    //   dbg!(c);
-    // }
-    y.await
+    self.executors[0].push::<R>(x).await
   }
 }

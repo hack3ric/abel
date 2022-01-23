@@ -58,7 +58,7 @@ impl Sandbox {
         path: path.into(),
       })?;
 
-    let loaded = load_service(&self.lua, &self.loaded, service.clone()).await?;
+    let loaded = self.load_service(service.clone()).await?;
     let internal: Table = self.lua.registry_value(&loaded.internal)?;
 
     for f in internal
@@ -88,7 +88,7 @@ impl Sandbox {
       return Err(InvalidServiceName(name.into()).into());
     }
 
-    let (local_env, internal_key, internal) = run_source(&self.lua, name, source).await?;
+    let (local_env, internal_key, internal) = self.run_source(name, source).await?;
 
     let mut paths = Vec::new();
     for f in internal
@@ -124,7 +124,7 @@ impl Sandbox {
   }
 
   async fn run_start(&self, service: Service) -> Result<()> {
-    let loaded = load_service(&self.lua, &self.loaded, service).await?;
+    let loaded = self.load_service(service).await?;
     let start_fn: Option<Function> = self
       .lua
       .registry_value::<Table>(&loaded.local_env)?
@@ -136,7 +136,7 @@ impl Sandbox {
   }
 
   pub(crate) async fn run_stop(&self, service: Service) -> Result<()> {
-    let loaded = load_service(&self.lua, &self.loaded, service).await?;
+    let loaded = self.load_service(service).await?;
     let stop_fn: Option<Function> = self
       .lua
       .registry_value::<Table>(&loaded.local_env)?
@@ -148,50 +148,44 @@ impl Sandbox {
     remove_service_contexts(loaded.service.try_upgrade()?.name());
     Ok(())
   }
-}
 
-// These methods are separated from `impl` because different mutability of
-// references of `lua` and `loaded` is needed.
-
-async fn run_source<'a>(
-  self_lua: &'a Lua,
-  name: &str,
-  source: Source,
-) -> Result<(RegistryKey, RegistryKey, Table<'a>)> {
-  let (local_env, internal) = create_local_env(self_lua, name)?;
-  let main = source.get("/main.lua").unwrap();
-  self_lua
-    .load(main)
-    .set_environment(local_env.clone())?
-    .set_name("<service>/main.lua")?
-    .exec_async()
-    .await?;
-  internal.raw_set("sealed", true)?;
-  let local_env_key = self_lua.create_registry_value(local_env)?;
-  let internal_key = self_lua.create_registry_value(internal.clone())?;
-  Ok((local_env_key, internal_key, internal))
-}
-
-async fn load_service<'a>(
-  self_lua: &'a Lua,
-  self_loaded: &'a DashMap<Box<str>, LoadedService>,
-  service: Service,
-) -> Result<&'a LoadedService> {
-  let service_guard = service.try_upgrade()?;
-  let name = service_guard.name();
-  if let Some((name_owned, loaded)) = self_loaded.remove(name) {
-    if !loaded.service.is_dropped() && loaded.service.ptr_eq(&service) {
-      self_loaded.insert(name_owned, loaded);
-      return Ok(self_loaded.get(name).unwrap().value());
-    }
+  async fn run_source<'a>(
+    &'a self,
+    name: &str,
+    source: Source,
+  ) -> Result<(RegistryKey, RegistryKey, Table<'a>)> {
+    let (local_env, internal) = create_local_env(&self.lua, name)?;
+    let main = source.get("/main.lua").unwrap();
+    self
+      .lua
+      .load(main)
+      .set_environment(local_env.clone())?
+      .set_name("<service>/main.lua")?
+      .exec_async()
+      .await?;
+    internal.raw_set("sealed", true)?;
+    let local_env_key = self.lua.create_registry_value(local_env)?;
+    let internal_key = self.lua.create_registry_value(internal.clone())?;
+    Ok((local_env_key, internal_key, internal))
   }
-  let source = service_guard.source();
-  let (local_env, internal, _) = run_source(self_lua, name, source.clone()).await?;
-  let loaded = LoadedService {
-    service: service.clone(),
-    local_env,
-    internal,
-  };
-  self_loaded.insert(name.into(), loaded);
-  Ok(&self_loaded.get(name).unwrap().value())
+
+  async fn load_service(&self, service: Service) -> Result<&LoadedService> {
+    let service_guard = service.try_upgrade()?;
+    let name = service_guard.name();
+    if let Some((name_owned, loaded)) = self.loaded.remove(name) {
+      if !loaded.service.is_dropped() && loaded.service.ptr_eq(&service) {
+        self.loaded.insert(name_owned, loaded);
+        return Ok(self.loaded.get(name).unwrap().value());
+      }
+    }
+    let source = service_guard.source();
+    let (local_env, internal, _) = self.run_source(name, source.clone()).await?;
+    let loaded = LoadedService {
+      service: service.clone(),
+      local_env,
+      internal,
+    };
+    self.loaded.insert(name.into(), loaded);
+    Ok(&self.loaded.get(name).unwrap().value())
+  }
 }
