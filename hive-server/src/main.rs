@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
   let opt = Opt::from_args();
 
   let hive = Hive::new(HiveOptions {
-    sandbox_pool_size: 1,
+    sandbox_pool_size: 8,
   })?;
 
   let make_svc = make_service_fn(move |_conn| {

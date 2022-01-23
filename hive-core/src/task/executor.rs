@@ -1,6 +1,6 @@
 use futures::future::{select, Either, LocalBoxFuture};
 use futures::stream::FuturesUnordered;
-use futures::{pin_mut, Future, FutureExt, Stream};
+use futures::{pin_mut, FutureExt, Stream};
 use std::any::Any;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -38,20 +38,19 @@ impl Wake for MyWaker {
   }
 }
 
-type Task<T> = Arc<Mutex<Option<TaskFn<T>>>>;
-type TaskFn<T> =
-  Box<(dyn FnOnce(Rc<T>) -> LocalBoxFuture<'static, Box<dyn Any + Send>> + Send + 'static)>;
+type AnyBox = Box<dyn Any + Send>;
+type Task<T> = Arc<Mutex<Option<(TaskFn<T>, oneshot::Sender<AnyBox>)>>>;
+type TaskFn<T> = Box<(dyn FnOnce(Rc<T>) -> LocalBoxFuture<'static, AnyBox> + Send + 'static)>;
 
 pub struct Executor<T: Send + 'static> {
   pub task_count: Arc<AtomicU32>,
-  task_tx: mpsc::UnboundedSender<(Task<T>, oneshot::Sender<Box<dyn Any + Send>>)>,
+  task_tx: mpsc::UnboundedSender<Task<T>>,
 }
 
 impl<T: Send + 'static> Executor<T> {
   pub fn new(obj: T) -> Self {
     let task_count = Arc::new(AtomicU32::new(0));
-    let (task_tx, mut task_rx) =
-      mpsc::unbounded_channel::<(Task<T>, oneshot::Sender<Box<dyn Any + Send>>)>();
+    let (task_tx, mut task_rx) = mpsc::unbounded_channel::<Task<T>>();
 
     let rt = Handle::current();
     let task_count2 = task_count.clone();
@@ -76,27 +75,24 @@ impl<T: Send + 'static> Executor<T> {
                 waker.wake_by_ref();
               }
             }
-            Either::Right((msg, _)) => {
-              if let Some((task, tx)) = msg {
-                if let Some(task) = task.lock().await.take() {
-                  let task_count = task_count2.clone();
-                  task_count.fetch_add(1, Ordering::AcqRel);
-                  let obj = obj.clone();
-                  tasks.push(Box::pin(
-                    async move {
-                      let result = task(obj).await;
-                      let _ = tx.send(result);
-                      task_count.fetch_sub(1, Ordering::AcqRel);
-                    }
-                    .boxed_local(),
-                  ) as _);
-                }
+            Either::Right((Some(msg), _)) => {
+              if let Some((task, tx)) = msg.lock().await.take() {
+                let task_count = task_count2.clone();
+                task_count.fetch_add(1, Ordering::AcqRel);
+                let obj = obj.clone();
+                tasks.push(Box::pin(
+                  async move {
+                    let result = task(obj).await;
+                    let _ = tx.send(result);
+                    task_count.fetch_sub(1, Ordering::AcqRel);
+                  }
+                  .boxed_local(),
+                ));
                 waker.wake_by_ref();
-              } else {
-                // TODO: gracefully shut down
-                break;
               }
             }
+            // TODO: gracefully shut down
+            Either::Right((None, _)) => break,
           }
         }
       })
@@ -108,12 +104,7 @@ impl<T: Send + 'static> Executor<T> {
     }
   }
 
-  pub(crate) fn push<R: Send + 'static>(&self, task: Task<T>) -> impl Future<Output = R> + '_ {
-    let (tx, rx) = oneshot::channel();
-    let _ = self.task_tx.send((task, tx));
-    async {
-      let result = rx.await.unwrap();
-      *result.downcast().unwrap()
-    }
+  pub(crate) fn push<R: Send + 'static>(&self, task: Task<T>) {
+    let _ = self.task_tx.send(task);
   }
 }
