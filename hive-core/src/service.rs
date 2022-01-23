@@ -1,8 +1,8 @@
 use crate::error::Result;
 use crate::lua::Sandbox;
-use crate::object_pool::Pool;
 use crate::path::PathMatcher;
 use crate::source::Source;
+use crate::task::Pool;
 use crate::ErrorKind::*;
 use serde::ser::SerializeStruct;
 use serde::Serialize;
@@ -137,16 +137,15 @@ impl ServicePool {
 
     if let Some(old_service_impl) = services.take(<&Str>::from(&*name)) {
       sandbox_pool
-        .scope(move |mut sandbox| async move {
+        .scope(move |sandbox| async move {
           sandbox.run_stop(old_service_impl.downgrade()).await?;
           Ok::<_, crate::Error>(())
         })
-        .await
-        .unwrap()?;
+        .await?;
     }
 
     let service_impl = sandbox_pool
-      .scope(move |mut sandbox| async move {
+      .scope(move |sandbox| async move {
         let (paths, local_env, internal) =
           sandbox.pre_create_service(&name, source.clone()).await?;
         let service_impl = Arc::new(ServiceImpl {
@@ -165,8 +164,7 @@ impl ServicePool {
           .await?;
         Ok::<_, crate::Error>(service_impl)
       })
-      .await
-      .unwrap()?;
+      .await?;
     let service = service_impl.downgrade();
     assert!(services.insert(service_impl));
     Ok(service)
