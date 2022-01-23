@@ -1,6 +1,5 @@
 mod error;
 mod lua;
-mod object_pool;
 mod path;
 mod service;
 mod source;
@@ -14,12 +13,13 @@ pub use source::Source;
 
 use hyper::Body;
 use lua::Sandbox;
-use object_pool::Pool;
 use service::ServicePool;
+use std::sync::Arc;
+use task::Pool;
 
 #[derive(Clone)]
 pub struct Hive {
-  sandbox_pool: Pool<Sandbox>,
+  sandbox_pool: Arc<Pool<Sandbox>>,
   service_pool: ServicePool,
 }
 
@@ -30,7 +30,10 @@ pub struct HiveOptions {
 impl Hive {
   pub fn new(options: HiveOptions) -> Result<Self> {
     Ok(Self {
-      sandbox_pool: Pool::with_capacity(options.sandbox_pool_size, Sandbox::new)?,
+      sandbox_pool: Arc::new(Pool::with_capacity(
+        options.sandbox_pool_size,
+        Sandbox::new,
+      )?),
       service_pool: ServicePool::new(),
     })
   }
@@ -60,9 +63,8 @@ impl Hive {
     let service = self.get_service(name).await?;
     self
       .sandbox_pool
-      .scope(move |mut sandbox| async move { sandbox.run(service, &path, req).await })
+      .scope(move |sandbox| async move { sandbox.run(service, &path, req).await })
       .await
-      .unwrap()
   }
 
   pub async fn list(&self) -> Vec<Service> {

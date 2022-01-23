@@ -1,6 +1,7 @@
 use futures::future::{select, Either, LocalBoxFuture};
 use futures::stream::FuturesUnordered;
 use futures::{pin_mut, Future, FutureExt, Stream};
+use std::any::Any;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Relaxed;
@@ -37,18 +38,20 @@ impl Wake for MyWaker {
   }
 }
 
-type Task<T, R> = Arc<Mutex<Option<TaskFn<T, R>>>>;
-type TaskFn<T, R> = Box<(dyn FnOnce(Rc<T>) -> LocalBoxFuture<'static, R> + Send + 'static)>;
+type Task<T> = Arc<Mutex<Option<TaskFn<T>>>>;
+type TaskFn<T> =
+  Box<(dyn FnOnce(Rc<T>) -> LocalBoxFuture<'static, Box<dyn Any + Send>> + Send + 'static)>;
 
-pub struct Executor<T: Send + 'static, R: Send + 'static> {
-  task_count: Arc<AtomicU32>,
-  task_tx: mpsc::UnboundedSender<(Task<T, R>, oneshot::Sender<R>)>,
+pub struct Executor<T: Send + 'static> {
+  pub task_count: Arc<AtomicU32>,
+  task_tx: mpsc::UnboundedSender<(Task<T>, oneshot::Sender<Box<dyn Any + Send>>)>,
 }
 
-impl<T: Send + 'static, R: Send + 'static> Executor<T, R> {
+impl<T: Send + 'static> Executor<T> {
   pub fn new(obj: T) -> Self {
     let task_count = Arc::new(AtomicU32::new(0));
-    let (task_tx, mut task_rx) = mpsc::unbounded_channel::<(Task<T, R>, oneshot::Sender<R>)>();
+    let (task_tx, mut task_rx) =
+      mpsc::unbounded_channel::<(Task<T>, oneshot::Sender<Box<dyn Any + Send>>)>();
 
     let rt = Handle::current();
     let task_count2 = task_count.clone();
@@ -105,22 +108,12 @@ impl<T: Send + 'static, R: Send + 'static> Executor<T, R> {
     }
   }
 
-  pub fn push<F, Fut>(&self, task: F) -> impl Future<Output = R>
-  where
-    F: FnOnce(Rc<T>) -> Fut + Send + 'static,
-    Fut: Future<Output = R> + 'static,
-  {
-    self._push(|t| task(t).boxed_local())
-  }
-
-  fn _push(
-    &self,
-    task: impl FnOnce(Rc<T>) -> LocalBoxFuture<'static, R> + Send + 'static,
-  ) -> impl Future<Output = R> {
+  pub(crate) fn push<R: Send + 'static>(&self, task: Task<T>) -> impl Future<Output = R> + '_ {
     let (tx, rx) = oneshot::channel();
-    let _ = self
-      .task_tx
-      .send((Arc::new(Mutex::new(Some(Box::new(task)))), tx));
-    async { rx.await.unwrap() }
+    let _ = self.task_tx.send((task, tx));
+    async {
+      let result = rx.await.unwrap();
+      *result.downcast().unwrap()
+    }
   }
 }

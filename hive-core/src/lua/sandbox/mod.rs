@@ -8,20 +8,20 @@ use crate::service::Service;
 use crate::source::Source;
 use crate::ErrorKind::*;
 use crate::{Request, Response, Result};
+use dashmap::DashMap;
 use global_env::modify_global_env;
 use hyper::Body;
 use local_env::create_local_env;
 use mlua::{Function, Lua, RegistryKey, Table};
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::collections::HashMap;
 
 static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}$").unwrap());
 
 #[derive(Debug)]
 pub struct Sandbox {
   lua: Lua,
-  loaded: HashMap<Box<str>, LoadedService>,
+  loaded: DashMap<Box<str>, LoadedService>,
 }
 
 #[derive(Debug)]
@@ -34,7 +34,7 @@ struct LoadedService {
 impl Sandbox {
   pub fn new() -> Result<Self> {
     let lua = Lua::new();
-    let loaded = HashMap::new();
+    let loaded = DashMap::new();
     modify_global_env(&lua)?;
     Ok(Self { lua, loaded })
   }
@@ -43,7 +43,7 @@ impl Sandbox {
 // Creating and loading services
 impl Sandbox {
   pub async fn run(
-    &mut self,
+    &self,
     service: Service,
     path: &str,
     req: hyper::Request<Body>,
@@ -58,7 +58,7 @@ impl Sandbox {
         path: path.into(),
       })?;
 
-    let loaded = load_service(&self.lua, &mut self.loaded, service.clone()).await?;
+    let loaded = load_service(&self.lua, &self.loaded, service.clone()).await?;
     let internal: Table = self.lua.registry_value(&loaded.internal)?;
 
     for f in internal
@@ -104,7 +104,7 @@ impl Sandbox {
   }
 
   pub(crate) async fn finish_create_service(
-    &mut self,
+    &self,
     name: &str,
     service: Service,
     local_env: RegistryKey,
@@ -123,8 +123,8 @@ impl Sandbox {
     Ok(())
   }
 
-  async fn run_start(&mut self, service: Service) -> Result<()> {
-    let loaded = load_service(&self.lua, &mut self.loaded, service).await?;
+  async fn run_start(&self, service: Service) -> Result<()> {
+    let loaded = load_service(&self.lua, &self.loaded, service).await?;
     let start_fn: Option<Function> = self
       .lua
       .registry_value::<Table>(&loaded.local_env)?
@@ -135,8 +135,8 @@ impl Sandbox {
     Ok(())
   }
 
-  pub(crate) async fn run_stop(&mut self, service: Service) -> Result<()> {
-    let loaded = load_service(&self.lua, &mut self.loaded, service).await?;
+  pub(crate) async fn run_stop(&self, service: Service) -> Result<()> {
+    let loaded = load_service(&self.lua, &self.loaded, service).await?;
     let stop_fn: Option<Function> = self
       .lua
       .registry_value::<Table>(&loaded.local_env)?
@@ -174,15 +174,15 @@ async fn run_source<'a>(
 
 async fn load_service<'a>(
   self_lua: &'a Lua,
-  self_loaded: &'a mut HashMap<Box<str>, LoadedService>,
+  self_loaded: &'a DashMap<Box<str>, LoadedService>,
   service: Service,
 ) -> Result<&'a LoadedService> {
   let service_guard = service.try_upgrade()?;
   let name = service_guard.name();
-  if let Some((name_owned, loaded)) = self_loaded.remove_entry(name) {
+  if let Some((name_owned, loaded)) = self_loaded.remove(name) {
     if !loaded.service.is_dropped() && loaded.service.ptr_eq(&service) {
       self_loaded.insert(name_owned, loaded);
-      return Ok(self_loaded.get(name).unwrap());
+      return Ok(self_loaded.get(name).unwrap().value());
     }
   }
   let source = service_guard.source();
@@ -193,5 +193,5 @@ async fn load_service<'a>(
     internal,
   };
   self_loaded.insert(name.into(), loaded);
-  Ok(&self_loaded[name])
+  Ok(&self_loaded.get(name).unwrap().value())
 }
