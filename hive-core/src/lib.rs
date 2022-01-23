@@ -4,6 +4,7 @@ mod object_pool;
 mod path;
 mod service;
 mod source;
+mod task;
 
 pub use error::{Error, ErrorKind, Result};
 pub use lua::request::Request;
