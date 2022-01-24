@@ -3,7 +3,6 @@ pub mod response;
 
 mod context;
 mod sandbox;
-mod table;
 mod value;
 
 pub use sandbox::Sandbox;

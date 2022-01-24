@@ -61,7 +61,7 @@ async fn get_service(hive: &Hive, name: &str) -> Result<Response<Body>> {
 
 pub async fn upload(
   hive: &Hive,
-  name: Option<Box<str>>,
+  name: Option<String>,
   mut req: Request<Body>,
 ) -> Result<Response<Body>> {
   let name_provided = name.is_some();

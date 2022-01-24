@@ -38,7 +38,7 @@ impl Hive {
     })
   }
 
-  pub async fn create_service(&self, name: impl Into<String>, source: Source) -> Result<Service> {
+  pub async fn create_service(&self, name: String, source: Source) -> Result<Service> {
     self
       .service_pool
       .create_service(&self.sandbox_pool, name, source)

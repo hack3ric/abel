@@ -4,14 +4,13 @@ use crate::path::PathMatcher;
 use crate::source::Source;
 use crate::task::Pool;
 use crate::ErrorKind::*;
+use dashmap::DashSet;
 use serde::ser::SerializeStruct;
 use serde::Serialize;
 use std::borrow::Borrow;
-use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::sync::{Arc, Weak};
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -115,13 +114,13 @@ impl Serialize for ServiceGuard<'_> {
 
 #[derive(Clone)]
 pub struct ServicePool {
-  services: Arc<RwLock<HashSet<Arc<ServiceImpl>>>>,
+  services: Arc<DashSet<Arc<ServiceImpl>>>,
 }
 
 impl ServicePool {
   pub fn new() -> Self {
     Self {
-      services: Arc::new(RwLock::const_new(HashSet::new())),
+      services: Arc::new(DashSet::new()),
     }
   }
 
@@ -129,13 +128,10 @@ impl ServicePool {
   pub async fn create_service(
     &self,
     sandbox_pool: &Pool<Sandbox>,
-    name: impl Into<String>,
+    name: String,
     source: Source,
   ) -> Result<Service> {
-    let name = name.into();
-    let mut services = self.services.write().await;
-
-    if let Some(old_service_impl) = services.take(<&Str>::from(&*name)) {
+    if let Some(old_service_impl) = self.services.remove(<&Str>::from(&*name)) {
       sandbox_pool
         .scope(move |sandbox| async move {
           sandbox.run_stop(old_service_impl.downgrade()).await?;
@@ -166,26 +162,18 @@ impl ServicePool {
       })
       .await?;
     let service = service_impl.downgrade();
-    assert!(services.insert(service_impl));
+    assert!(self.services.insert(service_impl));
     Ok(service)
   }
 
   pub async fn get_service(&self, name: impl AsRef<str>) -> Option<Service> {
     self
       .services
-      .read()
-      .await
       .get::<Str>(name.as_ref().into())
-      .map(ServiceImpl::downgrade)
+      .map(|x| x.downgrade())
   }
 
   pub async fn list(&self) -> Vec<Service> {
-    self
-      .services
-      .read()
-      .await
-      .iter()
-      .map(|x| x.downgrade())
-      .collect()
+    self.services.iter().map(|x| x.downgrade()).collect()
   }
 }
