@@ -1,11 +1,13 @@
 use crate::lua::context::create_fn_context;
-use crate::lua::response::create_fn_create_response;
 use crate::Result;
-use mlua::{Function, Lua, Table, Value, ToLua};
+use mlua::{Function, Lua, Table, Value};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
-pub(super) fn create_local_env(lua: &Lua, service_name: impl AsRef<str>) -> Result<(Table, Table)> {
+pub(super) fn create_local_env<'a>(
+  lua: &'a Lua,
+  service_name: &str,
+) -> Result<(Table<'a>, Table<'a>)> {
   let local_env = lua.create_table()?;
   apply_whitelist(&lua, &local_env)?;
 
@@ -15,12 +17,16 @@ pub(super) fn create_local_env(lua: &Lua, service_name: impl AsRef<str>) -> Resu
 
   let hive = lua.create_table()?;
   hive.raw_set("register", create_fn_register(&lua, internal.clone())?)?;
-  hive.raw_set("create_response", create_fn_create_response(lua)?)?;
+  hive.raw_set("context", create_fn_context(lua, service_name.into())?)?;
+  let globals = lua.globals();
   hive.raw_set(
-    "context",
-    create_fn_context(lua, service_name.as_ref().into())?,
+    "create_response",
+    globals.raw_get::<_, Function>("create_response")?,
   )?;
-  hive.raw_set("current_worker", create_fn_current_worker(lua)?)?;
+  hive.raw_set(
+    "current_worker",
+    globals.raw_get::<_, Function>("current_worker")?,
+  )?;
   local_env.raw_set("hive", hive)?;
 
   Ok((local_env, internal))
@@ -90,8 +96,4 @@ fn create_fn_register<'a>(lua: &'a Lua, internal: Table<'a>) -> Result<Function<
     })
     .call(())?;
   Ok(register_fn)
-}
-
-fn create_fn_current_worker(lua: &Lua) -> Result<Function> {
-  Ok(lua.create_function(|lua, ()| std::thread::current().name().to_lua(lua))?)
 }
