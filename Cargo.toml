@@ -20,7 +20,7 @@ multer = "2.0.2"
 once_cell = "1.9.0"
 pretty_env_logger = "0.4.0"
 serde = { version = "1.0.133", features = ["derive"] }
-serde_json = { version = "1.0.74", features = ["preserve_order"] }
+serde_json = { version = "1.0.74" }
 slug = "0.1.4"
 structopt = "0.3.26"
 thiserror = "1.0.30"
