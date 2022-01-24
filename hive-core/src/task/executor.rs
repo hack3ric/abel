@@ -48,55 +48,58 @@ pub struct Executor<T: Send + 'static> {
 }
 
 impl<T: Send + 'static> Executor<T> {
-  pub fn new(obj: T) -> Self {
+  pub fn new(obj: T, name: String) -> Self {
     let task_count = Arc::new(AtomicU32::new(0));
     let (task_tx, mut task_rx) = mpsc::unbounded_channel::<Task<T>>();
 
     let rt = Handle::current();
     let task_count2 = task_count.clone();
-    std::thread::spawn(move || {
-      rt.block_on(async move {
-        let mut tasks = FuturesUnordered::<LocalBoxFuture<()>>::new();
-        let (waker_tx, mut waker_rx) = mpsc::unbounded_channel();
-        let mut waker = MyWaker::from_tx(waker_tx.clone());
-        let obj = Rc::new(obj);
+    std::thread::Builder::new()
+      .name(name)
+      .spawn(move || {
+        rt.block_on(async move {
+          let mut tasks = FuturesUnordered::<LocalBoxFuture<()>>::new();
+          let (waker_tx, mut waker_rx) = mpsc::unbounded_channel();
+          let mut waker = MyWaker::from_tx(waker_tx.clone());
+          let obj = Rc::new(obj);
 
-        loop {
-          let waker_recv = waker_rx.recv();
-          let new_task_recv = task_rx.recv();
-          pin_mut!(waker_recv, new_task_recv);
+          loop {
+            let waker_recv = waker_rx.recv();
+            let new_task_recv = task_rx.recv();
+            pin_mut!(waker_recv, new_task_recv);
 
-          match select(waker_recv, new_task_recv).await {
-            Either::Left(..) => {
-              waker = MyWaker::from_tx(waker_tx.clone());
-              let tasks = Pin::new(&mut tasks);
-              let mut context = Context::from_waker(&waker);
-              if let Poll::Ready(Some(_)) = tasks.poll_next(&mut context) {
-                waker.wake_by_ref();
+            match select(waker_recv, new_task_recv).await {
+              Either::Left(..) => {
+                waker = MyWaker::from_tx(waker_tx.clone());
+                let tasks = Pin::new(&mut tasks);
+                let mut context = Context::from_waker(&waker);
+                if let Poll::Ready(Some(_)) = tasks.poll_next(&mut context) {
+                  waker.wake_by_ref();
+                }
               }
-            }
-            Either::Right((Some(msg), _)) => {
-              if let Some((task, tx)) = msg.lock().await.take() {
-                let task_count = task_count2.clone();
-                task_count.fetch_add(1, Ordering::AcqRel);
-                let obj = obj.clone();
-                tasks.push(Box::pin(
-                  async move {
-                    let result = task(obj).await;
-                    let _ = tx.send(result);
-                    task_count.fetch_sub(1, Ordering::AcqRel);
-                  }
-                  .boxed_local(),
-                ));
-                waker.wake_by_ref();
+              Either::Right((Some(msg), _)) => {
+                if let Some((task, tx)) = msg.lock().await.take() {
+                  let task_count = task_count2.clone();
+                  task_count.fetch_add(1, Ordering::AcqRel);
+                  let obj = obj.clone();
+                  tasks.push(Box::pin(
+                    async move {
+                      let result = task(obj).await;
+                      let _ = tx.send(result);
+                      task_count.fetch_sub(1, Ordering::AcqRel);
+                    }
+                    .boxed_local(),
+                  ));
+                  waker.wake_by_ref();
+                }
               }
+              // TODO: gracefully shut down
+              Either::Right((None, _)) => break,
             }
-            // TODO: gracefully shut down
-            Either::Right((None, _)) => break,
           }
-        }
+        })
       })
-    });
+      .unwrap();
 
     Self {
       task_count,

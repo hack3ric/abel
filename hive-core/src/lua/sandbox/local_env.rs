@@ -1,7 +1,7 @@
 use crate::lua::context::create_fn_context;
 use crate::lua::response::create_fn_create_response;
 use crate::Result;
-use mlua::{Function, Lua, Table, Value};
+use mlua::{Function, Lua, Table, Value, ToLua};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
@@ -20,6 +20,7 @@ pub(super) fn create_local_env(lua: &Lua, service_name: impl AsRef<str>) -> Resu
     "context",
     create_fn_context(lua, service_name.as_ref().into())?,
   )?;
+  hive.raw_set("current_worker", create_fn_current_worker(lua)?)?;
   local_env.raw_set("hive", hive)?;
 
   Ok((local_env, internal))
@@ -27,41 +28,35 @@ pub(super) fn create_local_env(lua: &Lua, service_name: impl AsRef<str>) -> Resu
 
 #[rustfmt::skip]
 static LUA_GLOBAL_WHITELIST: Lazy<HashMap<&'static str, &'static [&'static str]>> = Lazy::new(|| {
-  let mut whitelist = HashMap::new();
-
-  whitelist.insert("", &[
-    "assert", "error", "ipairs", "next",
-    "pairs", "pcall", "print", "rawequal",
-    "select", "setmetatable", "tonumber", "tostring",
-    "type", "warn", "xpcall", "_VERSION",
-  ][..]);
-
-  whitelist.insert("math", &[
-    "abs", "acos", "asin", "atan",
-    "atan2", "ceil", "cos", "deg",
-    "exp", "floor", "fmod", "frexp",
-    "huge", "ldexp", "log", "log10",
-    "max", "maxinteger", "min", "mininteger",
-    "modf", "pi", "pow", "rad", "random",
-    "sin", "sinh", "sqrt", "tan",
-    "tanh", "tointeger", "type", "ult",
-  ][..]);
-
-  whitelist.insert("os", &[
-    "clock", "difftime", "time",
-  ][..]);
-
-  whitelist.insert("string", &[
-    "byte", "char", "find", "format",
-    "gmatch", "gsub", "len", "lower",
-    "match", "reverse", "sub", "upper",
-  ][..]);
-
-  whitelist.insert("table", &[
-    "insert", "maxn", "remove", "sort",
-  ][..]);
-
-  whitelist
+  HashMap::from_iter([
+    ("", &[
+      "assert", "error", "ipairs", "next",
+      "pairs", "pcall", "print", "rawequal",
+      "select", "setmetatable", "tonumber", "tostring",
+      "type", "warn", "xpcall", "_VERSION",
+    ][..]),
+    ("math", &[
+      "abs", "acos", "asin", "atan",
+      "atan2", "ceil", "cos", "deg",
+      "exp", "floor", "fmod", "frexp",
+      "huge", "ldexp", "log", "log10",
+      "max", "maxinteger", "min", "mininteger",
+      "modf", "pi", "pow", "rad", "random",
+      "sin", "sinh", "sqrt", "tan",
+      "tanh", "tointeger", "type", "ult",
+    ][..]),
+    ("os", &[
+      "clock", "difftime", "time",
+    ][..]),
+    ("string", &[
+      "byte", "char", "find", "format",
+      "gmatch", "gsub", "len", "lower",
+      "match", "reverse", "sub", "upper",
+    ][..]),
+    ("table", &[
+      "insert", "maxn", "remove", "sort",
+    ][..])
+  ])
 });
 
 fn apply_whitelist(lua: &Lua, local_env: &Table) -> Result<()> {
@@ -95,4 +90,8 @@ fn create_fn_register<'a>(lua: &'a Lua, internal: Table<'a>) -> Result<Function<
     })
     .call(())?;
   Ok(register_fn)
+}
+
+fn create_fn_current_worker(lua: &Lua) -> Result<Function> {
+  Ok(lua.create_function(|lua, ()| std::thread::current().name().to_lua(lua))?)
 }

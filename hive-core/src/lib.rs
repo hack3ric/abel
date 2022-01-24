@@ -30,7 +30,8 @@ pub struct HiveOptions {
 impl Hive {
   pub fn new(options: HiveOptions) -> Result<Self> {
     Ok(Self {
-      sandbox_pool: Arc::new(Pool::with_capacity(
+      sandbox_pool: Arc::new(Pool::new(
+        "hive-worker",
         options.sandbox_pool_size,
         Sandbox::new,
       )?),

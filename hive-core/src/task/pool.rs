@@ -11,9 +11,14 @@ pub struct Pool<T: Send + 'static> {
 }
 
 impl<T: Send + 'static> Pool<T> {
-  pub fn with_capacity(capacity: usize, mut init: impl FnMut() -> Result<T>) -> Result<Self> {
-    let executors = std::iter::repeat_with(|| Ok(Executor::new(init()?)))
-      .take(capacity)
+  pub fn new(name: &'static str, size: usize, mut init: impl FnMut() -> Result<T>) -> Result<Self> {
+    let executors = (0..size)
+      .map(|i| {
+        Ok(Executor::new(
+          init()?,
+          name.to_string() + "-" + &i.to_string(),
+        ))
+      })
       .collect::<Result<_>>()?;
     Ok(Self { executors })
   }
