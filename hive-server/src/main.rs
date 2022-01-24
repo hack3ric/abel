@@ -18,6 +18,9 @@ type Result<T, E = error::Error> = std::result::Result<T, E>;
 struct Opt {
   #[structopt(short = "l", long = "listen", default_value = "127.0.0.1:3000")]
   addr: SocketAddr,
+
+  #[structopt(long, default_value = "8")]
+  pool_size: usize,
 }
 
 #[tokio::main]
@@ -29,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
   let opt = Opt::from_args();
 
   let hive = Hive::new(HiveOptions {
-    sandbox_pool_size: 8,
+    sandbox_pool_size: opt.pool_size,
   })?;
 
   let make_svc = make_service_fn(move |_conn| {
