@@ -11,7 +11,9 @@ pub struct Table(Arc<TableRepr>);
 
 impl Table {
   pub fn new() -> Self {
-    Self(Arc::new(TableRepr { inner: Default::default() }))
+    Self(Arc::new(TableRepr {
+      inner: Default::default(),
+    }))
   }
 
   pub fn from_lua_table(table: mlua::Table) -> mlua::Result<Self> {
@@ -52,7 +54,7 @@ impl TableRepr {
   fn get(&self, key: Key) -> MappedRwLockReadGuard<'_, Value> {
     const CONST_NIL: Value = Value::Nil;
     let lock = self.inner.read();
-    
+
     RwLockReadGuard::map(lock, |(x, y)| {
       key
         .to_i64()
