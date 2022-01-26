@@ -11,7 +11,7 @@ pub struct Pool<T: Send + 'static> {
 }
 
 impl<T: Send + 'static> Pool<T> {
-  pub fn new(name: &'static str, size: usize, mut init: impl FnMut() -> Result<T>) -> Result<Self> {
+  pub fn new(name: &str, size: usize, mut init: impl FnMut() -> Result<T>) -> Result<Self> {
     let executors = (0..size)
       .map(|i| {
         Ok(Executor::new(
