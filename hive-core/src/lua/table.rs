@@ -9,12 +9,35 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct Table(Arc<TableRepr>);
 
+impl Table {
+  pub fn new() -> Self {
+    Self(Arc::new(TableRepr { inner: Default::default() }))
+  }
+
+  pub fn from_lua_table(table: mlua::Table) -> mlua::Result<Self> {
+    let mut int = BTreeMap::new();
+    let mut other = HashMap::new();
+    for kv in table.pairs::<Key, Value>() {
+      let (k, v) = kv?;
+      if let Some(i) = k.to_i64() {
+        int.insert(i, v);
+      } else {
+        other.insert(k, v);
+      }
+    }
+    Ok(Self(Arc::new(TableRepr {
+      inner: RwLock::new((int, other)),
+    })))
+  }
+}
+
 impl UserData for Table {
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-    methods.add_method("__index", |lua, this, key: Key| {
-      (&*this.0.get(key)).to_lua(lua)
+    methods.add_meta_method("__index", |lua, this, key: Key| {
+      let result = this.0.get(key);
+      (&*result).to_lua(lua)
     });
-    methods.add_method("__newindex", |_lua, this, (key, value): (Key, Value)| {
+    methods.add_meta_method("__newindex", |_lua, this, (key, value): (Key, Value)| {
       this.0.set(key, value);
       Ok(())
     });
@@ -26,25 +49,10 @@ struct TableRepr {
 }
 
 impl TableRepr {
-  fn from_table(table: mlua::Table) -> mlua::Result<Self> {
-    let mut int = BTreeMap::new();
-    let mut other = HashMap::new();
-    for kv in table.pairs::<Key, Value>() {
-      let (k, v) = kv?;
-      if let Some(i) = k.to_i64() {
-        int.insert(i, v);
-      } else {
-        other.insert(k, v);
-      }
-    }
-    Ok(Self {
-      inner: RwLock::new((int, other)),
-    })
-  }
-
   fn get(&self, key: Key) -> MappedRwLockReadGuard<'_, Value> {
     const CONST_NIL: Value = Value::Nil;
     let lock = self.inner.read();
+    
     RwLockReadGuard::map(lock, |(x, y)| {
       key
         .to_i64()
@@ -84,7 +92,7 @@ impl<'lua> FromLua<'lua> for Value {
       Integer(x) => Self::Integer(x),
       Number(x) => Self::Number(x),
       String(x) => Self::String(x.as_bytes().into()),
-      Table(x) => Self::Table(self::Table(Arc::new(TableRepr::from_table(x)?))),
+      Table(x) => Self::Table(self::Table::from_lua_table(x)?),
       UserData(x) => {
         if let Ok(x) = x.borrow::<self::Table>() {
           Self::Table(x.clone())

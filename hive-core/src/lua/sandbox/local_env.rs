@@ -1,4 +1,4 @@
-use crate::lua::context::create_fn_context;
+use crate::lua::context::create_context;
 use crate::Result;
 use mlua::{Function, Lua, Table, Value};
 use once_cell::sync::Lazy;
@@ -16,8 +16,8 @@ pub(super) fn create_local_env<'a>(
   internal.raw_set("sealed", false)?;
 
   let hive = lua.create_table()?;
-  hive.raw_set("register", create_fn_register(&lua, internal.clone())?)?;
-  hive.raw_set("context", create_fn_context(lua, service_name.into())?)?;
+  hive.raw_set("register", create_fn_register(lua, internal.clone())?)?;
+  hive.raw_set("context", create_context(service_name.into()))?;
   let globals = lua.globals();
   hive.raw_set(
     "create_response",
