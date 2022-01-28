@@ -1,4 +1,4 @@
-use mlua::{ExternalError, ExternalResult, FromLua, Lua, ToLua, UserData};
+use mlua::{ExternalError, ExternalResult, FromLua, Function, Lua, ToLua, UserData};
 use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard};
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
@@ -39,11 +39,30 @@ impl UserData for Table {
       let result = this.0.get(key);
       (&*result).to_lua(lua)
     });
+
     methods.add_meta_method("__newindex", |_lua, this, (key, value): (Key, Value)| {
       this.0.set(key, value);
       Ok(())
     });
+
+    methods.add_meta_method("__len", |_lua, this, ()| Ok(this.0.inner.read().0.len()));
+
+    methods.add_meta_method("__pairs", |lua, this, ()| {
+      let next: mlua::Value = lua.globals().raw_get("next")?;
+      let table = this.0.shallow_dump(lua)?;
+      Ok((next, table, mlua::Value::Nil))
+    });
+
+    methods.add_method("dump", |lua, this, ()| this.0.deep_dump(lua));
   }
+}
+
+pub fn create_fn_table_dump(lua: &Lua) -> mlua::Result<Function> {
+  lua.create_function(|lua, table: mlua::Value| match table {
+    mlua::Value::Table(table) => Ok(table),
+    mlua::Value::UserData(x) => x.borrow::<Table>()?.0.deep_dump(lua),
+    _ => Err("expected table or shared table".to_lua_err()),
+  })
 }
 
 struct TableRepr {
@@ -56,8 +75,7 @@ impl TableRepr {
     let lock = self.inner.read();
 
     RwLockReadGuard::map(lock, |(x, y)| {
-      key
-        .to_i64()
+      (key.to_i64())
         .map(|i| x.get(&i))
         .unwrap_or_else(|| y.get(&key))
         .unwrap_or(&CONST_NIL)
@@ -72,6 +90,57 @@ impl TableRepr {
       lock.1.insert(key, value)
     }
     .unwrap_or(Value::Nil)
+  }
+
+  fn shallow_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<mlua::Table<'lua>> {
+    let lock = self.inner.read();
+    let int_iter = (lock.0)
+      .iter()
+      .map(|(i, v)| Ok::<_, mlua::Error>((mlua::Value::Integer(*i), v)));
+    let other_iter = (lock.1)
+      .iter()
+      .map(|(k, v)| Ok::<_, mlua::Error>((k.to_lua(lua)?, v)));
+    let t = lua.create_table_with_capacity(lock.0.len() as _, lock.1.len() as _)?;
+    for kv in int_iter.chain(other_iter) {
+      let (k, v) = kv?;
+      t.raw_set(k, v)?;
+    }
+    Ok(t)
+  }
+
+  fn deep_dump<'lua>(self: &Arc<Self>, lua: &'lua Lua) -> mlua::Result<mlua::Table<'lua>> {
+    self._deep_dump(lua, &mut HashMap::new())
+  }
+
+  fn _deep_dump<'lua>(
+    self: &Arc<Self>,
+    lua: &'lua Lua,
+    tables: &mut HashMap<usize, mlua::Table<'lua>>,
+  ) -> mlua::Result<mlua::Table<'lua>> {
+    // preserve recursive structure
+    if let Some(table) = tables.get(&(Arc::as_ptr(self) as _)) {
+      Ok(table.clone())
+    } else {
+      let lock = self.inner.read();
+      let int_iter = (lock.0)
+        .iter()
+        .map(|(i, v)| Ok::<_, mlua::Error>((mlua::Value::Integer(*i), v)));
+      let other_iter = (lock.1)
+        .iter()
+        .map(|(k, v)| Ok::<_, mlua::Error>((k.to_lua(lua)?, v)));
+      let table = lua.create_table_with_capacity(lock.0.len() as _, lock.1.len() as _)?;
+      tables.insert(Arc::as_ptr(self) as _, table.clone());
+      for kv in int_iter.chain(other_iter) {
+        let (k, v) = kv?;
+        if let Value::Table(Table(table_repr)) = v {
+          let sub_table = table_repr._deep_dump(lua, tables)?;
+          table.raw_set(k, sub_table)?;
+        } else {
+          table.raw_set(k, v)?;
+        }
+      }
+      Ok(table)
+    }
   }
 }
 

@@ -61,6 +61,7 @@ static LUA_GLOBAL_WHITELIST: Lazy<HashMap<&'static str, &'static [&'static str]>
     ][..]),
     ("table", &[
       "insert", "maxn", "remove", "sort",
+      "dump",
     ][..])
   ])
 });
