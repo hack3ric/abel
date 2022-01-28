@@ -8,6 +8,7 @@ use hive_core::{Hive, HiveOptions};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use log::{error, info};
+use once_cell::sync::Lazy;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use structopt::StructOpt;
@@ -19,12 +20,13 @@ struct Opt {
   #[structopt(short = "l", long = "listen", default_value = "127.0.0.1:3000")]
   addr: SocketAddr,
 
-  #[structopt(long, default_value = "8")]
-  pool_size: usize,
+  #[structopt(long)]
+  pool_size: Option<usize>,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+static HALF_NUM_CPUS: Lazy<usize> = Lazy::new(|| 1.max(num_cpus::get() / 2));
+
+async fn _main() -> anyhow::Result<()> {
   if option_env!("RUST_LOG").is_none() {
     std::env::set_var("RUST_LOG", "INFO");
   }
@@ -32,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
   let opt = Opt::from_args();
 
   let hive = Hive::new(HiveOptions {
-    sandbox_pool_size: opt.pool_size,
+    sandbox_pool_size: opt.pool_size.unwrap_or(*HALF_NUM_CPUS),
   })?;
 
   let make_svc = make_service_fn(move |_conn| {
@@ -47,4 +49,13 @@ async fn main() -> anyhow::Result<()> {
     error!("fatal server error: {}", error);
   }
   Ok(())
+}
+
+fn main() -> anyhow::Result<()> {
+  tokio::runtime::Builder::new_multi_thread()
+    .enable_all()
+    .worker_threads(*HALF_NUM_CPUS)
+    .build()
+    .unwrap()
+    .block_on(_main())
 }
