@@ -4,8 +4,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-// TODO: scope Table
-
 #[derive(Clone)]
 pub struct Table(Arc<TableRepr>);
 
@@ -64,6 +62,8 @@ pub fn create_fn_table_dump(lua: &Lua) -> mlua::Result<Function> {
     _ => Err("expected table or shared table".to_lua_err()),
   })
 }
+
+// TODO: create_fn_table_scope
 
 struct TableRepr {
   inner: RwLock<(BTreeMap<i64, Value>, HashMap<Key, Value>)>,
