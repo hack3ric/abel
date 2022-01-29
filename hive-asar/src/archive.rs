@@ -1,4 +1,5 @@
 use crate::header::{Directory, Entry, FileMetadata};
+use crate::split_path;
 use std::io::SeekFrom;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -33,12 +34,10 @@ impl<R: AsyncRead + AsyncSeek + Unpin> Archive<R> {
   }
 
   pub async fn read(&mut self, path: &str) -> io::Result<File<&mut R>> {
-    let segments = path.split('/').collect::<Vec<_>>();
-    let entry = self.header.search_segments(&segments);
+    let entry = self.header.search_segments(&split_path(path));
     match entry {
       Some(Entry::File(metadata)) => {
-        self
-          .reader
+        (self.reader)
           .seek(SeekFrom::Start(self.offset + metadata.offset))
           .await?;
         Ok(File {
@@ -54,8 +53,7 @@ impl<R: AsyncRead + AsyncSeek + Unpin> Archive<R> {
 
 impl Archive<fs::File> {
   pub async fn fs_read(&self, path: &str) -> io::Result<File<fs::File>> {
-    let segments = path.split('/').collect::<Vec<_>>();
-    let entry = self.header.search_segments(&segments);
+    let entry = self.header.search_segments(&split_path(path));
     match entry {
       Some(Entry::File(metadata)) => {
         let mut r = self.reader.try_clone().await?;
@@ -91,21 +89,4 @@ impl<R: AsyncRead + AsyncSeek + Unpin> AsyncRead for File<R> {
   ) -> Poll<io::Result<()>> {
     Pin::new(&mut self.content).poll_read(cx, buf)
   }
-}
-
-#[tokio::test]
-async fn test() {
-  let a = Archive::new(tokio::fs::File::open("b.asar").await.unwrap())
-    .await
-    .unwrap();
-
-  let mut dst = String::new();
-  a.fs_read("helloa.lua")
-    .await
-    .unwrap()
-    .content
-    .read_to_string(&mut dst)
-    .await
-    .unwrap();
-  println!("{dst}");
 }
