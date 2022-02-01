@@ -1,5 +1,6 @@
 mod global_env;
 mod local_env;
+mod package;
 
 use super::context::remove_service_contexts;
 use super::LuaTableExt;

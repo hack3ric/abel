@@ -3,6 +3,7 @@ use crate::Result;
 use mlua::{Function, Lua, Table, Value};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use super::package::init_package;
 
 pub(super) fn create_local_env<'a>(
   lua: &'a Lua,
@@ -29,44 +30,47 @@ pub(super) fn create_local_env<'a>(
   )?;
   local_env.raw_set("hive", hive)?;
 
+  let require_fn = init_package(lua, internal.clone())?;
+  local_env.raw_set("require", require_fn)?;
+
   Ok((local_env, internal))
 }
 
-#[rustfmt::skip]
-static LUA_GLOBAL_WHITELIST: Lazy<HashMap<&'static str, &'static [&'static str]>> = Lazy::new(|| {
-  HashMap::from_iter([
-    ("", &[
-      "assert", "error", "ipairs", "next",
-      "pairs", "pcall", "print", "rawequal",
-      "select", "setmetatable", "tonumber", "tostring",
-      "type", "warn", "xpcall", "_VERSION",
-    ][..]),
-    ("math", &[
-      "abs", "acos", "asin", "atan",
-      "atan2", "ceil", "cos", "deg",
-      "exp", "floor", "fmod", "frexp",
-      "huge", "ldexp", "log", "log10",
-      "max", "maxinteger", "min", "mininteger",
-      "modf", "pi", "pow", "rad", "random",
-      "sin", "sinh", "sqrt", "tan",
-      "tanh", "tointeger", "type", "ult",
-    ][..]),
-    ("os", &[
-      "clock", "difftime", "time",
-    ][..]),
-    ("string", &[
-      "byte", "char", "find", "format",
-      "gmatch", "gsub", "len", "lower",
-      "match", "reverse", "sub", "upper",
-    ][..]),
-    ("table", &[
-      "insert", "maxn", "remove", "sort",
-      "dump",
-    ][..])
-  ])
-});
-
 fn apply_whitelist(lua: &Lua, local_env: &Table) -> Result<()> {
+  #[rustfmt::skip]
+  static LUA_GLOBAL_WHITELIST: Lazy<HashMap<&'static str, &'static [&'static str]>> = Lazy::new(|| {
+    HashMap::from_iter([
+      ("", &[
+        "assert", "error", "ipairs", "next",
+        "pairs", "pcall", "print", "rawequal",
+        "select", "setmetatable", "tonumber", "tostring",
+        "type", "warn", "xpcall", "_VERSION",
+      ][..]),
+      ("math", &[
+        "abs", "acos", "asin", "atan",
+        "atan2", "ceil", "cos", "deg",
+        "exp", "floor", "fmod", "frexp",
+        "huge", "ldexp", "log", "log10",
+        "max", "maxinteger", "min", "mininteger",
+        "modf", "pi", "pow", "rad", "random",
+        "sin", "sinh", "sqrt", "tan",
+        "tanh", "tointeger", "type", "ult",
+      ][..]),
+      ("os", &[
+        "clock", "difftime", "time",
+      ][..]),
+      ("string", &[
+        "byte", "char", "find", "format",
+        "gmatch", "gsub", "len", "lower",
+        "match", "reverse", "sub", "upper",
+      ][..]),
+      ("table", &[
+        "insert", "maxn", "remove", "sort",
+        "dump",
+      ][..])
+    ])
+  });
+
   let globals = lua.globals();
   for (&k, &v) in LUA_GLOBAL_WHITELIST.iter() {
     if k.is_empty() {
