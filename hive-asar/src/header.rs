@@ -31,7 +31,7 @@ pub struct FileMetadata {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Directory {
-  files: HashMap<Box<str>, Entry>,
+  pub files: HashMap<Box<str>, Entry>,
 }
 
 impl Directory {

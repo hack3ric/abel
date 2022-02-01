@@ -1,6 +1,8 @@
 use crate::header::{Directory, Entry, FileMetadata};
 use crate::split_path;
+use std::future::Future;
 use std::io::SeekFrom;
+use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::fs;
@@ -49,6 +51,58 @@ impl<R: AsyncRead + AsyncSeek + Unpin> Archive<R> {
       None => Err(io::ErrorKind::NotFound.into()),
     }
   }
+
+  pub async fn extract(&mut self, path: impl AsRef<Path>) -> io::Result<()> {
+    let path = path.as_ref();
+    for (name, entry) in self.header.files.iter() {
+      extract_entry(&mut self.reader, self.offset, name, entry, path).await?;
+    }
+    Ok(())
+  }
+}
+
+fn extract_entry<'a, R: AsyncRead + AsyncSeek + Unpin>(
+  reader: &'a mut R,
+  offset: u64,
+  name: &'a str,
+  entry: &'a Entry,
+  path: &'a Path,
+) -> Pin<Box<dyn Future<Output = io::Result<()>> + 'a>> {
+  Box::pin(async move {
+    match entry {
+      Entry::File(file) => extract_file(reader, offset, name, file, path).await?,
+      Entry::Directory(dir) => extract_dir(reader, offset, name, dir, path).await?,
+    }
+    Ok(())
+  })
+}
+
+async fn extract_file<R: AsyncRead + AsyncSeek + Unpin>(
+  reader: &mut R,
+  offset: u64,
+  name: &str,
+  file: &FileMetadata,
+  path: &Path,
+) -> io::Result<()> {
+  reader.seek(SeekFrom::Start(offset + file.offset)).await?;
+  let mut dest = fs::File::create(path.join(name)).await?;
+  io::copy(&mut reader.take(file.size), &mut dest).await?;
+  Ok(())
+}
+
+async fn extract_dir<R: AsyncRead + AsyncSeek + Unpin>(
+  reader: &mut R,
+  offset: u64,
+  name: &str,
+  dir: &Directory,
+  path: &Path,
+) -> io::Result<()> {
+  let new_dir_path = path.join(name);
+  fs::create_dir(&new_dir_path).await?;
+  for (name, entry) in dir.files.iter() {
+    extract_entry(reader, offset, name, entry, &new_dir_path).await?;
+  }
+  Ok(())
 }
 
 impl Archive<fs::File> {
@@ -90,3 +144,5 @@ impl<R: AsyncRead + AsyncSeek + Unpin> AsyncRead for File<R> {
     Pin::new(&mut self.content).poll_read(cx, buf)
   }
 }
+
+// TODO: impl AsyncSeek for File
