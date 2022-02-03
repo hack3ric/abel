@@ -14,6 +14,7 @@ members = ["hive-core", "hive-asar"]
 anyhow = { version = "1.0.52", features = ["backtrace"] }
 backtrace = "0.3.63"
 hive-core = { path = "hive-core" }
+home = "0.5.3"
 hyper = { version = "0.14.16", features = ["full"] }
 log = "0.4.14"
 multer = "2.0.2"
