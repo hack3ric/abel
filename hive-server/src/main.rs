@@ -12,6 +12,9 @@ use once_cell::sync::Lazy;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use structopt::StructOpt;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::{fs, io};
 
 type Result<T, E = error::Error> = std::result::Result<T, E>;
 
@@ -24,6 +27,11 @@ struct Opt {
   pool_size: Option<usize>,
 }
 
+pub(crate) struct MainState {
+  hive: Hive,
+  config_path: PathBuf,
+}
+
 static HALF_NUM_CPUS: Lazy<usize> = Lazy::new(|| 1.max(num_cpus::get() / 2));
 
 async fn _main() -> anyhow::Result<()> {
@@ -33,13 +41,29 @@ async fn _main() -> anyhow::Result<()> {
   pretty_env_logger::init();
   let opt = Opt::from_args();
 
-  let hive = Hive::new(HiveOptions {
-    sandbox_pool_size: opt.pool_size.unwrap_or(*HALF_NUM_CPUS),
-  })?;
+  let mut config_path = home::home_dir().expect("no home directory found");
+  config_path.push(".hive");
+  async {
+    if !config_path.exists() {
+      fs::create_dir(&config_path).await?;
+    }
+    let services_path = config_path.join("services");
+    if !services_path.exists() {
+      fs::create_dir(&services_path).await?;
+    }
+    Ok::<_, io::Error>(())
+  }.await.expect("failed to create Hive config directory");
+
+  let state = Arc::new(MainState {
+    hive: Hive::new(HiveOptions {
+      sandbox_pool_size: opt.pool_size.unwrap_or(*HALF_NUM_CPUS),
+    })?,
+    config_path,
+  });
 
   let make_svc = make_service_fn(move |_conn| {
-    let hive = hive.clone();
-    async move { Ok::<_, Infallible>(service_fn(move |req| handle(hive.clone(), req))) }
+    let state = state.clone();
+    async move { Ok::<_, Infallible>(service_fn(move |req| handle(state.clone(), req))) }
   });
 
   let server = Server::bind(&opt.addr).serve(make_svc);

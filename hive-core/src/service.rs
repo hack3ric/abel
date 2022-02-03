@@ -112,15 +112,14 @@ impl Serialize for ServiceGuard<'_> {
   }
 }
 
-#[derive(Clone)]
 pub struct ServicePool {
-  services: Arc<DashSet<Arc<ServiceImpl>>>,
+  services: DashSet<Arc<ServiceImpl>>,
 }
 
 impl ServicePool {
   pub fn new() -> Self {
     Self {
-      services: Arc::new(DashSet::new()),
+      services: DashSet::new(),
     }
   }
 

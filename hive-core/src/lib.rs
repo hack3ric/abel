@@ -14,12 +14,10 @@ pub use source::Source;
 use hyper::Body;
 use lua::Sandbox;
 use service::ServicePool;
-use std::sync::Arc;
 use task::Pool;
 
-#[derive(Clone)]
 pub struct Hive {
-  sandbox_pool: Arc<Pool<Sandbox>>,
+  sandbox_pool: Pool<Sandbox>,
   service_pool: ServicePool,
 }
 
@@ -30,11 +28,11 @@ pub struct HiveOptions {
 impl Hive {
   pub fn new(options: HiveOptions) -> Result<Self> {
     Ok(Self {
-      sandbox_pool: Arc::new(Pool::new(
+      sandbox_pool: Pool::new(
         "hive-worker",
         options.sandbox_pool_size,
         Sandbox::new,
-      )?),
+      )?,
       service_pool: ServicePool::new(),
     })
   }
