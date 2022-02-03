@@ -8,7 +8,7 @@ name = "hive"
 path = "hive-server/src/main.rs"
 
 [workspace]
-members = ["hive-core", "hive-asar"]
+members = ["hive-core", "hive-asar", "hive-vfs"]
 
 [dependencies]
 anyhow = { version = "1.0.52", features = ["backtrace"] }
