@@ -1,5 +1,5 @@
 use crate::error::method_not_allowed;
-use crate::{json_response, Result, MainState};
+use crate::{json_response, MainState, Result};
 use hive_core::{Service, Source};
 use hyper::{Body, Method, Request, Response};
 use log::error;
@@ -13,7 +13,10 @@ const POST: &Method = &Method::POST;
 const PUT: &Method = &Method::PUT;
 const DELETE: &Method = &Method::DELETE;
 
-pub(crate) async fn handle(state: Arc<MainState>, req: Request<Body>) -> Result<Response<Body>, Infallible> {
+pub(crate) async fn handle(
+  state: Arc<MainState>,
+  req: Request<Body>,
+) -> Result<Response<Body>, Infallible> {
   let method = req.method();
   let path = req.uri().path();
   let segments = path

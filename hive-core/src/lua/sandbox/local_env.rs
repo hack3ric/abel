@@ -1,9 +1,9 @@
+use super::package::init_package;
 use crate::lua::context::create_context;
 use crate::Result;
 use mlua::{Function, Lua, Table, Value};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use super::package::init_package;
 
 pub(super) fn create_local_env<'a>(
   lua: &'a Lua,

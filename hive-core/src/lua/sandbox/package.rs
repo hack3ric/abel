@@ -1,5 +1,5 @@
 use crate::Result;
-use mlua::{Lua, Table, Function};
+use mlua::{Function, Lua, Table};
 
 pub fn init_package<'a>(lua: &'a Lua, internal: Table<'a>) -> Result<Function<'a>> {
   let package_table = lua.create_table()?;

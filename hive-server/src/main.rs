@@ -11,9 +11,9 @@ use log::{error, info};
 use once_cell::sync::Lazy;
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use structopt::StructOpt;
 use std::path::PathBuf;
 use std::sync::Arc;
+use structopt::StructOpt;
 use tokio::{fs, io};
 
 type Result<T, E = error::Error> = std::result::Result<T, E>;
@@ -52,7 +52,9 @@ async fn _main() -> anyhow::Result<()> {
       fs::create_dir(&services_path).await?;
     }
     Ok::<_, io::Error>(())
-  }.await.expect("failed to create Hive config directory");
+  }
+  .await
+  .expect("failed to create Hive config directory");
 
   let state = Arc::new(MainState {
     hive: Hive::new(HiveOptions {

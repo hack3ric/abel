@@ -28,11 +28,7 @@ pub struct HiveOptions {
 impl Hive {
   pub fn new(options: HiveOptions) -> Result<Self> {
     Ok(Self {
-      sandbox_pool: Pool::new(
-        "hive-worker",
-        options.sandbox_pool_size,
-        Sandbox::new,
-      )?,
+      sandbox_pool: Pool::new("hive-worker", options.sandbox_pool_size, Sandbox::new)?,
       service_pool: ServicePool::new(),
     })
   }
