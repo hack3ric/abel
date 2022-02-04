@@ -1,10 +1,10 @@
-use crate::{Result, Error};
+use crate::{Error, Result};
 use async_trait::async_trait;
-use tokio::io::AsyncRead;
 use futures::stream::{BoxStream, LocalBoxStream};
+use tokio::io::AsyncRead;
 
 /// Virtual file system interface.
-/// 
+///
 /// A virtual file system should at least implement reading functionalities.
 #[async_trait]
 pub trait Vfs {
@@ -32,9 +32,9 @@ pub trait Vfs {
 }
 
 /// Virtual file system interface for non-`Send` types.
-/// 
+///
 /// See [`Vfs`] for more documentation.
-/// 
+///
 /// [`Vfs`]: trait.Vfs.html
 #[async_trait(?Send)]
 pub trait LocalVfs {

@@ -1,7 +1,7 @@
 mod impls;
 mod vfs;
 
-pub use impls::ReadOnlyVfs;
+pub use impls::{FileSystem, ReadOnly, ReadOnlyVfs};
 pub use vfs::{FileMode, LocalVfs, Metadata, Vfs};
 
 use tokio::io;
