@@ -97,27 +97,40 @@ impl<T: Vfs + Sync> LocalVfs for T {
   }
 }
 
+/// Modes for opening a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileMode {
   /// Read-only mode. Corresponds to `r` in C's `fopen`.
   Read,
+
   /// Write-only mode. Corresponds to `w` in C's `fopen`.
   Write,
+
   /// Append mode. Corresponds to `a` in C's `fopen`.
   Append,
+
   /// Read-and-write mode, preserving original data. Corresponds to `r+` in C's
   /// `fopen`.
   ReadWrite,
+
   /// Read-and-write mode, removing original data. Corresponds to `w+` in C's
   /// `fopen`.
   ReadWriteNew,
+
   /// Read-and-append mode,. Corresponds to `a+` in C's `fopen`.
   ReadAppend,
 }
 
+/// Information of an entry in a VFS.
 #[derive(Debug, Clone, Copy)]
 pub enum Metadata {
-  File { len: u64 },
+  /// Indicates the entry is a file.
+  File {
+    /// Size of the file.
+    len: u64 
+  },
+
+  /// Indicates the entry is a directory.
   Directory,
 }
 

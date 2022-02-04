@@ -10,3 +10,6 @@ itertools = "0.10.3"
 thiserror = "1.0.30"
 tokio = "1.16.1"
 tokio-stream = { version = "0.1.8", features = ["fs"] }
+
+[dev-dependencies]
+tokio = { version = "1.16.1", features = ["full"] }

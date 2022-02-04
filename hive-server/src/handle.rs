@@ -40,7 +40,7 @@ pub(crate) async fn handle(
 
     // TODO: solve self-referencing issue
     (_, [service_name, ..]) => {
-      run_service(&state, &service_name.to_string(), &path.to_string(), req).await
+      run(&state, &service_name.to_string(), &path.to_string(), req).await
     }
 
     _ => Err((404, "hive path not found", json!({ "path": path })).into()),
@@ -112,7 +112,7 @@ async fn upload(
   Ok(json_response!({ "new_service": service }))
 }
 
-async fn run_service(
+async fn run(
   state: &MainState,
   service_name: &str,
   whole_path: &str,
