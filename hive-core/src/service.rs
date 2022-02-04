@@ -124,19 +124,16 @@ impl ServicePool {
   }
 
   /// Creates a new service from source, replacing the old one.
-  pub async fn create_service(
+  pub async fn create(
     &self,
     sandbox_pool: &Pool<Sandbox>,
     name: String,
     source: Source,
   ) -> Result<Service> {
-    if let Some(old_service_impl) = self.services.remove(<&Str>::from(&*name)) {
-      sandbox_pool
-        .scope(move |sandbox| async move {
-          sandbox.run_stop(old_service_impl.downgrade()).await?;
-          Ok::<_, crate::Error>(())
-        })
-        .await?;
+    match self.remove(sandbox_pool, &name).await {
+      Ok(_) => (),
+      Err(error) if matches!(error.kind(), ServiceNotFound(_)) => (),
+      Err(error) => return Err(error),
     }
 
     let service_impl = sandbox_pool
@@ -165,14 +162,29 @@ impl ServicePool {
     Ok(service)
   }
 
-  pub async fn get_service(&self, name: impl AsRef<str>) -> Option<Service> {
+  pub async fn get(&self, name: &str) -> Option<Service> {
     self
       .services
-      .get::<Str>(name.as_ref().into())
+      .get::<Str>(name.into())
       .map(|x| x.downgrade())
   }
 
   pub async fn list(&self) -> Vec<Service> {
     self.services.iter().map(|x| x.downgrade()).collect()
+  }
+
+  pub async fn remove(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<ServiceGuard<'_>> {
+    if let Some(old_service_impl) = self.services.remove(<&Str>::from(&*name)) {
+      let old_service_impl_clone = old_service_impl.clone();
+      sandbox_pool
+        .scope(move |sandbox| async move {
+          sandbox.run_stop(old_service_impl_clone.downgrade()).await?;
+          Ok::<_, crate::Error>(())
+        })
+        .await?;
+      Ok(ServiceGuard { inner: old_service_impl, _p: PhantomData })
+    } else {
+      Err(ServiceNotFound(name.into()).into())
+    }
   }
 }

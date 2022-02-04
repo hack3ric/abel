@@ -36,15 +36,15 @@ impl Hive {
   pub async fn create_service(&self, name: String, source: Source) -> Result<Service> {
     self
       .service_pool
-      .create_service(&self.sandbox_pool, name, source)
+      .create(&self.sandbox_pool, name, source)
       .await
   }
 
-  pub async fn get_service(&self, name: impl AsRef<str>) -> Result<Service> {
+  pub async fn get_service(&self, name: &str) -> Result<Service> {
     let name = name.as_ref();
     self
       .service_pool
-      .get_service(name)
+      .get(name)
       .await
       .ok_or_else(|| ErrorKind::ServiceNotFound(name.into()).into())
   }
@@ -62,7 +62,11 @@ impl Hive {
       .await
   }
 
-  pub async fn list(&self) -> Vec<Service> {
+  pub async fn list_services(&self) -> Vec<Service> {
     self.service_pool.list().await
+  }
+
+  pub async fn remove_service(&self, name: &str) -> Result<ServiceGuard<'_>> {
+    self.service_pool.remove(&self.sandbox_pool, name).await
   }
 }

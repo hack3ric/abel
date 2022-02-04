@@ -113,7 +113,7 @@ impl Sandbox {
     internal: RegistryKey,
   ) -> Result<()> {
     if service.is_dropped() {
-      return Err(ServiceDropped)?;
+      return Err(ServiceDropped.into());
     }
     self.run_start(service.clone()).await?;
     let loaded = LoadedService {

@@ -31,9 +31,9 @@ pub(crate) async fn handle(
     (POST, ["services"]) => upload(&state, None, req).await,
     (_, ["services"]) => Err(method_not_allowed(&["GET", "POST"], method)),
 
-    (GET, ["services", name]) => get_service(&state, name).await,
+    (GET, ["services", name]) => get(&state, name).await,
     (PUT, ["services", name]) => upload(&state, Some((*name).into()), req).await,
-    (DELETE, ["services", _name]) => unimplemented!("DELETE /services/:name"),
+    (DELETE, ["services", name]) => remove(&state, name).await,
     (_, ["services", _name]) => Err(method_not_allowed(&["GET", "PUT", "DELETE"], method)),
 
     (_, ["services", ..]) => Err((404, "hive path not found", json!({ "path": path })).into()),
@@ -53,12 +53,12 @@ pub(crate) async fn handle(
 }
 
 async fn list(state: &MainState) -> Result<Response<Body>> {
-  let x = state.hive.list().await;
+  let x = state.hive.list_services().await;
   let y = x.iter().map(Service::upgrade).collect::<Vec<_>>();
   Ok(json_response!(y))
 }
 
-async fn get_service(state: &MainState, name: &str) -> Result<Response<Body>> {
+async fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
   let service = state.hive.get_service(name).await?;
   Ok(json_response!(service.try_upgrade()?))
 }
@@ -121,4 +121,9 @@ async fn run_service(
   let sub_path = "/".to_string() + whole_path[1..].split_once("/").unwrap_or(("", "")).1;
   let result = state.hive.run_service(service_name, sub_path, req).await?;
   Ok(result.into())
+}
+
+async fn remove(state: &MainState, service_name: &str) -> Result<Response<Body>> {
+  let removed = state.hive.remove_service(service_name).await?;
+  Ok(json_response!({ "removed_service": removed }))
 }
