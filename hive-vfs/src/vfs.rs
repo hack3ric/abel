@@ -1,21 +1,34 @@
-use crate::Result;
+use crate::{Result, Error};
 use async_trait::async_trait;
-use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
+use tokio::io::AsyncRead;
+use futures::stream::{BoxStream, LocalBoxStream};
 
 /// Virtual file system interface.
+/// 
+/// A virtual file system should at least implement reading functionalities.
 #[async_trait]
 pub trait Vfs {
-  type File: AsyncRead + AsyncWrite + AsyncSeek;
+  type File: AsyncRead;
 
   async fn open_file<'a>(&'a self, path: &str, mode: FileMode) -> Result<Self::File>
   where
     Self::File: 'a;
-  async fn create_dir(&self, path: &str) -> Result<()>;
-  async fn read_dir(&self, path: &str) -> Result<Box<dyn Iterator<Item = String>>>;
+
+  async fn read_dir(&self, path: &str) -> Result<BoxStream<Result<String>>>;
   async fn metadata(&self, path: &str) -> Result<Metadata>;
   async fn exists(&self, path: &str) -> Result<bool>;
-  async fn remove_file(&self, path: &str) -> Result<()>;
-  async fn remove_dir(&self, path: &str) -> Result<()>;
+
+  async fn create_dir(&self, _path: &str) -> Result<()> {
+    Err(Error::MethodNotAllowed)
+  }
+
+  async fn remove_file(&self, _path: &str) -> Result<()> {
+    Err(Error::MethodNotAllowed)
+  }
+
+  async fn remove_dir(&self, _path: &str) -> Result<()> {
+    Err(Error::MethodNotAllowed)
+  }
 }
 
 /// Virtual file system interface for non-`Send` types.
@@ -25,21 +38,31 @@ pub trait Vfs {
 /// [`Vfs`]: trait.Vfs.html
 #[async_trait(?Send)]
 pub trait LocalVfs {
-  type File: AsyncRead + AsyncWrite + AsyncSeek;
+  type File: AsyncRead;
 
   async fn open_file<'a>(&'a self, path: &str, mode: FileMode) -> Result<Self::File>
   where
     Self::File: 'a;
-  async fn create_dir(&self, path: &str) -> Result<()>;
-  async fn read_dir(&self, path: &str) -> Result<Box<dyn Iterator<Item = String>>>;
+
+  async fn read_dir(&self, path: &str) -> Result<LocalBoxStream<Result<String>>>;
   async fn metadata(&self, path: &str) -> Result<Metadata>;
   async fn exists(&self, path: &str) -> Result<bool>;
-  async fn remove_file(&self, path: &str) -> Result<()>;
-  async fn remove_dir(&self, path: &str) -> Result<()>;
+
+  async fn create_dir(&self, _path: &str) -> Result<()> {
+    Err(Error::MethodNotAllowed)
+  }
+
+  async fn remove_file(&self, _path: &str) -> Result<()> {
+    Err(Error::MethodNotAllowed)
+  }
+
+  async fn remove_dir(&self, _path: &str) -> Result<()> {
+    Err(Error::MethodNotAllowed)
+  }
 }
 
 #[async_trait(?Send)]
-impl<T: Vfs> LocalVfs for T {
+impl<T: Vfs + Sync> LocalVfs for T {
   type File = T::File;
 
   async fn open_file<'a>(&'a self, path: &str, mode: FileMode) -> Result<Self::File>
@@ -53,8 +76,8 @@ impl<T: Vfs> LocalVfs for T {
     self.create_dir(path).await
   }
 
-  async fn read_dir(&self, path: &str) -> Result<Box<dyn Iterator<Item = String>>> {
-    self.read_dir(path).await
+  async fn read_dir(&self, path: &str) -> Result<LocalBoxStream<Result<String>>> {
+    Ok(self.read_dir(path).await?)
   }
 
   async fn metadata(&self, path: &str) -> Result<Metadata> {

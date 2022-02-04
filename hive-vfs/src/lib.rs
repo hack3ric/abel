@@ -1,7 +1,7 @@
 mod impls;
 mod vfs;
 
-pub use impls::ReadOnly;
+pub use impls::ReadOnlyVfs;
 pub use vfs::{FileMode, LocalVfs, Metadata, Vfs};
 
 use tokio::io;
@@ -16,9 +16,9 @@ pub enum Error {
   #[error(transparent)]
   Io(#[from] io::Error),
 
-  /// Method is not allowed, e.g. attempting to write on [`ReadOnly`].
+  /// Method is not allowed, e.g. attempting to write on [`ReadOnlyVfs`].
   ///
-  /// [`ReadOnly`]: struct.ReadOnly.html
+  /// [`ReadOnlyVfs`]: struct.ReadOnly.html
   #[error("method not allowed")]
   MethodNotAllowed,
 }
