@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-trait = "0.1.52"
 backtrace = "0.3.63"
 dashmap = "5.0.0"
 futures = "0.3.17"

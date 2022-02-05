@@ -25,6 +25,10 @@ pub enum ErrorKind {
   #[error(transparent)]
   Lua(#[from] mlua::Error),
   #[error(transparent)]
+  Vfs(#[from] hive_vfs::Error),
+  #[error(transparent)]
+  Io(#[from] tokio::io::Error),
+  #[error(transparent)]
   Regex(#[from] regex::Error),
 }
 
@@ -64,7 +68,7 @@ macro_rules! simple_impl_from_errors {
   )+};
 }
 
-simple_impl_from_errors!(mlua::Error, regex::Error);
+simple_impl_from_errors!(mlua::Error, regex::Error, hive_vfs::Error, tokio::io::Error);
 
 // impl From<Error> for mlua::Error {
 //   fn from(x: Error) -> Self {

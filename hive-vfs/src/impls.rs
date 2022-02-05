@@ -13,6 +13,7 @@ use tokio::io::{self, AsyncRead, AsyncSeek};
 use tokio_stream::wrappers::ReadDirStream;
 
 /// The file system, based on a root.
+#[derive(Debug)]
 pub struct FileSystem {
   root: PathBuf,
 }
@@ -122,6 +123,7 @@ impl Vfs for FileSystem {
 }
 
 /// Wrapper type that makes a VFS read-only.
+
 pub struct ReadOnlyVfs<T: Vfs + Send + Sync>(T);
 
 #[async_trait]
@@ -149,6 +151,18 @@ impl<T: Vfs + Send + Sync> Vfs for ReadOnlyVfs<T> {
 
   async fn exists(&self, path: &str) -> Result<bool> {
     self.0.exists(path).await
+  }
+
+  async fn create_dir(&self, _path: &str) -> Result<()> {
+    Err(Error::MethodNotAllowed)
+  }
+
+  async fn remove_file(&self, _path: &str) -> Result<()> {
+    Err(Error::MethodNotAllowed)
+  }
+
+  async fn remove_dir(&self, _path: &str) -> Result<()> {
+    Err(Error::MethodNotAllowed)
   }
 }
 

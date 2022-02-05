@@ -8,7 +8,7 @@ use tokio::io::AsyncRead;
 /// A virtual file system should at least implement reading functionalities.
 #[async_trait]
 pub trait Vfs {
-  type File: AsyncRead;
+  type File: AsyncRead + Send + Sync;
 
   async fn open_file<'a>(&'a self, path: &str, mode: FileMode) -> Result<Self::File>
   where
@@ -18,17 +18,9 @@ pub trait Vfs {
   async fn metadata(&self, path: &str) -> Result<Metadata>;
   async fn exists(&self, path: &str) -> Result<bool>;
 
-  async fn create_dir(&self, _path: &str) -> Result<()> {
-    Err(Error::MethodNotAllowed)
-  }
-
-  async fn remove_file(&self, _path: &str) -> Result<()> {
-    Err(Error::MethodNotAllowed)
-  }
-
-  async fn remove_dir(&self, _path: &str) -> Result<()> {
-    Err(Error::MethodNotAllowed)
-  }
+  async fn create_dir(&self, _path: &str) -> Result<()>;
+  async fn remove_file(&self, _path: &str) -> Result<()>;
+  async fn remove_dir(&self, _path: &str) -> Result<()>;
 }
 
 /// Virtual file system interface for non-`Send` types.

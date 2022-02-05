@@ -157,10 +157,10 @@ impl Sandbox {
     source: Source,
   ) -> Result<(RegistryKey, RegistryKey, Table<'a>)> {
     let (local_env, internal) = create_local_env(&self.lua, name)?;
-    let main = source.get("/main.lua").unwrap();
+    let main = source.get("/main.lua").await?.unwrap();
     self
       .lua
-      .load(main)
+      .load(&main)
       .set_environment(local_env.clone())?
       .set_name("<service>/main.lua")?
       .exec_async()
