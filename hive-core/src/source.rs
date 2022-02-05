@@ -11,47 +11,29 @@ use crate::Result;
 /// Shared, immutable source code storage.
 #[derive(Debug, Clone)]
 pub struct Source {
-  inner: SourceInner,
-}
-
-#[derive(Debug, Clone)]
-enum SourceInner {
-  Single(Arc<[u8]>),
-  Multi(Pin<Arc<dyn DebugVfs<File = Pin<Box<dyn AsyncRead + Send + Sync>>> + Send + Sync>>)
+  vfs: Pin<Arc<dyn DebugVfs<File = Pin<Box<dyn AsyncRead + Send + Sync>>> + Send + Sync>>
+  // TODO: cache
 }
 
 trait DebugVfs: Debug + Vfs {}
 impl<T: Debug + Vfs> DebugVfs for T {}
 
 impl Source {
-  pub fn new_single(content: impl Into<Arc<[u8]>>) -> Self {
-    Self {
-      inner: SourceInner::Single(content.into()),
-    }
-  }
-
-  pub fn new_multi<T>(vfs: T) -> Self
+  pub fn new<T>(vfs: T) -> Self
   where
     T: Vfs + Debug + Send + Sync + 'static,
     T::File: Send + Sync + 'static,
   {
     Self {
-      inner: SourceInner::Multi(Arc::pin(ReadVfs(vfs)))
+      vfs: Arc::pin(ReadVfs(vfs))
     }
   }
 
-  pub(crate) async fn get(&self, path: &str) -> Result<Option<Cow<'_, [u8]>>> {
-    let segments: Vec<_> = path.split("/").filter(|x| !x.is_empty()).collect();
-    match &self.inner {
-      SourceInner::Single(main) if segments.len() == 1 && segments[0] == "main.lua" => Ok(Some(Cow::Borrowed(&main))),
-      SourceInner::Multi(vfs) => {
-        let mut f = vfs.open_file(path, FileMode::Read).await?;
-        let mut buf = Vec::new();
-        f.read_to_end(&mut buf).await?;
-        Ok(Some(buf.into()))
-      }
-      _ => Ok(None),
-    }
+  pub(crate) async fn get(&self, path: &str) -> Result<Cow<'_, [u8]>> {
+    let mut f = self.vfs.open_file(path, FileMode::Read).await?;
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf).await?;
+    Ok(buf.into())
   }
 }
 

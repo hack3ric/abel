@@ -157,7 +157,7 @@ impl Sandbox {
     source: Source,
   ) -> Result<(RegistryKey, RegistryKey, Table<'a>)> {
     let (local_env, internal) = create_local_env(&self.lua, name)?;
-    let main = source.get("/main.lua").await?.unwrap();
+    let main = source.get("/main.lua").await?;
     self
       .lua
       .load(&main)

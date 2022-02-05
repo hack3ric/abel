@@ -1,12 +1,15 @@
 use crate::error::method_not_allowed;
+use crate::util::json_response_fn;
 use crate::{json_response, MainState, Result};
-use hive_core::{Service, Source};
-use hyper::{Body, Method, Request, Response};
+use hive_core::{ErrorKind, Service, Source};
+use hive_vfs::FileSystem;
+use hyper::{Body, Method, Request, Response, StatusCode};
 use log::error;
 use multer::{Constraints, Multipart, SizeLimit};
 use serde_json::json;
 use std::convert::Infallible;
 use std::sync::Arc;
+use tokio::fs;
 
 const GET: &Method = &Method::GET;
 const POST: &Method = &Method::POST;
@@ -39,9 +42,7 @@ pub(crate) async fn handle(
     (_, ["services", ..]) => Err((404, "hive path not found", json!({ "path": path })).into()),
 
     // TODO: solve self-referencing issue
-    (_, [service_name, ..]) => {
-      run(&state, &service_name.to_string(), &path.to_string(), req).await
-    }
+    (_, [service_name, ..]) => run(&state, &service_name.to_string(), &path.to_string(), req).await,
 
     _ => Err((404, "hive path not found", json!({ "path": path })).into()),
   };
@@ -103,13 +104,43 @@ async fn upload(
     return Err((409, "service already exists", json!({ "name": name })).into());
   }
 
-  let source = Source::new_single(field.bytes().await?.as_ref());
-  let service = state.hive.create_service(name, source).await?;
+  let replaced = match state.hive.remove_service(&name).await {
+    Ok(replaced) => Some(replaced),
+    Err(error) if matches!(error.kind(), ErrorKind::ServiceNotFound(_)) => None,
+    Err(error) => return Err(error.into()),
+  };
+
+  // TODO: returns `replaced` when this part fails
+  let service = async {
+    let source_path = state.config_path.join(format!("services/{}", name));
+    if source_path.exists() {
+      fs::remove_dir_all(&source_path).await?;
+    }
+    fs::create_dir(&source_path).await?;
+
+    fs::write(source_path.join("main.lua"), field.bytes().await?.as_ref()).await?;
+    let vfs = FileSystem::new(source_path).await?;
+    let source = Source::new(vfs);
+
+    let service = state.hive.create_service(name, source).await?;
+    Ok::<_, crate::error::Error>(service)
+  }
+  .await?;
   let service = service.upgrade();
 
-  // TODO: save source
-
-  Ok(json_response!({ "new_service": service }))
+  let response = if let Some(replaced) = replaced {
+    json_response_fn(
+      StatusCode::OK,
+      json!({
+        "new_service": service,
+        "replaced_service": replaced
+      })
+      .to_string(),
+    )
+  } else {
+    json_response!({ "new_service": service })
+  };
+  Ok(response)
 }
 
 async fn run(

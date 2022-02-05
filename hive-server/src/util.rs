@@ -8,6 +8,7 @@ pub fn json_response_fn(status: StatusCode, body: String) -> Response<Body> {
     .unwrap()
 }
 
+// TODO: buggy behaviour; maybe replace it after all
 #[macro_export]
 macro_rules! json_response {
   ($status:expr, $($json:tt)+) => {

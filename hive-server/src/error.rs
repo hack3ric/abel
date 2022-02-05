@@ -14,6 +14,7 @@ pub struct Error {
 }
 
 impl Error {
+  #[allow(unused)]
   pub fn backtrace(&self) -> Option<&Backtrace> {
     self.backtrace.as_ref()
   }
@@ -24,7 +25,7 @@ impl Error {
         json!({
           "error": self.error,
           "detail": self.detail,
-          "backtrace": self.backtrace().map(|x| format!("{:?}", x)),
+          // "backtrace": self.backtrace().map(|x| format!("{:?}", x)),
         })
       } else {
         json!({ "error": "internal server error" })
@@ -103,6 +104,12 @@ impl From<multer::Error> for Error {
 impl From<serde_json::Error> for Error {
   fn from(error: serde_json::Error) -> Self {
     (500, "failed to (de)serialize object", simple_msg(error)).into()
+  }
+}
+
+impl From<tokio::io::Error> for Error {
+  fn from(error: tokio::io::Error) -> Self {
+    (500, "I/O error", simple_msg(error)).into()
   }
 }
 
