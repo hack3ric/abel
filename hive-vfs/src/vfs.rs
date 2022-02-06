@@ -10,9 +10,7 @@ use tokio::io::AsyncRead;
 pub trait Vfs {
   type File: AsyncRead + Send + Sync;
 
-  async fn open_file<'a>(&'a self, path: &str, mode: FileMode) -> Result<Self::File>
-  where
-    Self::File: 'a;
+  async fn open_file(&self, path: &str, mode: FileMode) -> Result<Self::File>;
 
   async fn read_dir(&self, path: &str) -> Result<BoxStream<Result<String>>>;
   async fn metadata(&self, path: &str) -> Result<Metadata>;
@@ -32,10 +30,7 @@ pub trait Vfs {
 pub trait LocalVfs {
   type File: AsyncRead;
 
-  async fn open_file<'a>(&'a self, path: &str, mode: FileMode) -> Result<Self::File>
-  where
-    Self::File: 'a;
-
+  async fn open_file(&self, path: &str, mode: FileMode) -> Result<Self::File>;
   async fn read_dir(&self, path: &str) -> Result<LocalBoxStream<Result<String>>>;
   async fn metadata(&self, path: &str) -> Result<Metadata>;
   async fn exists(&self, path: &str) -> Result<bool>;
@@ -57,10 +52,7 @@ pub trait LocalVfs {
 impl<T: Vfs + Sync> LocalVfs for T {
   type File = T::File;
 
-  async fn open_file<'a>(&'a self, path: &str, mode: FileMode) -> Result<Self::File>
-  where
-    Self::File: 'a,
-  {
+  async fn open_file(&self, path: &str, mode: FileMode) -> Result<Self::File> {
     self.open_file(path, mode).await
   }
 

@@ -49,10 +49,7 @@ where
 {
   type File = Pin<Box<dyn AsyncRead + Send + Sync>>;
 
-  async fn open_file<'a>(&'a self, path: &str, mode: FileMode) -> hive_vfs::Result<Self::File>
-  where
-    Self::File: 'a
-  {
+  async fn open_file(&self, path: &str, mode: FileMode) -> hive_vfs::Result<Self::File> {
     Ok(Box::pin(self.0.open_file(path, mode).await?))
   }
 

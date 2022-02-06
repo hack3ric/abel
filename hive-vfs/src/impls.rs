@@ -54,10 +54,7 @@ impl FileSystem {
 impl Vfs for FileSystem {
   type File = File;
 
-  async fn open_file<'a>(&'a self, path: &str, mode: FileMode) -> Result<Self::File>
-  where
-    Self::File: 'a,
-  {
+  async fn open_file(&self, path: &str, mode: FileMode) -> Result<Self::File> {
     let path = self.real_path(path).await?;
     let mut options = OpenOptions::new();
     match mode {
@@ -130,10 +127,7 @@ pub struct ReadOnlyVfs<T: Vfs + Send + Sync>(T);
 impl<T: Vfs + Send + Sync> Vfs for ReadOnlyVfs<T> {
   type File = ReadOnly<T::File>;
 
-  async fn open_file<'a>(&'a self, path: &str, mode: FileMode) -> Result<Self::File>
-  where
-    Self::File: 'a,
-  {
+  async fn open_file(&self, path: &str, mode: FileMode) -> Result<Self::File> {
     if let FileMode::Read = mode {
       Ok(ReadOnly(self.0.open_file(path, mode).await?))
     } else {
