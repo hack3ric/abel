@@ -163,10 +163,7 @@ impl ServicePool {
   }
 
   pub async fn get(&self, name: &str) -> Option<Service> {
-    self
-      .services
-      .get::<Str>(name.into())
-      .map(|x| x.downgrade())
+    self.services.get::<Str>(name.into()).map(|x| x.downgrade())
   }
 
   pub async fn list(&self) -> Vec<Service> {
@@ -182,7 +179,10 @@ impl ServicePool {
           Ok::<_, crate::Error>(())
         })
         .await?;
-      Ok(ServiceGuard { inner: old_service_impl, _p: PhantomData })
+      Ok(ServiceGuard {
+        inner: old_service_impl,
+        _p: PhantomData,
+      })
     } else {
       Err(ServiceNotFound(name.into()).into())
     }

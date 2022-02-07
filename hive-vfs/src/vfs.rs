@@ -111,7 +111,7 @@ pub enum Metadata {
   /// Indicates the entry is a file.
   File {
     /// Size of the file.
-    len: u64 
+    len: u64,
   },
 
   /// Indicates the entry is a directory.

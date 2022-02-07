@@ -1,6 +1,5 @@
 mod global_env;
 mod local_env;
-mod package;
 
 use super::context::remove_service_contexts;
 use super::LuaTableExt;
@@ -127,8 +126,7 @@ impl Sandbox {
 
   async fn run_start(&self, service: Service) -> Result<()> {
     let loaded = self.load_service(service).await?;
-    let start_fn: Option<Function> = self
-      .lua
+    let start_fn: Option<Function> = (self.lua)
       .registry_value::<Table>(&loaded.local_env)?
       .raw_get_path("<local_env>", &["hive", "start"])?;
     if let Some(f) = start_fn {
@@ -139,8 +137,7 @@ impl Sandbox {
 
   pub(crate) async fn run_stop(&self, service: Service) -> Result<()> {
     let loaded = self.load_service(service).await?;
-    let stop_fn: Option<Function> = self
-      .lua
+    let stop_fn: Option<Function> = (self.lua)
       .registry_value::<Table>(&loaded.local_env)?
       .raw_get_path("<local_env>", &["hive", "stop"])?;
     if let Some(f) = stop_fn {
@@ -156,14 +153,11 @@ impl Sandbox {
     name: &str,
     source: Source,
   ) -> Result<(RegistryKey, RegistryKey, Table<'a>)> {
-    let (local_env, internal) = create_local_env(&self.lua, name)?;
-    let main = source.get("/main.lua").await?;
-    self
-      .lua
-      .load(&main)
-      .set_environment(local_env.clone())?
-      .set_name("<service>/main.lua")?
-      .exec_async()
+    let (local_env, internal) = create_local_env(&self.lua, name, source.clone())?;
+    source
+      .load(&self.lua, "/main.lua", local_env.clone())
+      .await?
+      .call_async::<_, ()>(())
       .await?;
     internal.raw_set("sealed", true)?;
     let local_env_key = self.lua.create_registry_value(local_env)?;
