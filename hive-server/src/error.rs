@@ -1,8 +1,8 @@
-use crate::json_response;
 use backtrace::Backtrace;
 use hyper::{Body, Method, Response, StatusCode};
 use serde_json::json;
 use std::borrow::Cow;
+use crate::util::json_response;
 
 #[derive(Debug, thiserror::Error)]
 #[error("{error} ({detail})")]
@@ -37,7 +37,7 @@ impl Error {
       })
     };
 
-    json_response!(self.status, body)
+    json_response(self.status, body)
   }
 }
 

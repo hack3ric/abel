@@ -1,6 +1,6 @@
 use crate::error::method_not_allowed;
-use crate::util::json_response_fn;
-use crate::{json_response, MainState, Result};
+use crate::util::json_response;
+use crate::{MainState, Result};
 use hive_core::{ErrorKind, Service, Source};
 use hive_vfs::FileSystem;
 use hyper::{Body, Method, Request, Response, StatusCode};
@@ -56,12 +56,12 @@ pub(crate) async fn handle(
 async fn list(state: &MainState) -> Result<Response<Body>> {
   let x = state.hive.list_services().await;
   let y = x.iter().map(Service::upgrade).collect::<Vec<_>>();
-  Ok(json_response!(y))
+  Ok(json_response(StatusCode::OK, y))
 }
 
 async fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
   let service = state.hive.get_service(name).await?;
-  Ok(json_response!(service.try_upgrade()?))
+  Ok(json_response(StatusCode::OK, service.try_upgrade()?))
 }
 
 async fn upload(
@@ -129,16 +129,15 @@ async fn upload(
   let service = service.upgrade();
 
   let response = if let Some(replaced) = replaced {
-    json_response_fn(
+    json_response(
       StatusCode::OK,
       json!({
         "new_service": service,
         "replaced_service": replaced
-      })
-      .to_string(),
+      }),
     )
   } else {
-    json_response!({ "new_service": service })
+    json_response(StatusCode::OK, json!({ "new_service": service }))
   };
   Ok(response)
 }
@@ -156,5 +155,5 @@ async fn run(
 
 async fn remove(state: &MainState, service_name: &str) -> Result<Response<Body>> {
   let removed = state.hive.remove_service(service_name).await?;
-  Ok(json_response!({ "removed_service": removed }))
+  Ok(json_response(StatusCode::OK, json!({ "removed_service": removed })))
 }

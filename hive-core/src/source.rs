@@ -1,13 +1,14 @@
 use crate::Result;
 use async_trait::async_trait;
-use dashmap::DashMap;
 use futures::stream::BoxStream;
 use hive_vfs::{FileMode, Metadata, Vfs};
 use mlua::{ExternalResult, Function, Lua, String as LuaString, Table, UserData};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::sync::{RwLock, RwLockReadGuard};
 
 /// Shared, immutable source code storage.
 #[derive(Debug, Clone)]
@@ -16,7 +17,7 @@ pub struct Source(Arc<SourceInner>);
 #[derive(Debug)]
 struct SourceInner {
   vfs: Pin<Box<dyn DebugVfs<File = Pin<Box<dyn AsyncRead + Send + Sync>>> + Send + Sync>>,
-  cache: DashMap<String, Vec<u8>>,
+  cache: RwLock<HashMap<String, Vec<u8>>>,
 }
 
 trait DebugVfs: Debug + Vfs {}
@@ -30,19 +31,25 @@ impl Source {
   {
     Self(Arc::new(SourceInner {
       vfs: Box::pin(ReadGenericVfs(vfs)),
-      cache: DashMap::new(),
+      cache: Default::default(),
     }))
   }
 
-  pub(crate) async fn get(&self, path: &str) -> Result<&[u8]> {
-    if let Some(x) = self.0.cache.get(path) {
-      return Ok(x.value());
+  pub(crate) async fn get<'a>(&'a self, path: &str) -> Result<RwLockReadGuard<'a, [u8]>> {
+    let read_guard =
+      RwLockReadGuard::try_map(self.0.cache.read().await, |x| x.get(path).map(|x| &x[..]));
+    match read_guard {
+      Ok(x) => Ok(x),
+      Err(_) => {
+        let mut f = self.0.vfs.open_file(path, FileMode::Read).await?;
+        let mut buf = Vec::new();
+        f.read_to_end(&mut buf).await?;
+        self.0.cache.write().await.insert(path.to_string(), buf);
+        Ok(RwLockReadGuard::map(self.0.cache.read().await, |x| {
+          x.get(path).unwrap().as_ref()
+        }))
+      }
     }
-    let mut f = self.0.vfs.open_file(path, FileMode::Read).await?;
-    let mut buf = Vec::new();
-    f.read_to_end(&mut buf).await?;
-    self.0.cache.insert(path.to_string(), buf);
-    Ok(self.0.cache.get(path).unwrap().value())
   }
 
   pub(crate) async fn load<'a>(
@@ -53,7 +60,7 @@ impl Source {
   ) -> mlua::Result<Function<'a>> {
     let code = self.get(path).await.to_lua_err()?;
     lua
-      .load(code)
+      .load(&*code)
       .set_name(&format!("source:{path}"))?
       .set_environment(env)?
       .into_function()

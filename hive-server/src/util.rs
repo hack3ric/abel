@@ -1,26 +1,11 @@
 use hyper::{Body, Response, StatusCode};
+use serde::Serialize;
+use std::collections::HashMap;
 
-pub fn json_response_fn(status: StatusCode, body: String) -> Response<Body> {
+pub fn json_response(status: StatusCode, body: impl Serialize) -> Response<Body> {
   Response::builder()
     .status(status)
     .header("Content-Type", "application/json")
-    .body(body.into())
+    .body(serde_json::to_string(&body).unwrap().into())
     .unwrap()
-}
-
-// TODO: buggy behaviour; maybe replace it after all
-#[macro_export]
-macro_rules! json_response {
-  ($status:expr, $($json:tt)+) => {
-    crate::util::json_response_fn($status.try_into().unwrap(), json!($($json)+).to_string())
-  };
-  ($($json:tt)+) => {
-    json_response!(200, $($json)+)
-  };
-  ($status:expr, $value:expr) => {
-    crate::util::json_response_fn($status.try_into().unwrap(), serde_json::to_string($value).unwrap())
-  };
-  ($value:expr) => {
-    json_response!(200, $value)
-  };
 }
