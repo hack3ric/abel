@@ -44,7 +44,10 @@ impl Source {
         let mut f = self.0.vfs.open_file(path, FileMode::Read).await?;
         let mut buf = Vec::new();
         f.read_to_end(&mut buf).await?;
-        self.0.cache.write().await.insert(path.to_string(), buf);
+        drop(read_guard);
+        let mut write_guard = self.0.cache.write().await;
+        write_guard.insert(path.to_string(), buf);
+        drop(write_guard);
         Ok(RwLockReadGuard::map(self.0.cache.read().await, |x| {
           x.get(path).unwrap().as_ref()
         }))

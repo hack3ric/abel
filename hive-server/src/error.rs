@@ -106,6 +106,11 @@ impl From<serde_json::Error> for Error {
     (500, "failed to (de)serialize object", simple_msg(error)).into()
   }
 }
+impl From<serde_qs::Error> for Error {
+  fn from(error: serde_qs::Error) -> Self {
+    (500, "failed to (de)serialize object", simple_msg(error)).into()
+  }
+}
 
 impl From<tokio::io::Error> for Error {
   fn from(error: tokio::io::Error) -> Self {

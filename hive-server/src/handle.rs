@@ -1,10 +1,12 @@
 use crate::error::method_not_allowed;
 use crate::util::{json_response, SingleMainLua};
 use crate::{MainState, Result};
+use hive_asar::FileArchive;
 use hive_core::{ErrorKind, Service, Source};
 use hyper::{Body, Method, Request, Response, StatusCode};
 use log::error;
 use multer::{Constraints, Multipart, SizeLimit};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -63,41 +65,55 @@ async fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
   Ok(json_response(StatusCode::OK, service.try_upgrade()?))
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct UploadQuery {
+  #[serde(rename = "type")]
+  kind: UploadType,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum UploadType {
+  #[serde(rename = "single")]
+  Single,
+  #[serde(rename = "multi")]
+  Multi,
+}
+
 async fn upload(
   state: &MainState,
   name: Option<String>,
-  mut req: Request<Body>,
+  req: Request<Body>,
 ) -> Result<Response<Body>> {
   let name_provided = name.is_some();
+  let (parts, body) = req.into_parts();
 
-  let content_type = req
-    .headers()
+  let content_type = (parts.headers)
     .get("Content-Type")
     .ok_or("no Content-Type given")?
     .to_str()
     .or(Err("Content-Type is not valid UTF-8"))?;
-
   let boundary = multer::parse_boundary(content_type)?;
   let constraints = Constraints::new()
     .allowed_fields(vec!["source"])
     .size_limit(SizeLimit::new().for_field("source", 1024u64.pow(3)));
-  let mut multipart = Multipart::with_constraints(req.body_mut(), boundary, constraints);
+  let mut multipart = Multipart::with_constraints(body, boundary, constraints);
 
-  let field = multipart
+  // should be exactly one field, so a single `.next_field` is probably OK
+  let source_field = multipart
     .next_field()
     .await?
     .ok_or("no source code uploaded")?;
   let name = name
     .or_else(|| {
-      field.file_name().map(|mut x| {
-        let len = x.len();
-        if &x[len - 4..] == ".lua" {
-          x = &x[..len - 4];
-        }
+      source_field.file_name().map(|x| {
+        let (x, _) = x.rsplit_once('.').unwrap_or((x, ""));
         slug::slugify(x).into()
       })
     })
     .ok_or("no service name provided")?;
+
+  let query = parts.uri.query().unwrap_or("");
+  let UploadQuery { kind } = serde_qs::from_str(query)?;
 
   if !name_provided && state.hive.get_service(&name).await.is_ok() {
     return Err((409, "service already exists", json!({ "name": name })).into());
@@ -117,10 +133,20 @@ async fn upload(
     }
     fs::create_dir(&source_path).await?;
 
-    let source_bytes = field.bytes().await?;
-    fs::write(source_path.join("main.lua"), &source_bytes).await?;
-    let vfs = SingleMainLua::from_slice(source_bytes);
-    let source = Source::new(vfs);
+    let source_bytes = source_field.bytes().await?;
+    let source = match kind {
+      UploadType::Single => {
+        fs::write(source_path.join("main.lua"), &source_bytes).await?;
+        let vfs = SingleMainLua::from_slice(source_bytes);
+        Source::new(vfs)
+      }
+      UploadType::Multi => {
+        let path = source_path.join("main.asar");
+        fs::write(&path, &source_bytes).await?;
+        let vfs = FileArchive::new(path).await?;
+        Source::new(vfs)
+      }
+    };
 
     let service = state.hive.create_service(name, source).await?;
     Ok::<_, crate::error::Error>(service)

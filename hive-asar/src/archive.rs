@@ -8,16 +8,17 @@ use std::task::{Context, Poll};
 use tokio::fs;
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt, Take};
 
+#[derive(Debug)]
 pub struct Archive<R: AsyncRead + AsyncSeek + Unpin> {
-  offset: u64,
-  header: Directory,
-  reader: R,
+  pub(crate) offset: u64,
+  pub(crate) header: Directory,
+  pub(crate) reader: R,
 }
 
 impl<R: AsyncRead + AsyncSeek + Unpin> Archive<R> {
   pub async fn new(mut reader: R) -> io::Result<Self> {
     reader.seek(SeekFrom::Start(12)).await?;
-    let header_size = dbg!(reader.read_u32_le().await?);
+    let header_size = reader.read_u32_le().await?;
 
     let mut header_bytes = vec![0; header_size as _];
     reader.read_exact(&mut header_bytes).await?;
@@ -105,28 +106,9 @@ async fn extract_dir<R: AsyncRead + AsyncSeek + Unpin>(
   Ok(())
 }
 
-impl Archive<fs::File> {
-  pub async fn fs_read(&self, path: &str) -> io::Result<File<fs::File>> {
-    let entry = self.header.search_segments(&split_path(path));
-    match entry {
-      Some(Entry::File(metadata)) => {
-        let mut r = self.reader.try_clone().await?;
-        r.seek(SeekFrom::Start(self.offset + metadata.offset))
-          .await?;
-        Ok(File {
-          metadata: metadata.clone(),
-          content: r.take(metadata.size),
-        })
-      }
-      Some(_) => Err(io::Error::new(io::ErrorKind::Other, "not a file")),
-      None => Err(io::ErrorKind::NotFound.into()),
-    }
-  }
-}
-
 pub struct File<R: AsyncRead + AsyncSeek + Unpin> {
-  metadata: FileMetadata,
-  content: Take<R>,
+  pub(crate) metadata: FileMetadata,
+  pub(crate) content: Take<R>,
 }
 
 impl<R: AsyncRead + AsyncSeek + Unpin> File<R> {
@@ -146,76 +128,3 @@ impl<R: AsyncRead + AsyncSeek + Unpin> AsyncRead for File<R> {
 }
 
 // TODO: impl AsyncSeek for File
-
-#[cfg(feature = "vfs")]
-mod vfs_impl {
-  use super::*;
-  use async_trait::async_trait;
-  use futures::stream::BoxStream;
-  use hive_vfs::{FileMode, Metadata, Vfs};
-
-  #[async_trait]
-  impl Vfs for Archive<fs::File> {
-    type File = File<fs::File>;
-
-    async fn open_file<'a>(&'a self, path: &str, mode: FileMode) -> hive_vfs::Result<Self::File>
-    where
-      Self::File: 'a,
-    {
-      if let FileMode::Read = mode {
-        Ok(self.fs_read(path).await?)
-      } else {
-        Err(hive_vfs::Error::MethodNotAllowed)
-      }
-    }
-
-    async fn read_dir(&self, path: &str) -> hive_vfs::Result<BoxStream<hive_vfs::Result<String>>> {
-      let segments = split_path(path);
-      let entry = self.header.search_segments(&segments);
-      match entry {
-        Some(Entry::Directory(d)) => {
-          let x = (d.files.iter())
-            .map(|(name, _entry)| {
-              Ok(
-                segments
-                  .iter()
-                  .copied()
-                  .chain(std::iter::once(&**name))
-                  .fold(String::new(), |b, x| b + "/" + x),
-              )
-            })
-            .collect::<Vec<_>>();
-          Ok(Box::pin(futures::stream::iter(x)))
-        }
-        Some(_) => Err(io::Error::new(io::ErrorKind::Other, "not a directory").into()),
-        None => Err(io::Error::from(io::ErrorKind::NotFound).into()),
-      }
-    }
-
-    async fn metadata(&self, path: &str) -> hive_vfs::Result<Metadata> {
-      let entry = self.header.search_segments(&split_path(path));
-      match entry {
-        Some(Entry::Directory(_)) => Ok(Metadata::Directory),
-        Some(Entry::File(f)) => Ok(Metadata::File { len: f.size }),
-        None => Err(io::Error::from(io::ErrorKind::NotFound).into()),
-      }
-    }
-
-    async fn exists(&self, path: &str) -> hive_vfs::Result<bool> {
-      let entry = self.header.search_segments(&split_path(path));
-      Ok(entry.is_some())
-    }
-
-    async fn create_dir(&self, _path: &str) -> hive_vfs::Result<()> {
-      Err(hive_vfs::Error::MethodNotAllowed)
-    }
-
-    async fn remove_file(&self, _path: &str) -> hive_vfs::Result<()> {
-      Err(hive_vfs::Error::MethodNotAllowed)
-    }
-
-    async fn remove_dir(&self, _path: &str) -> hive_vfs::Result<()> {
-      Err(hive_vfs::Error::MethodNotAllowed)
-    }
-  }
-}
