@@ -1,4 +1,4 @@
-use crate::{normalize_path, Error, FileMode, Metadata, Result, Vfs};
+use crate::{normalize_path, Error, FileMode, Metadata, Result, ResultExt, Vfs};
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
@@ -42,7 +42,7 @@ impl Vfs for FileSystem {
   type File = File;
 
   async fn open_file(&self, path: &str, mode: FileMode) -> Result<Self::File> {
-    let path = self.real_path(path).await?;
+    let real_path = self.real_path(path).await?;
     let mut options = OpenOptions::new();
     match mode {
       FileMode::Read => options.read(true),
@@ -52,13 +52,14 @@ impl Vfs for FileSystem {
       FileMode::ReadWriteNew => options.create(true).truncate(true).read(true).write(true),
       FileMode::ReadAppend => options.create(true).read(true).append(true),
     };
-    Ok(options.open(path).await?)
+    options.open(real_path).await.to_vfs_err(path)
   }
 
   async fn read_dir(&self, path: &str) -> Result<BoxStream<Result<String>>> {
-    let path = self.real_path(path).await?;
+    let real_path = self.real_path(path).await?;
+
     Ok(
-      ReadDirStream::new(read_dir(path).await?)
+      ReadDirStream::new(read_dir(real_path).await.to_vfs_err(path)?)
         .map_ok(|x| x.path().to_string_lossy().to_string())
         .map_err(From::from)
         .boxed(),
@@ -66,8 +67,8 @@ impl Vfs for FileSystem {
   }
 
   async fn metadata(&self, path: &str) -> Result<Metadata> {
-    let path = self.real_path(path).await?;
-    let metadata = metadata(path).await?;
+    let real_path = self.real_path(path).await?;
+    let metadata = metadata(real_path).await?;
     if metadata.is_dir() {
       Ok(Metadata::Directory)
     } else if metadata.is_file() {
@@ -77,7 +78,7 @@ impl Vfs for FileSystem {
     } else {
       // maybe symlink
       // TODO: change error type
-      Err(Error::MethodNotAllowed)
+      Err(Error::NotFound(path.into()))
     }
   }
 

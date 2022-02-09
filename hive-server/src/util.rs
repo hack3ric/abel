@@ -6,7 +6,6 @@ use serde::Serialize;
 use std::fmt::Debug;
 use std::io::Cursor;
 use std::sync::Arc;
-use tokio::io;
 
 pub fn json_response(status: StatusCode, body: impl Serialize) -> Response<Body> {
   Response::builder()
@@ -41,7 +40,7 @@ impl Vfs for SingleMainLua {
     if normalize_path(path) == "main.lua" {
       Ok(Cursor::new(self.0.clone()))
     } else {
-      Err(io::ErrorKind::NotFound.into())
+      Err(hive_vfs::Error::NotFound(path.into()))
     }
   }
 
@@ -49,7 +48,7 @@ impl Vfs for SingleMainLua {
     if normalize_path(path).is_empty() {
       Ok(stream::once(async { Ok("/main.lua".to_string()) }).boxed())
     } else {
-      Err(io::ErrorKind::NotFound.into())
+      Err(hive_vfs::Error::NotFound(path.into()))
     }
   }
 
@@ -59,7 +58,7 @@ impl Vfs for SingleMainLua {
         len: self.0.len() as _,
       })
     } else {
-      Err(io::ErrorKind::NotFound.into())
+      Err(hive_vfs::Error::NotFound(path.into()))
     }
   }
 

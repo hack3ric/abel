@@ -2,8 +2,8 @@ use crate::util::json_response;
 use backtrace::Backtrace;
 use hyper::{Body, Method, Response, StatusCode};
 use serde_json::json;
-use std::borrow::Cow;
 use serde_json::Value::String as JsonString;
+use std::borrow::Cow;
 
 #[derive(Debug, thiserror::Error)]
 #[error("{error} ({detail})")]
@@ -118,8 +118,6 @@ impl From<tokio::io::Error> for Error {
     (500, "I/O error", error.to_string()).into()
   }
 }
-
-
 
 pub fn method_not_allowed(expected: &[&'static str], got: &Method) -> Error {
   From::from((

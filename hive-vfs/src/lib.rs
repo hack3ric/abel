@@ -12,9 +12,12 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 /// VFS error type.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-  /// An I/O error has been encountered.
+  /// An I/O error has encountered.
   #[error(transparent)]
   Io(#[from] io::Error),
+
+  #[error("path not found: {0}")]
+  NotFound(String),
 
   /// Method is not allowed, e.g. attempting to write on [`ReadOnlyVfs`].
   ///
@@ -40,4 +43,23 @@ pub fn normalize_path(path: &str) -> String {
     }
   }
   result.join("/")
+}
+
+pub trait ResultExt<T> {
+  fn to_vfs_err(self, path: &str) -> Result<T>;
+}
+
+impl<T> ResultExt<T> for io::Result<T> {
+  fn to_vfs_err(self, path: &str) -> Result<T> {
+    match self {
+      Ok(x) => Ok(x),
+      Err(error) => {
+        if let io::ErrorKind::NotFound = error.kind() {
+          Err(Error::NotFound(path.into()))
+        } else {
+          Err(Error::Io(error))
+        }
+      }
+    }
+  }
 }

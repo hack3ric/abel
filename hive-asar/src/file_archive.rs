@@ -1,4 +1,5 @@
 use crate::{split_path, Archive, Entry, File};
+use hive_vfs::ResultExt;
 use std::io::SeekFrom;
 use std::path::PathBuf;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
@@ -51,7 +52,7 @@ mod vfs_impl {
       Self::File: 'a,
     {
       if let FileMode::Read = mode {
-        Ok(self.read(path).await?)
+        Ok(self.read(path).await.to_vfs_err(path)?)
       } else {
         Err(hive_vfs::Error::MethodNotAllowed)
       }
@@ -76,7 +77,7 @@ mod vfs_impl {
           Ok(Box::pin(futures::stream::iter(x)))
         }
         Some(_) => Err(io::Error::new(io::ErrorKind::Other, "not a directory").into()),
-        None => Err(io::Error::from(io::ErrorKind::NotFound).into()),
+        None => Err(hive_vfs::Error::NotFound(path.into())),
       }
     }
 
@@ -85,7 +86,7 @@ mod vfs_impl {
       match entry {
         Some(Entry::Directory(_)) => Ok(Metadata::Directory),
         Some(Entry::File(f)) => Ok(Metadata::File { len: f.size }),
-        None => Err(io::Error::from(io::ErrorKind::NotFound).into()),
+        None => Err(hive_vfs::Error::NotFound(path.into())),
       }
     }
 
