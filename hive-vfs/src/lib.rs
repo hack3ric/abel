@@ -22,3 +22,22 @@ pub enum Error {
   #[error("method not allowed")]
   MethodNotAllowed,
 }
+
+impl From<io::ErrorKind> for Error {
+  fn from(x: io::ErrorKind) -> Self {
+    Self::Io(x.into())
+  }
+}
+
+pub fn normalize_path(path: &str) -> String {
+  let mut result = Vec::new();
+  let segments = path.split(['/', '\\']).filter(|&x| x != "" && x != ".");
+  for s in segments {
+    if s == ".." {
+      result.pop();
+    } else {
+      result.push(s);
+    }
+  }
+  result.join("/")
+}

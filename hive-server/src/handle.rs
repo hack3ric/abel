@@ -1,8 +1,7 @@
 use crate::error::method_not_allowed;
-use crate::util::json_response;
+use crate::util::{json_response, SingleMainLua};
 use crate::{MainState, Result};
 use hive_core::{ErrorKind, Service, Source};
-use hive_vfs::FileSystem;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use log::error;
 use multer::{Constraints, Multipart, SizeLimit};
@@ -118,8 +117,9 @@ async fn upload(
     }
     fs::create_dir(&source_path).await?;
 
-    fs::write(source_path.join("main.lua"), field.bytes().await?.as_ref()).await?;
-    let vfs = FileSystem::new(source_path).await?;
+    let source_bytes = field.bytes().await?;
+    fs::write(source_path.join("main.lua"), &source_bytes).await?;
+    let vfs = SingleMainLua::from_slice(source_bytes);
     let source = Source::new(vfs);
 
     let service = state.hive.create_service(name, source).await?;
@@ -155,5 +155,8 @@ async fn run(
 
 async fn remove(state: &MainState, service_name: &str) -> Result<Response<Body>> {
   let removed = state.hive.remove_service(service_name).await?;
-  Ok(json_response(StatusCode::OK, json!({ "removed_service": removed })))
+  Ok(json_response(
+    StatusCode::OK,
+    json!({ "removed_service": removed }),
+  ))
 }

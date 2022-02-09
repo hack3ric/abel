@@ -12,7 +12,9 @@ members = ["hive-core", "hive-asar", "hive-vfs"]
 
 [dependencies]
 anyhow = { version = "1.0.52", features = ["backtrace"] }
+async-trait = "0.1.52"
 backtrace = "0.3.63"
+futures = "0.3.19"
 hive-core = { path = "hive-core" }
 hive-vfs = { path = "hive-vfs" }
 home = "0.5.3"

@@ -1,4 +1,4 @@
-use crate::{Error, FileMode, Metadata, Result, Vfs};
+use crate::{normalize_path, Error, FileMode, Metadata, Result, Vfs};
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
@@ -25,22 +25,9 @@ impl FileSystem {
     })
   }
 
-  fn normalize_path(path: &str) -> String {
-    let mut result = Vec::new();
-    let segments = path.split(['/', '\\']).filter(|&x| x != "" && x != ".");
-    for s in segments {
-      if s == ".." {
-        result.pop();
-      } else {
-        result.push(s);
-      }
-    }
-    result.join("/")
-  }
-
   // FIXME: safety check
   async fn real_path(&self, path: &str) -> io::Result<PathBuf> {
-    let path = Self::normalize_path(path);
+    let path = normalize_path(path);
     let result = canonicalize(self.root.join(path)).await?;
     if result.starts_with(&self.root) {
       Ok(result)
