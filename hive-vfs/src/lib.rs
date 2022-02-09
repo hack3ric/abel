@@ -11,6 +11,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// VFS error type.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
   /// An I/O error has encountered.
   #[error(transparent)]
@@ -24,6 +25,12 @@ pub enum Error {
   /// [`ReadOnlyVfs`]: struct.ReadOnly.html
   #[error("method not allowed")]
   MethodNotAllowed,
+
+  #[error("'{0}' is not a directory")]
+  NotADirectory(String),
+
+  #[error("'{0}' is a directory")]
+  IsADirectory(String),
 }
 
 impl From<io::ErrorKind> for Error {

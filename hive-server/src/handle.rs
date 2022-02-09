@@ -4,7 +4,7 @@ use crate::{MainState, Result};
 use hive_asar::FileArchive;
 use hive_core::{ErrorKind, Service, Source};
 use hyper::{Body, Method, Request, Response, StatusCode};
-use log::error;
+use log::{error, info};
 use multer::{Constraints, Multipart, SizeLimit};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -143,7 +143,9 @@ async fn upload(
       UploadType::Multi => {
         let path = source_path.join("main.asar");
         fs::write(&path, &source_bytes).await?;
-        let vfs = FileArchive::new(path).await?;
+        let vfs = FileArchive::new(path)
+          .await
+          .map_err(|error| (400, "error parsing ASAR archive", error.to_string()))?;
         Source::new(vfs)
       }
     };
@@ -155,6 +157,12 @@ async fn upload(
   let service = service.upgrade();
 
   let response = if let Some(replaced) = replaced {
+    info!(
+      "Updated service '{}' ({} -> {})",
+      service.name(),
+      replaced.uuid(),
+      service.uuid()
+    );
     json_response(
       StatusCode::OK,
       json!({
@@ -163,6 +171,7 @@ async fn upload(
       }),
     )
   } else {
+    info!("Created service '{}' ({})", service.name(), service.uuid());
     json_response(StatusCode::OK, json!({ "new_service": service }))
   };
   Ok(response)

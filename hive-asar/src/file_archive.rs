@@ -1,5 +1,4 @@
 use crate::{split_path, Archive, Entry, File};
-use hive_vfs::ResultExt;
 use std::io::SeekFrom;
 use std::path::PathBuf;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
@@ -18,7 +17,7 @@ impl FileArchive {
     Ok(Self { path, archive })
   }
 
-  pub async fn read(&self, path: &str) -> io::Result<File<fs::File>> {
+  pub async fn read(&self, path: &str) -> hive_vfs::Result<File<fs::File>> {
     let entry = self.archive.header.search_segments(&split_path(path));
     match entry {
       Some(Entry::File(metadata)) => {
@@ -30,8 +29,8 @@ impl FileArchive {
           content: r.take(metadata.size),
         })
       }
-      Some(_) => Err(io::Error::new(io::ErrorKind::Other, "not a file")),
-      None => Err(io::ErrorKind::NotFound.into()),
+      Some(_) => Err(hive_vfs::Error::IsADirectory(path.into())),
+      None => Err(hive_vfs::Error::NotFound(path.into())),
     }
   }
 }
@@ -52,7 +51,7 @@ mod vfs_impl {
       Self::File: 'a,
     {
       if let FileMode::Read = mode {
-        Ok(self.read(path).await.to_vfs_err(path)?)
+        Ok(self.read(path).await?)
       } else {
         Err(hive_vfs::Error::MethodNotAllowed)
       }
@@ -65,18 +64,17 @@ mod vfs_impl {
         Some(Entry::Directory(d)) => {
           let x = (d.files.iter())
             .map(|(name, _entry)| {
-              Ok(
-                segments
-                  .iter()
-                  .copied()
-                  .chain(std::iter::once(&**name))
-                  .fold(String::new(), |b, x| b + "/" + x),
-              )
+              let result = segments
+                .iter()
+                .copied()
+                .chain(std::iter::once(&**name))
+                .fold(String::new(), |b, x| b + "/" + x);
+              Ok(result)
             })
             .collect::<Vec<_>>();
           Ok(Box::pin(futures::stream::iter(x)))
         }
-        Some(_) => Err(io::Error::new(io::ErrorKind::Other, "not a directory").into()),
+        Some(_) => Err(hive_vfs::Error::NotADirectory(path.into())),
         None => Err(hive_vfs::Error::NotFound(path.into())),
       }
     }

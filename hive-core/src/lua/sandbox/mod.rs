@@ -54,7 +54,7 @@ impl Sandbox {
       .paths()
       .iter()
       .find_map(|m| m.gen_params(path).map(|p| (p, m)))
-      .ok_or_else(|| PathNotFound {
+      .ok_or_else(|| ServicePathNotFound {
         service: guard.name().into(),
         path: path.into(),
       })?;

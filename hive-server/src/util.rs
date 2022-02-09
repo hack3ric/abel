@@ -37,33 +37,34 @@ impl Vfs for SingleMainLua {
     if mode != FileMode::Read {
       return Err(hive_vfs::Error::MethodNotAllowed);
     }
-    if normalize_path(path) == "main.lua" {
-      Ok(Cursor::new(self.0.clone()))
-    } else {
-      Err(hive_vfs::Error::NotFound(path.into()))
+    match &*normalize_path(path) {
+      "main.lua" => Ok(Cursor::new(self.0.clone())),
+      "" => Err(hive_vfs::Error::IsADirectory(path.into())),
+      _ => Err(hive_vfs::Error::NotFound(path.into())),
     }
   }
 
   async fn read_dir(&self, path: &str) -> hive_vfs::Result<BoxStream<hive_vfs::Result<String>>> {
-    if normalize_path(path).is_empty() {
-      Ok(stream::once(async { Ok("/main.lua".to_string()) }).boxed())
-    } else {
-      Err(hive_vfs::Error::NotFound(path.into()))
+    match &*normalize_path(path) {
+      "" => Ok(stream::once(async { Ok("/main.lua".to_string()) }).boxed()),
+      "main.lua" => Err(hive_vfs::Error::NotADirectory(path.into())),
+      _ => Err(hive_vfs::Error::NotFound(path.into())),
     }
   }
 
   async fn metadata(&self, path: &str) -> hive_vfs::Result<Metadata> {
-    if normalize_path(path) == "main.lua" {
-      Ok(Metadata::File {
+    match &*normalize_path(path) {
+      "main.lua" => Ok(Metadata::File {
         len: self.0.len() as _,
-      })
-    } else {
-      Err(hive_vfs::Error::NotFound(path.into()))
+      }),
+      "" => Ok(Metadata::Directory),
+      _ => Err(hive_vfs::Error::NotFound(path.into())),
     }
   }
 
   async fn exists(&self, path: &str) -> hive_vfs::Result<bool> {
-    if normalize_path(path) == "main.lua" {
+    let normalized = normalize_path(path);
+    if normalized == "main.lua" || normalized.is_empty() {
       Ok(true)
     } else {
       Ok(false)

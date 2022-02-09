@@ -60,13 +60,14 @@ impl Source {
     lua: &'a Lua,
     path: &str,
     env: Table<'a>,
-  ) -> mlua::Result<Function<'a>> {
-    let code = self.get(path).await.to_lua_err()?;
-    lua
+  ) -> Result<Function<'a>> {
+    let code = self.get(path).await?;
+    let result = lua
       .load(&*code)
       .set_name(&format!("source:{path}"))?
       .set_environment(env)?
-      .into_function()
+      .into_function()?;
+    Ok(result)
   }
 }
 
@@ -81,7 +82,7 @@ impl UserData for Source {
       "load",
       |lua, this, (path, env): (LuaString, Table)| async move {
         let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
-        this.load(lua, path, env).await
+        Ok(this.load(lua, path, env).await.to_lua_err()?)
       },
     )
   }
