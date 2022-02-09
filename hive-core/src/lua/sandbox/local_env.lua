@@ -3,7 +3,7 @@ local internal = {
   sealed = false,
   package = {
     loaded = {},
-    searchers = {},
+    searchers = nil,
   },
 }
 
@@ -44,24 +44,34 @@ local local_env = {
         end
       end
     end
-    error("module '" .. modname .. "' not found:\n" .. table.concat(error_msgs, "\n"))
+    error("module '" .. modname .. "' not found:\n\t" .. table.concat(error_msgs, "\n"))
   end,
 }
 
 local function source_searcher(modname)
   local source = internal.source
-  if source:exists(modname) then
+  local path = ""
+  for str in string.gmatch(modname, "([^%.]+)") do
+    path = path .. "/" .. str
+  end
+
+  local file_exists = source:exists(path .. ".lua")
+  local init_exists = source:exists(path .. "/init.lua")
+
+  if file_exists and init_exists then
+    return nil, "file '@source:" .. path .. ".lua' and '@source:" .. path .. "/init.lua' conflicts"
+  elseif not file_exists and not init_exists then
+    return nil, "no file '@source:" .. path .. ".lua'\n\tno file '@source:" .. path .. "/init.lua'"
+  else
+    path = path .. (file_exists and ".lua" or "/init.lua")
     local function source_loader(modname, path)
       return source:load(path, local_env)()
     end
-    -- Note that currently `modname` is used as path
-    return source_loader, modname
-  else
-    return nil, "file '@source:" .. modname .. "' not found"
+    return source_loader, path
   end
 end
 
-internal.package.searchers[1] = source_searcher
+internal.package.searchers = { source_searcher }
 
 local whitelist = {
   [false] = {

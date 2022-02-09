@@ -7,7 +7,7 @@ pub(super) fn create_local_env<'a>(
   service_name: &str,
   source: Source,
 ) -> Result<(Table<'a>, Table<'a>)> {
-  let (local_env, internal): (Table, Table) = lua.load(include_str!("local_env.lua")).call(())?;
+  let (local_env, internal): (Table, Table) = lua.load(include_str!("local_env.lua")).set_name("<local_env>")?.call(())?;
 
   local_env
     .raw_get::<_, Table>("hive")?

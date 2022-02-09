@@ -3,6 +3,7 @@ use backtrace::Backtrace;
 use hyper::{Body, Method, Response, StatusCode};
 use serde_json::json;
 use std::borrow::Cow;
+use serde_json::Value::String as JsonString;
 
 #[derive(Debug, thiserror::Error)]
 #[error("{error} ({detail})")]
@@ -78,8 +79,8 @@ impl From<hive_core::Error> for Error {
         "service found but path not found",
         json!({ "service": service, "path": path }),
       ),
-      Lua(error) => (500, "Lua error", simple_msg(error)),
-      _ => (500, "hive core error", simple_msg(&error)),
+      Lua(error) => (500, "Lua error", JsonString(error.to_string())),
+      _ => (500, "hive core error", JsonString(error.to_string())),
     };
     Self {
       status: status.try_into().unwrap(),
@@ -97,30 +98,28 @@ impl From<hive_core::Error> for Error {
 // be exposed to untrusted client.
 impl From<multer::Error> for Error {
   fn from(error: multer::Error) -> Self {
-    (400, "failed to read multipart body", simple_msg(error)).into()
+    (400, "failed to read multipart body", error.to_string()).into()
   }
 }
 
 impl From<serde_json::Error> for Error {
   fn from(error: serde_json::Error) -> Self {
-    (500, "failed to (de)serialize object", simple_msg(error)).into()
+    (500, "failed to (de)serialize object", error.to_string()).into()
   }
 }
 impl From<serde_qs::Error> for Error {
   fn from(error: serde_qs::Error) -> Self {
-    (500, "failed to (de)serialize object", simple_msg(error)).into()
+    (500, "failed to (de)serialize object", error.to_string()).into()
   }
 }
 
 impl From<tokio::io::Error> for Error {
   fn from(error: tokio::io::Error) -> Self {
-    (500, "I/O error", simple_msg(error)).into()
+    (500, "I/O error", error.to_string()).into()
   }
 }
 
-fn simple_msg(x: impl ToString) -> serde_json::Value {
-  json!({ "msg": x.to_string() })
-}
+
 
 pub fn method_not_allowed(expected: &[&'static str], got: &Method) -> Error {
   From::from((
