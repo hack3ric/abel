@@ -127,4 +127,4 @@ impl<R: AsyncRead + AsyncSeek + Unpin> AsyncRead for File<R> {
   }
 }
 
-// TODO: impl AsyncSeek for File
+// may impl AsyncSeek for File

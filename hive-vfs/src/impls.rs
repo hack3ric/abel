@@ -12,7 +12,7 @@ use tokio::fs::{
 use tokio::io::{self, AsyncRead, AsyncSeek};
 use tokio_stream::wrappers::ReadDirStream;
 
-/// The file system, based on a root.
+/// The file system, based on a directory as its root.
 #[derive(Debug)]
 pub struct FileSystem {
   root: PathBuf,
@@ -25,7 +25,6 @@ impl FileSystem {
     })
   }
 
-  // FIXME: safety check
   async fn real_path(&self, path: &str) -> io::Result<PathBuf> {
     let path = normalize_path(path);
     let result = canonicalize(self.root.join(path)).await?;
@@ -108,7 +107,6 @@ impl Vfs for FileSystem {
 }
 
 /// Wrapper type that makes a VFS read-only.
-
 pub struct ReadOnlyVfs<T: Vfs + Send + Sync>(T);
 
 #[async_trait]

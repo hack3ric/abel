@@ -1,69 +1,14 @@
-use crate::error::method_not_allowed;
 use crate::util::{json_response, SingleMainLua};
-use crate::{MainState, Result};
+use crate::MainState;
+use crate::Result;
 use hive_asar::FileArchive;
-use hive_core::{ErrorKind, Service, Source};
-use hyper::{Body, Method, Request, Response, StatusCode};
-use log::{error, info};
+use hive_core::{ErrorKind, Source};
+use hyper::{Body, Request, Response, StatusCode};
+use log::info;
 use multer::{Constraints, Multipart, SizeLimit};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::convert::Infallible;
-use std::sync::Arc;
 use tokio::fs;
-
-const GET: &Method = &Method::GET;
-const POST: &Method = &Method::POST;
-const PUT: &Method = &Method::PUT;
-const DELETE: &Method = &Method::DELETE;
-
-pub(crate) async fn handle(
-  state: Arc<MainState>,
-  req: Request<Body>,
-) -> Result<Response<Body>, Infallible> {
-  let method = req.method();
-  let path = req.uri().path();
-  let segments = path
-    .split("/")
-    .filter(|x| !x.is_empty())
-    .collect::<Box<_>>();
-
-  let result = match (method, &*segments) {
-    (GET, []) => Ok(Response::new("\"Hello, world!\"".into())),
-
-    (GET, ["services"]) => list(&state).await,
-    (POST, ["services"]) => upload(&state, None, req).await,
-    (_, ["services"]) => Err(method_not_allowed(&["GET", "POST"], method)),
-
-    (GET, ["services", name]) => get(&state, name).await,
-    (PUT, ["services", name]) => upload(&state, Some((*name).into()), req).await,
-    (DELETE, ["services", name]) => remove(&state, name).await,
-    (_, ["services", _name]) => Err(method_not_allowed(&["GET", "PUT", "DELETE"], method)),
-
-    (_, ["services", ..]) => Err((404, "hive path not found", json!({ "path": path })).into()),
-
-    // TODO: solve self-referencing issue
-    (_, [service_name, ..]) => run(&state, &service_name.to_string(), &path.to_string(), req).await,
-
-    _ => Err((404, "hive path not found", json!({ "path": path })).into()),
-  };
-
-  Ok(result.unwrap_or_else(|error| {
-    error!("{}", error);
-    error.into_response(true)
-  }))
-}
-
-async fn list(state: &MainState) -> Result<Response<Body>> {
-  let x = state.hive.list_services().await;
-  let y = x.iter().map(Service::upgrade).collect::<Vec<_>>();
-  Ok(json_response(StatusCode::OK, y))
-}
-
-async fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
-  let service = state.hive.get_service(name).await?;
-  Ok(json_response(StatusCode::OK, service.try_upgrade()?))
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct UploadQuery {
@@ -79,7 +24,7 @@ enum UploadType {
   Multi,
 }
 
-async fn upload(
+pub(crate) async fn upload(
   state: &MainState,
   name: Option<String>,
   req: Request<Body>,
@@ -125,8 +70,7 @@ async fn upload(
     Err(error) => return Err(error.into()),
   };
 
-  // TODO: returns `replaced` when this part fails
-  let service = async {
+  let result = async {
     let source_path = state.config_path.join(format!("services/{}", name));
     if source_path.exists() {
       fs::remove_dir_all(&source_path).await?;
@@ -153,7 +97,17 @@ async fn upload(
     let service = state.hive.create_service(name, source).await?;
     Ok::<_, crate::error::Error>(service)
   }
-  .await?;
+  .await;
+  let service = match result {
+    Ok(service) => service,
+    Err(mut error) => {
+      error.add_detail(
+        "replaced_service".to_string(),
+        serde_json::to_value(replaced)?,
+      );
+      return Err(error);
+    }
+  };
   let service = service.upgrade();
 
   let response = if let Some(replaced) = replaced {
@@ -175,23 +129,4 @@ async fn upload(
     json_response(StatusCode::OK, json!({ "new_service": service }))
   };
   Ok(response)
-}
-
-async fn run(
-  state: &MainState,
-  service_name: &str,
-  whole_path: &str,
-  req: Request<Body>,
-) -> Result<Response<Body>> {
-  let sub_path = "/".to_string() + whole_path[1..].split_once("/").unwrap_or(("", "")).1;
-  let result = state.hive.run_service(service_name, sub_path, req).await?;
-  Ok(result.into())
-}
-
-async fn remove(state: &MainState, service_name: &str) -> Result<Response<Body>> {
-  let removed = state.hive.remove_service(service_name).await?;
-  Ok(json_response(
-    StatusCode::OK,
-    json!({ "removed_service": removed }),
-  ))
 }

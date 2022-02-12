@@ -2,7 +2,7 @@ use crate::util::json_response;
 use backtrace::Backtrace;
 use hyper::{Body, Method, Response, StatusCode};
 use serde_json::json;
-use serde_json::Value::String as JsonString;
+use serde_json::Value::{String as JsonString, Object as JsonObject};
 use std::borrow::Cow;
 use std::fmt::{self, Debug, Formatter};
 
@@ -26,6 +26,20 @@ impl Debug for Error {
 }
 
 impl Error {
+  pub fn add_detail(&mut self, key: String, info: serde_json::Value) {
+    match &mut self.detail {
+      JsonObject(map) => {
+        map.insert(key, info);
+      }
+      detail => {
+        let mut map = JsonObject(serde_json::Map::new());
+        std::mem::swap(&mut map, detail);
+        self.add_detail("msg".to_string(), map);
+        self.add_detail(key, info);
+      }
+    }
+  }
+
   #[allow(unused)]
   pub fn backtrace(&self) -> Option<&Backtrace> {
     self.backtrace.as_ref()
@@ -34,6 +48,7 @@ impl Error {
   pub fn into_response(self, authed: bool) -> Response<Body> {
     let use_backtrace = option_env!("RUST_BACKTRACE").is_some();
     let body = if self.status.is_server_error() {
+      // TODO: include UUID
       if authed {
         json!({
           "error": self.error,
@@ -42,7 +57,12 @@ impl Error {
             .then(|| self.backtrace().map(|x| format!("{:?}", x))),
         })
       } else {
-        json!({ "error": "internal server error" })
+        json!({
+          "error": "internal server error",
+          "detail": {
+            "msg": "Contact system administrator for help"
+          }
+        })
       }
     } else {
       json!({
@@ -66,10 +86,16 @@ where
       .try_into()
       .map_err(|_| panic!("invalid status code"))
       .unwrap();
+
+    let detail = match detail.into() {
+      serde_json::Value::String(s) => json!({ "msg": s }),
+      other => other
+    };
+
     Self {
       status,
       error: error.into(),
-      detail: detail.into(),
+      detail,
       backtrace: status.is_server_error().then(Backtrace::new),
     }
   }
