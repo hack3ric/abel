@@ -5,6 +5,7 @@ use regex::Regex;
 use serde::ser::SerializeStruct;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::path::{Component, Path, PathBuf};
 
 static PATH_PARAMS_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r":([^/]+)|\*").unwrap());
 
@@ -76,4 +77,33 @@ impl Serialize for PathMatcher {
     x.serialize_field("regex", self.as_regex_str())?;
     x.end()
   }
+}
+
+/// Taken from Cargo
+/// <https://github.com/rust-lang/cargo/blob/af307a38c20a753ec60f0ad18be5abed3db3c9ac/src/cargo/util/paths.rs#L60-L85>
+pub fn normalize_path(path: impl AsRef<Path>) -> PathBuf {
+  let mut components = path.as_ref().components().peekable();
+  let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+    components.next();
+    PathBuf::from(c.as_os_str())
+  } else {
+    PathBuf::new()
+  };
+
+  for component in components {
+    match component {
+      Component::Prefix(..) => unreachable!(),
+      Component::RootDir => {
+        ret.push(component.as_os_str());
+      }
+      Component::CurDir => {}
+      Component::ParentDir => {
+        ret.pop();
+      }
+      Component::Normal(c) => {
+        ret.push(c);
+      }
+    }
+  }
+  ret
 }

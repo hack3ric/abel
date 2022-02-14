@@ -51,7 +51,7 @@ impl UserData for Table {
       Ok((next, table, mlua::Value::Nil))
     });
 
-    methods.add_method("dump", |lua, this, ()| this.0.deep_dump(lua));
+    // methods.add_method("dump", |lua, this, ()| this.0.deep_dump(lua));
   }
 }
 

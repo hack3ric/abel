@@ -39,6 +39,8 @@ impl From<io::ErrorKind> for Error {
   }
 }
 
+/// Similar to `hive_core::path::normalize_path`, but for `str`s instead of
+/// `Path`s.
 pub fn normalize_path(path: &str) -> String {
   let mut result = Vec::new();
   let segments = path.split(['/', '\\']).filter(|&x| x != "" && x != ".");

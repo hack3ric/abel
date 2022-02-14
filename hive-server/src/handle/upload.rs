@@ -1,6 +1,5 @@
 use crate::util::{json_response, SingleMainLua};
-use crate::MainState;
-use crate::Result;
+use crate::{MainState, Result};
 use hive_asar::FileArchive;
 use hive_core::{ErrorKind, Source};
 use hyper::{Body, Request, Response, StatusCode};

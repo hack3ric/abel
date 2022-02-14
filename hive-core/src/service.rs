@@ -1,6 +1,7 @@
 use crate::error::Result;
 use crate::lua::Sandbox;
 use crate::path::PathMatcher;
+use crate::permission::PermissionSet;
 use crate::source::Source;
 use crate::task::Pool;
 use crate::ErrorKind::*;
@@ -18,6 +19,7 @@ struct ServiceImpl {
   name: Box<str>,
   paths: Vec<PathMatcher>,
   source: Source,
+  permissions: PermissionSet,
   uuid: Uuid,
 }
 
@@ -144,6 +146,7 @@ impl ServicePool {
           name: name.into_boxed_str(),
           paths,
           source,
+          permissions: PermissionSet::new(),
           uuid: Uuid::new_v4(),
         });
         sandbox

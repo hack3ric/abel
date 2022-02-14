@@ -1,6 +1,7 @@
 mod error;
 mod lua;
 mod path;
+mod permission;
 mod service;
 mod source;
 mod task;

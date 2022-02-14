@@ -2,7 +2,7 @@ use crate::util::json_response;
 use backtrace::Backtrace;
 use hyper::{Body, Method, Response, StatusCode};
 use serde_json::json;
-use serde_json::Value::{String as JsonString, Object as JsonObject};
+use serde_json::Value::{Object as JsonObject, String as JsonString};
 use std::borrow::Cow;
 use std::fmt::{self, Debug, Formatter};
 
@@ -89,7 +89,7 @@ where
 
     let detail = match detail.into() {
       serde_json::Value::String(s) => json!({ "msg": s }),
-      other => other
+      other => other,
     };
 
     Self {
