@@ -2,10 +2,10 @@ pub mod request;
 pub mod response;
 
 mod context;
-mod sandbox;
-mod table;
-mod service;
 mod modules;
+mod sandbox;
+mod service;
+mod table;
 
 pub use sandbox::Sandbox;
 

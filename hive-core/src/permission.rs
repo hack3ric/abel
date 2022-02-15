@@ -32,7 +32,10 @@ impl Permission {
 
   /// If `port` is zero, `host.port` is `None`
   pub fn net(host: impl Into<String>, port: u16) -> Self {
-    Self(PermissionInner::Net(Host { host: host.into(), port: NonZeroU16::new(port) }))
+    Self(PermissionInner::Net(Host {
+      host: host.into(),
+      port: NonZeroU16::new(port),
+    }))
   }
 
   pub fn is_subset(&self, other: &Self) -> bool {

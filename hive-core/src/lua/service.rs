@@ -1,7 +1,7 @@
+use super::modules;
+use crate::permission::Permission;
 use crate::{Service, ServiceGuard};
 use mlua::UserData;
-use crate::permission::Permission;
-use super::modules;
 
 #[derive(Debug, Clone)]
 pub struct ServiceBridge(Service);
