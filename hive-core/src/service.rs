@@ -101,6 +101,7 @@ impl ServiceGuard<'_> {
   pub fn name(&self) -> &str { &self.inner.name }
   pub fn paths(&self) -> &[PathMatcher] { &self.inner.paths }
   pub fn source(&self) -> &Source { &self.inner.source }
+  pub fn permissions(&self) -> &PermissionSet { &self.inner.permissions }
   pub fn uuid(&self) -> Uuid { self.inner.uuid }
 }
 

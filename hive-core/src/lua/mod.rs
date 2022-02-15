@@ -4,6 +4,8 @@ pub mod response;
 mod context;
 mod sandbox;
 mod table;
+mod service;
+mod modules;
 
 pub use sandbox::Sandbox;
 

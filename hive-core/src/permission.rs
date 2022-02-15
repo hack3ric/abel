@@ -26,8 +26,13 @@ impl Permission {
     Self(PermissionInner::Write(path))
   }
 
-  pub fn net(host: impl Into<String>) -> Result<Self, ParseIntError> {
+  pub fn net_parse(host: impl Into<String>) -> Result<Self, ParseIntError> {
     Ok(Self(PermissionInner::Net(Host::new(host.into())?)))
+  }
+
+  /// If `port` is zero, `host.port` is `None`
+  pub fn net(host: impl Into<String>, port: u16) -> Self {
+    Self(PermissionInner::Net(Host { host: host.into(), port: NonZeroU16::new(port) }))
   }
 
   pub fn is_subset(&self, other: &Self) -> bool {
@@ -89,7 +94,7 @@ impl<'lua> FromLua<'lua> for Permission {
         }
         b"net" => {
           let host: String = table.raw_get("string")?;
-          Self::net(host).to_lua_err()
+          Self::net_parse(host).to_lua_err()
         }
         _ => Err("invalid permission name".to_lua_err()),
       }
