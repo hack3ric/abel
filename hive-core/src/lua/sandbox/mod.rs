@@ -70,7 +70,7 @@ impl Sandbox {
       let path = f.raw_get::<u8, String>(1)?;
       if path == matcher.as_str() {
         let handler = f.raw_get::<u8, Function>(2)?;
-        let req = Request::new(params, req);
+        let req = Request::new(req, params);
         let result: mlua::Value = handler.call_async(req).await?;
         let resp = Response::from_value(&self.lua, result)?;
         return Ok(resp);

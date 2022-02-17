@@ -1,12 +1,14 @@
 use hyper::header::HeaderName;
 use hyper::http::{HeaderMap, HeaderValue, StatusCode};
 use hyper::Body;
-use mlua::{ExternalError, ExternalResult, Function, Lua, LuaSerdeExt, Table, UserData};
+use mlua::{
+  ExternalError, ExternalResult, Function, Lua, LuaSerdeExt, Table, UserData, UserDataFields,
+};
 
 pub struct Response {
   pub status: StatusCode,
   pub headers: HeaderMap,
-  pub body: serde_json::Value,
+  pub body: Body,
 }
 
 impl Response {
@@ -19,22 +21,38 @@ impl Response {
         Ok(Self {
           status: StatusCode::OK,
           headers,
-          body: lua.from_value(value)?,
+          body: lua
+            .from_value::<serde_json::Value>(value)?
+            .to_string()
+            .into(),
         })
       }
       UserData(x) => x.take::<Self>(),
       _ => Err("cannot convert to response".to_lua_err()),
     }
   }
+
+  pub(crate) fn from_hyper(resp: hyper::Response<Body>) -> Self {
+    let (parts, body) = resp.into_parts();
+    Self {
+      status: parts.status,
+      headers: parts.headers,
+      body,
+    }
+  }
 }
 
-impl UserData for Response {}
+impl UserData for Response {
+  fn add_fields<'lua, F: UserDataFields<'lua, Self>>(fields: &mut F) {
+    fields.add_field_method_get("status", |_lua, this| Ok(this.status.as_u16()));
+  }
+}
 
 impl From<Response> for hyper::Response<Body> {
   fn from(x: Response) -> Self {
     let mut builder = hyper::Response::builder().status(x.status);
     *builder.headers_mut().unwrap() = x.headers;
-    builder.body(x.body.to_string().into()).unwrap()
+    builder.body(x.body).unwrap()
   }
 }
 
@@ -72,7 +90,10 @@ pub fn create_fn_create_response(lua: &Lua) -> mlua::Result<Function> {
       .raw_get::<_, Option<mlua::Value>>("body")?
       .ok_or("missing body in response")
       .to_lua_err()?;
-    let body = lua.from_value::<serde_json::Value>(body)?;
+    let body = lua
+      .from_value::<serde_json::Value>(body)?
+      .to_string()
+      .into();
 
     headers.insert("Content-Type", HeaderValue::from_static("application/json"));
 

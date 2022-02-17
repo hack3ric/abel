@@ -30,11 +30,10 @@ impl Permission {
     Ok(Self(PermissionInner::Net(Host::new(host.into())?)))
   }
 
-  /// If `port` is zero, `host.port` is `None`
-  pub fn net(host: impl Into<String>, port: u16) -> Self {
+  pub fn net(host: impl Into<String>, port: Option<NonZeroU16>) -> Self {
     Self(PermissionInner::Net(Host {
       host: host.into(),
-      port: NonZeroU16::new(port),
+      port,
     }))
   }
 
