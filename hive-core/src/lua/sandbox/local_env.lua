@@ -3,6 +3,7 @@ local internal = {
   sealed = false,
   package = {
     loaded = {},
+    preload = {},
     searchers = nil,
   },
 }
@@ -71,7 +72,11 @@ local function source_searcher(modname)
   end
 end
 
-internal.package.searchers = { source_searcher }
+local function lib_searcher()
+  -- TODO
+end
+
+internal.package.searchers = { source_searcher, lib_searcher }
 
 local whitelist = {
   [false] = {

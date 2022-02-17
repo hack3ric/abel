@@ -7,6 +7,7 @@ pub(super) fn create_local_env<'a>(
   service_name: &str,
   source: Source,
 ) -> Result<(Table<'a>, Table<'a>)> {
+  // TODO: cache `local_env.lua`
   let (local_env, internal): (Table, Table) = lua
     .load(include_str!("local_env.lua"))
     .set_name("<local_env>")?

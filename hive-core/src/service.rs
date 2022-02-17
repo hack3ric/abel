@@ -19,7 +19,7 @@ struct ServiceImpl {
   name: Box<str>,
   paths: Vec<PathMatcher>,
   source: Source,
-  permissions: PermissionSet,
+  permissions: Arc<PermissionSet>,
   uuid: Uuid,
 }
 
@@ -127,6 +127,7 @@ impl ServicePool {
   }
 
   /// Creates a new service from source, replacing the old one.
+  // TODO: permissions
   pub async fn create(
     &self,
     sandbox_pool: &Pool<Sandbox>,
@@ -147,7 +148,7 @@ impl ServicePool {
           name: name.into_boxed_str(),
           paths,
           source,
-          permissions: PermissionSet::new(),
+          permissions: Arc::new(PermissionSet::new()),
           uuid: Uuid::new_v4(),
         });
         sandbox
