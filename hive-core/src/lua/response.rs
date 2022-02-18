@@ -45,6 +45,7 @@ impl Response {
 impl UserData for Response {
   fn add_fields<'lua, F: UserDataFields<'lua, Self>>(fields: &mut F) {
     fields.add_field_method_get("status", |_lua, this| Ok(this.status.as_u16()));
+    // TODO: headers and body
   }
 }
 

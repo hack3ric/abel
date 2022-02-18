@@ -103,6 +103,8 @@ impl ServiceGuard<'_> {
   pub fn source(&self) -> &Source { &self.inner.source }
   pub fn permissions(&self) -> &PermissionSet { &self.inner.permissions }
   pub fn uuid(&self) -> Uuid { self.inner.uuid }
+
+  pub(crate) fn permissions_arc(&self) -> Arc<PermissionSet> { self.inner.permissions.clone() }
 }
 
 impl Serialize for ServiceGuard<'_> {
@@ -142,13 +144,16 @@ impl ServicePool {
 
     let service_impl = sandbox_pool
       .scope(move |sandbox| async move {
-        let (paths, local_env, internal) =
-          sandbox.pre_create_service(&name, source.clone()).await?;
+        // TODO: init permissions
+        let permissions = Arc::new(PermissionSet::new());
+        let (paths, local_env, internal) = sandbox
+          .pre_create_service(&name, source.clone(), permissions.clone())
+          .await?;
         let service_impl = Arc::new(ServiceImpl {
           name: name.into_boxed_str(),
           paths,
           source,
-          permissions: Arc::new(PermissionSet::new()),
+          permissions,
           uuid: Uuid::new_v4(),
         });
         sandbox
@@ -175,6 +180,7 @@ impl ServicePool {
     self.services.iter().map(|x| x.downgrade()).collect()
   }
 
+  // TODO: gracefully
   pub async fn remove(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<ServiceGuard<'_>> {
     if let Some(old_service_impl) = self.services.remove(<&Str>::from(&*name)) {
       let old_service_impl_clone = old_service_impl.clone();

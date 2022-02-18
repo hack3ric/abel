@@ -4,6 +4,7 @@ mod local_env;
 use super::context::remove_service_contexts;
 use super::LuaTableExt;
 use crate::path::PathMatcher;
+use crate::permission::PermissionSet;
 use crate::service::Service;
 use crate::source::Source;
 use crate::ErrorKind::*;
@@ -16,6 +17,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}$").unwrap());
 
@@ -41,7 +43,6 @@ impl Sandbox {
   }
 }
 
-// Creating and loading services
 impl Sandbox {
   pub async fn run(
     &self,
@@ -61,6 +62,11 @@ impl Sandbox {
 
     let loaded = self.load_service(service.clone()).await?;
     let internal: Table = self.lua.registry_value(&loaded.internal)?;
+
+    // `loaded` is a mapped, immutable, checked-at-runtime borrow from
+    // `self.loaded`. Dropping it manually here prevents `self.loaded` being
+    // borrowed more than once at a time.
+    drop(loaded);
 
     for f in internal
       .raw_get_path::<Table>("<internal>", &["paths"])?
@@ -84,12 +90,13 @@ impl Sandbox {
     &self,
     name: &str,
     source: Source,
+    permissions: Arc<PermissionSet>,
   ) -> Result<(Vec<PathMatcher>, RegistryKey, RegistryKey)> {
     if !NAME_CHECK_REGEX.is_match(name) {
       return Err(InvalidServiceName(name.into()).into());
     }
 
-    let (local_env, internal_key, internal) = self.run_source(name, source).await?;
+    let (local_env, internal_key, internal) = self.run_source(name, source, permissions).await?;
 
     let mut paths = Vec::new();
     for f in internal
@@ -152,8 +159,9 @@ impl Sandbox {
     &'a self,
     name: &str,
     source: Source,
+    permissions: Arc<PermissionSet>,
   ) -> Result<(RegistryKey, RegistryKey, Table<'a>)> {
-    let (local_env, internal) = create_local_env(&self.lua, name, source.clone())?;
+    let (local_env, internal) = create_local_env(&self.lua, name, source.clone(), permissions)?;
     source
       .load(&self.lua, "/main.lua", local_env.clone())
       .await?
@@ -177,7 +185,9 @@ impl Sandbox {
       }
     }
     let source = service_guard.source();
-    let (local_env, internal, _) = self.run_source(name, source.clone()).await?;
+    let (local_env, internal, _) = self
+      .run_source(name, source.clone(), service_guard.permissions_arc())
+      .await?;
     let loaded = LoadedService {
       service: service.clone(),
       local_env,
