@@ -1,6 +1,11 @@
+-- Fields with `nil` should be initialized in Rust
+
+-- Internal
+
 local internal = {
   paths = {},
   sealed = false,
+  source = nil,
   package = {
     loaded = {},
     preload = {},
@@ -8,46 +13,15 @@ local internal = {
   },
 }
 
--- Fields with `nil` should be initialized in Rust
-local local_env = {
-  hive = {
-    register = function(path, handler)
-      if internal.sealed then
-        error "cannot call `hive.register` from places other than the top level of `main.lua`"
-      end
-      table.insert(internal.paths, { path, handler })
-    end,
-    context = nil,
-    create_response = _G.create_response,
-    current_worker = _G.current_worker,
-  },
-
-  require = function(modname)
-    local modname_type = type(modname)
-    if modname_type ~= "string" then
-      error("bad argument #1 to 'require' (string expected, got " .. modname_type .. ")")
-    end
-
-    local package = internal.package;
-    local error_msgs = {}
-    if package.loaded[modname] then
-      print "loaded"
-      return table.unpack(package.loaded[modname])
-    else
-      for _, searcher in ipairs(package.searchers) do
-        local loader, data = searcher(modname)
-        if loader then
-          local result = { loader(modname, data) }
-          package.loaded[modname] = result
-          return table.unpack(result)
-        else
-          table.insert(error_msgs, data)
-        end
-      end
-    end
-    error("module '" .. modname .. "' not found:\n\t" .. table.concat(error_msgs, "\n"))
-  end,
-}
+local function preload_searcher(modname)
+  local preload = internal.package.preload
+  local loader = preload[modname]
+  if loader then
+    return loader, "<preload>"
+  else
+    return nil, "preload '" .. modname .. "' not found"
+  end
+end
 
 local function source_searcher(modname)
   local source = internal.source
@@ -72,11 +46,54 @@ local function source_searcher(modname)
   end
 end
 
-local function lib_searcher()
-  -- TODO
+internal.package.searchers = { preload_searcher, source_searcher }
+
+-- Hive table
+
+local function register(path, handler)
+  if internal.sealed then
+    error "cannot call `hive.register` from places other than the top level of `main.lua`"
+  end
+  table.insert(internal.paths, { path, handler })
 end
 
-internal.package.searchers = { source_searcher, lib_searcher }
+local function require(modname)
+  local modname_type = type(modname)
+  if modname_type ~= "string" then
+    error("bad argument #1 to 'require' (string expected, got " .. modname_type .. ")")
+  end
+
+  local package = internal.package;
+  local error_msgs = {}
+  if package.loaded[modname] then
+    print "loaded"
+    return table.unpack(package.loaded[modname])
+  else
+    for _, searcher in ipairs(package.searchers) do
+      local loader, data = searcher(modname)
+      if loader then
+        local result = { loader(modname, data) }
+        package.loaded[modname] = result
+        return table.unpack(result)
+      else
+        table.insert(error_msgs, data)
+      end
+    end
+  end
+  error("module '" .. modname .. "' not found:\n\t" .. table.concat(error_msgs, "\n"))
+end
+
+-- Local env
+
+local local_env = {
+  hive = {
+    register = register,
+    context = nil,
+    create_response = create_response,
+    current_worker = current_worker,
+  },
+  require = require,
+}
 
 local whitelist = {
   [false] = {

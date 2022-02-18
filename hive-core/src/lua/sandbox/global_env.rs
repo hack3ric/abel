@@ -4,12 +4,21 @@ use crate::Result;
 use mlua::{Function, Lua, Table, ToLua};
 
 pub(super) fn modify_global_env(lua: &Lua) -> Result<()> {
+  lua.set_named_registry_value(
+    "local_env_fn",
+    lua
+      .load(include_str!("local_env.lua"))
+      .set_name("<local_env>")?
+      .into_function()?,
+  )?;
+
   let globals = lua.globals();
   globals.raw_set("create_response", create_fn_create_response(lua)?)?;
   globals.raw_set("current_worker", create_fn_current_worker(lua)?)?;
   globals
     .raw_get::<_, Table>("table")?
     .raw_set("dump", create_fn_table_dump(lua)?)?;
+
   Ok(())
 }
 
