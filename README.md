@@ -2,7 +2,7 @@
 
 Hive is a Lua microservices framework written in Rust. It provides an easy and fun way of writing JSON RESTful APIs while maintaining great performance.
 
-[Introduction](https://hackereric.xyz/blog/what-is-hive/) | [Documentation]() (coming soon)
+[Introduction](https://space.hackereric.xyz/blog/what-is-hive/) | [Documentation]() (coming soon)
 
 *Note: Hive is currently under heavy development, and many functionalities are yet to be implemented. Nevertheless, feel free to try it out, and any feedback would be appreciated!*
 
@@ -30,16 +30,16 @@ $ cargo run
 In another shell, upload the source code and run the service:
 ```sh
 $ curl localhost:3000/services/hello -X PUT -F source=@hello.lua | jq
-{
-  "new_service": {
-    "name": "hello"
-    ...
-  }
-}
+# {
+#   "new_service": {
+#     "name": "hello"
+#     ...
+#   }
+# }
 $ curl localhost:3000/hello/world | jq
-{
-  "greeting": "Hello, world!"
-}
+# {
+#   "greeting": "Hello, world!"
+# }
 ```
 
 
