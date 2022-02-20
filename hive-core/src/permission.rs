@@ -1,47 +1,58 @@
 use crate::path::normalize_path;
 use mlua::{ExternalError, ExternalResult, FromLua, Lua, String as LuaString, ToLua};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashSet;
 use std::fmt::{Display, Write};
 use std::num::{NonZeroU16, ParseIntError};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Permission(PermissionInner);
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum PermissionInner {
-  Read(PathBuf),
-  Write(PathBuf),
-  Net(Host),
+  #[serde(rename = "read")]
+  Read { path: PathBuf },
+  #[serde(rename = "write")]
+  Write { path: PathBuf },
+  #[serde(rename = "net")]
+  Net { host: Host },
 }
 
 impl Permission {
   pub fn read(path: impl AsRef<Path>) -> Self {
     let path = normalize_path(path);
-    Self(PermissionInner::Read(path))
+    Self(PermissionInner::Read { path })
   }
 
   pub fn write(path: impl AsRef<Path>) -> Self {
     let path = normalize_path(path);
-    Self(PermissionInner::Write(path))
+    Self(PermissionInner::Write { path })
   }
 
   pub fn net_parse(host: impl Into<String>) -> Result<Self, ParseIntError> {
-    Ok(Self(PermissionInner::Net(Host::new(host.into())?)))
+    Ok(Self(PermissionInner::Net {
+      host: Host::new(host.into())?,
+    }))
   }
 
   pub fn net(host: impl Into<String>, port: Option<NonZeroU16>) -> Self {
-    Self(PermissionInner::Net(Host {
-      host: host.into(),
-      port,
-    }))
+    Self(PermissionInner::Net {
+      host: Host {
+        host: host.into(),
+        port,
+      },
+    })
   }
 
   pub fn is_subset(&self, other: &Self) -> bool {
     use PermissionInner::*;
     match (&self.0, &other.0) {
-      (Read(p1), Read(p2)) | (Write(p1), Write(p2)) => p1.starts_with(p2),
-      (Net(h1), Net(h2)) => match (&h2.port, &h1.port) {
+      (Read { path: p1 }, Read { path: p2 }) | (Write { path: p1 }, Write { path: p2 }) => {
+        p1.starts_with(p2)
+      }
+      (Net { host: h1 }, Net { host: h2 }) => match (&h2.port, &h1.port) {
         _ if h1.host != h2.host => false,
         (None, _) => true,
         (Some(p1), Some(p2)) => p1 == p2,
@@ -54,8 +65,10 @@ impl Permission {
   pub fn is_superset(&self, other: &Self) -> bool {
     use PermissionInner::*;
     match (&self.0, &other.0) {
-      (Read(p1), Read(p2)) | (Write(p1), Write(p2)) => p2.starts_with(p1),
-      (Net(h1), Net(h2)) => match (&h1.port, &h2.port) {
+      (Read { path: p1 }, Read { path: p2 }) | (Write { path: p1 }, Write { path: p2 }) => {
+        p2.starts_with(p1)
+      }
+      (Net { host: h1 }, Net { host: h2 }) => match (&h1.port, &h2.port) {
         _ if h1.host != h2.host => false,
         (None, _) => true,
         (Some(p1), Some(p2)) => p1 == p2,
@@ -72,9 +85,21 @@ impl Permission {
   pub fn name(&self) -> &'static str {
     use PermissionInner::*;
     match self.0 {
-      Read(_) => "read",
-      Write(_) => "write",
-      Net(_) => "net",
+      Read { .. } => "read",
+      Write { .. } => "write",
+      Net { .. } => "net",
+    }
+  }
+}
+
+impl Display for Permission {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    use PermissionInner::*;
+    f.write_str(self.name())?;
+    f.write_char(':')?;
+    match &self.0 {
+      Read { path } | Write { path } => f.write_str(&path.to_string_lossy()),
+      Net { host } => <Host as Display>::fmt(host, f),
     }
   }
 }
@@ -110,11 +135,13 @@ impl<'lua> ToLua<'lua> for Permission {
   fn to_lua(self, lua: &'lua Lua) -> mlua::Result<mlua::Value<'lua>> {
     use PermissionInner::*;
     let table = match self.0 {
-      Read(path) => lua.create_table_from([("name", "read"), ("path", &path.to_string_lossy())])?,
-      Write(path) => {
+      Read { path } => {
+        lua.create_table_from([("name", "read"), ("path", &path.to_string_lossy())])?
+      }
+      Write { path } => {
         lua.create_table_from([("name", "write"), ("path", &path.to_string_lossy())])?
       }
-      Net(host) => lua.create_table_from([("name", "net"), ("host", &host.to_string())])?,
+      Net { host } => lua.create_table_from([("name", "net"), ("host", &host.to_string())])?,
     };
     Ok(mlua::Value::Table(table))
   }
@@ -147,7 +174,20 @@ impl Display for Host {
   }
 }
 
-#[derive(Debug)]
+impl Serialize for Host {
+  fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    self.to_string().serialize(serializer)
+  }
+}
+
+impl<'de> Deserialize<'de> for Host {
+  fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    let host = String::deserialize(deserializer)?;
+    Self::new(host).map_err(serde::de::Error::custom)
+  }
+}
+
+#[derive(Debug, Serialize)]
 pub struct PermissionSet(HashSet<Permission>);
 
 impl PermissionSet {
@@ -181,4 +221,23 @@ impl PermissionSet {
   pub fn check(&self, p: &Permission) -> bool {
     self.0.iter().find(|x| x.is_superset(p)).is_some()
   }
+}
+
+impl<'de> Deserialize<'de> for PermissionSet {
+  // This still has a lot of optimizations to do. Maybe deserialize it into
+  // `HashSet` and de-duplicate it in place?
+  fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    let vec = Vec::deserialize(deserializer)?;
+    let mut result = Self(HashSet::new());
+    for i in vec.into_iter() {
+      result.insert(i);
+    }
+    Ok(result)
+  }
+}
+
+#[test]
+fn test() {
+  let x = r#"[{"type":"read","path":"/path/to/some/place"}]"#;
+  dbg!(serde_json::from_str::<PermissionSet>(x).unwrap());
 }
