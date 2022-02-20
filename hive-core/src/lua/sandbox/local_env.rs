@@ -18,9 +18,9 @@ pub(super) fn create_local_env<'a>(
 
   let hive: Table = local_env.raw_get("hive")?;
   hive.raw_set("context", create_context(service_name.into()))?;
-  hive.raw_set("permission", PermissionBridge(permissions.clone()))?;
 
   internal.raw_set("source", source)?;
+  internal.raw_set("permissions", PermissionBridge(permissions.clone()))?;
 
   let preload: Table = internal.raw_get_path("<internal>", &["package", "preload"])?;
   preload.raw_set("request", create_module_request(lua, permissions)?)?;

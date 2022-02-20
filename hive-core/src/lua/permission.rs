@@ -1,4 +1,4 @@
-use crate::permission::PermissionSet;
+use crate::permission::{Permission, PermissionSet};
 use mlua::UserData;
 use std::sync::Arc;
 
@@ -6,5 +6,9 @@ use std::sync::Arc;
 pub struct PermissionBridge(pub(crate) Arc<PermissionSet>);
 
 impl UserData for PermissionBridge {
-  // TODO: Permission API
+  fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
+    methods.add_method("check", |_lua, this, perm: Permission| {
+      Ok(this.0.check(&perm))
+    })
+  }
 }

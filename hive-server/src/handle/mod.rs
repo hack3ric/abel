@@ -11,15 +11,15 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use upload::upload;
 
-const GET: &Method = &Method::GET;
-const POST: &Method = &Method::POST;
-const PUT: &Method = &Method::PUT;
-const DELETE: &Method = &Method::DELETE;
-
 pub(crate) async fn handle(
   state: Arc<MainState>,
   req: Request<Body>,
 ) -> Result<Response<Body>, Infallible> {
+  const GET: &Method = &Method::GET;
+  const POST: &Method = &Method::POST;
+  const PUT: &Method = &Method::PUT;
+  const DELETE: &Method = &Method::DELETE;
+
   let method = req.method();
   let path = req.uri().path();
   let segments = path
@@ -28,7 +28,7 @@ pub(crate) async fn handle(
     .collect::<Box<_>>();
 
   let result = match (method, &*segments) {
-    (GET, []) => Ok(Response::new("\"Hello, world!\"".into())),
+    (GET, []) => hello_world().await,
 
     (GET, ["services"]) => list(&state).await,
     (POST, ["services"]) => upload(&state, None, req).await,
@@ -60,21 +60,22 @@ pub(crate) async fn handle(
   }))
 }
 
+async fn hello_world() -> Result<Response<Body>> {
+  json_response(StatusCode::OK, json!({ "msg": "Hello, world!" }))
+}
+
 async fn list(state: &MainState) -> Result<Response<Body>> {
   let x = state.hive.list_services().await;
   let y = x.iter().map(Service::upgrade).collect::<Vec<_>>();
-  Ok(json_response(StatusCode::OK, y))
+  json_response(StatusCode::OK, y)
 }
 
 async fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
   let service = state.hive.get_service(name).await?;
-  Ok(json_response(StatusCode::OK, service.try_upgrade()?))
+  json_response(StatusCode::OK, service.try_upgrade()?)
 }
 
 async fn remove(state: &MainState, service_name: &str) -> Result<Response<Body>> {
   let removed = state.hive.remove_service(service_name).await?;
-  Ok(json_response(
-    StatusCode::OK,
-    json!({ "removed_service": removed }),
-  ))
+  json_response(StatusCode::OK, json!({ "removed_service": removed }))
 }

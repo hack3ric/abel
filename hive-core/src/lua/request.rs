@@ -6,6 +6,7 @@ use mlua::{
   ExternalError, ExternalResult, FromLua, Lua, String as LuaString, Table, ToLua, UserData,
 };
 
+#[derive(Debug)]
 pub struct Request {
   pub(crate) method: Method,
   /// Must be absolute

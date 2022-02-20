@@ -6,16 +6,24 @@ use std::fmt::{Display, Write};
 use std::num::{NonZeroU16, ParseIntError};
 use std::path::{Path, PathBuf};
 
+/// A permission flag.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Permission(PermissionInner);
+pub struct Permission(pub(crate) PermissionInner);
 
+/// Inner of the `Permission` type, for pattern matching.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 #[serde(tag = "type")]
 pub enum PermissionInner {
+  /// Reading a file.
   #[serde(rename = "read")]
   Read { path: PathBuf },
+
+  /// Writing a file.
   #[serde(rename = "write")]
   Write { path: PathBuf },
+
+  /// Connecting to specified host.
   #[serde(rename = "net")]
   Net { host: Host },
 }

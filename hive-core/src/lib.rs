@@ -1,7 +1,8 @@
+pub mod permission;
+
 mod error;
 mod lua;
 mod path;
-mod permission;
 mod service;
 mod source;
 mod task;
@@ -14,6 +15,7 @@ pub use source::Source;
 
 use hyper::Body;
 use lua::Sandbox;
+use permission::PermissionSet;
 use service::ServicePool;
 use task::Pool;
 
@@ -34,10 +36,15 @@ impl Hive {
     })
   }
 
-  pub async fn create_service(&self, name: String, source: Source) -> Result<Service> {
+  pub async fn create_service(
+    &self,
+    name: String,
+    source: Source,
+    permissions: PermissionSet,
+  ) -> Result<Service> {
     self
       .service_pool
-      .create(&self.sandbox_pool, name, source)
+      .create(&self.sandbox_pool, name, source, permissions)
       .await
   }
 

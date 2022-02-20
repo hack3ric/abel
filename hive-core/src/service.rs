@@ -129,12 +129,12 @@ impl ServicePool {
   }
 
   /// Creates a new service from source, replacing the old one.
-  // TODO: permissions
   pub async fn create(
     &self,
     sandbox_pool: &Pool<Sandbox>,
     name: String,
     source: Source,
+    permissions: PermissionSet,
   ) -> Result<Service> {
     match self.remove(sandbox_pool, &name).await {
       Ok(_) => (),
@@ -145,7 +145,7 @@ impl ServicePool {
     let service_impl = sandbox_pool
       .scope(move |sandbox| async move {
         // TODO: init permissions
-        let permissions = Arc::new(PermissionSet::new());
+        let permissions = Arc::new(permissions);
         let (paths, local_env, internal) = sandbox
           .pre_create_service(&name, source.clone(), permissions.clone())
           .await?;

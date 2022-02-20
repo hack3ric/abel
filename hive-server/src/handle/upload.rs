@@ -1,6 +1,7 @@
 use crate::util::{json_response, SingleMainLua};
 use crate::{MainState, Result};
 use hive_asar::FileArchive;
+use hive_core::permission::PermissionSet;
 use hive_core::{ErrorKind, Source};
 use hyper::{Body, Request, Response, StatusCode};
 use log::info;
@@ -41,6 +42,8 @@ pub(crate) async fn upload(
     .allowed_fields(vec!["source"])
     .size_limit(SizeLimit::new().for_field("source", 1024u64.pow(3)));
   let mut multipart = Multipart::with_constraints(body, boundary, constraints);
+
+  // TODO: Add permissions
 
   // should be exactly one field, so a single `.next_field` is probably OK
   let source_field = multipart
@@ -93,7 +96,10 @@ pub(crate) async fn upload(
       }
     };
 
-    let service = state.hive.create_service(name, source).await?;
+    let service = state
+      .hive
+      .create_service(name, source, PermissionSet::new())
+      .await?;
     Ok::<_, crate::error::Error>(service)
   }
   .await;
@@ -109,7 +115,7 @@ pub(crate) async fn upload(
   };
   let service = service.upgrade();
 
-  let response = if let Some(replaced) = replaced {
+  if let Some(replaced) = replaced {
     info!(
       "Updated service '{}' ({} -> {})",
       service.name(),
@@ -126,6 +132,5 @@ pub(crate) async fn upload(
   } else {
     info!("Created service '{}' ({})", service.name(), service.uuid());
     json_response(StatusCode::OK, json!({ "new_service": service }))
-  };
-  Ok(response)
+  }
 }

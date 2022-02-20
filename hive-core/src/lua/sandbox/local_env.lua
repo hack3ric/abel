@@ -1,11 +1,12 @@
 -- Fields with `nil` should be initialized in Rust
 
--- Internal
+-- Internal --
 
 local internal = {
   paths = {},
   sealed = false,
   source = nil,
+  permission_bridge = nil,
   package = {
     loaded = {},
     preload = {},
@@ -13,42 +14,7 @@ local internal = {
   },
 }
 
-local function preload_searcher(modname)
-  local preload = internal.package.preload
-  local loader = preload[modname]
-  if loader then
-    return loader, "<preload>"
-  else
-    return nil, "preload '" .. modname .. "' not found"
-  end
-end
-
-local function source_searcher(modname)
-  local source = internal.source
-  local path = ""
-  for str in string.gmatch(modname, "([^%.]+)") do
-    path = path .. "/" .. str
-  end
-
-  local file_exists = source:exists(path .. ".lua")
-  local init_exists = source:exists(path .. "/init.lua")
-
-  if file_exists and init_exists then
-    return nil, "file '@source:" .. path .. ".lua' and '@source:" .. path .. "/init.lua' conflicts"
-  elseif not file_exists and not init_exists then
-    return nil, "no file '@source:" .. path .. ".lua'\n\tno file '@source:" .. path .. "/init.lua'"
-  else
-    path = path .. (file_exists and ".lua" or "/init.lua")
-    local function source_loader(modname, path)
-      return source:load(path, local_env)()
-    end
-    return source_loader, path
-  end
-end
-
-internal.package.searchers = { preload_searcher, source_searcher }
-
--- Hive table
+-- Hive table --
 
 local function register(path, handler)
   if internal.sealed then
@@ -83,7 +49,11 @@ local function require(modname)
   error("module '" .. modname .. "' not found:\n\t" .. table.concat(error_msgs, "\n"))
 end
 
--- Local env
+local function permission_check(perm)
+  return internal.permission_bridge:check(perm)
+end
+
+-- Local env --
 
 local local_env = {
   hive = {
@@ -91,9 +61,51 @@ local local_env = {
     context = nil,
     create_response = create_response,
     current_worker = current_worker,
+    permission = {
+      check = permission_check,
+    },
   },
   require = require,
 }
+
+-- Searchers --
+
+local preload = internal.package.preload
+local function preload_searcher(modname)
+  local loader = preload[modname]
+  if loader then
+    return loader, "<preload>"
+  else
+    return nil, "preload '" .. modname .. "' not found"
+  end
+end
+
+local source = internal.source
+local function source_searcher(modname)
+  local path = ""
+  for str in string.gmatch(modname, "([^%.]+)") do
+    path = path .. "/" .. str
+  end
+
+  local file_exists = source:exists(path .. ".lua")
+  local init_exists = source:exists(path .. "/init.lua")
+
+  if file_exists and init_exists then
+    return nil, "file '@source:" .. path .. ".lua' and '@source:" .. path .. "/init.lua' conflicts"
+  elseif not file_exists and not init_exists then
+    return nil, "no file '@source:" .. path .. ".lua'\n\tno file '@source:" .. path .. "/init.lua'"
+  else
+    path = path .. (file_exists and ".lua" or "/init.lua")
+    local function source_loader(modname, path)
+      return source:load(path, local_env)()
+    end
+    return source_loader, path
+  end
+end
+
+internal.package.searchers = { preload_searcher, source_searcher }
+
+-- Standard library whitelist --
 
 local whitelist = {
   [false] = {
