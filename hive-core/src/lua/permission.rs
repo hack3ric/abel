@@ -8,7 +8,7 @@ pub struct PermissionBridge(pub(crate) Arc<PermissionSet>);
 impl UserData for PermissionBridge {
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_method("check", |_lua, this, perm: Permission| {
-      Ok(this.0.check(&perm))
+      Ok(this.0.check_ok(&perm))
     })
   }
 }

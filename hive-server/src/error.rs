@@ -4,10 +4,9 @@ use hyper::{Body, Method, Response, StatusCode};
 use serde_json::json;
 use serde_json::Value::{Object as JsonObject, String as JsonString};
 use std::borrow::Cow;
-use std::fmt::{self, Debug, Formatter};
+use std::fmt::{self, Debug, Formatter, Display};
 
 #[derive(thiserror::Error)]
-#[error("{error} ({detail})")]
 pub struct Error {
   status: StatusCode,
   error: Cow<'static, str>,
@@ -22,6 +21,17 @@ impl Debug for Error {
       .field("error", &self.error)
       .field("detail", &self.detail)
       .finish_non_exhaustive()
+  }
+}
+
+impl Display for Error {
+  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    f.write_str(&self.error)?;
+    f.write_str(": ")?;
+    match &self.detail {
+      serde_json::Value::String(s) => f.write_str(s),
+      _ => f.write_str(&self.detail.to_string()),
+    }
   }
 }
 

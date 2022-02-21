@@ -1,3 +1,4 @@
+use crate::permission::Permission;
 use backtrace::Backtrace;
 use std::fmt::{self, Debug, Formatter};
 use thiserror::Error;
@@ -21,12 +22,15 @@ impl Debug for Error {
 pub enum ErrorKind {
   #[error("invalid service name: {0}")]
   InvalidServiceName(Box<str>),
-  #[error("service not found: {0}")]
+  #[error("service '{0}' not found")]
   ServiceNotFound(Box<str>),
   #[error("path not found in service '{service}': {path}")]
   ServicePathNotFound { service: Box<str>, path: Box<str> },
   #[error("service is dropped")]
   ServiceDropped,
+  #[error("permission '{0}' not granted")]
+  PermissionNotGranted(Permission),
+
   #[error(transparent)]
   Lua(#[from] mlua::Error),
   #[error(transparent)]
@@ -62,29 +66,18 @@ impl From<ErrorKind> for Error {
   }
 }
 
-// impl From<mlua::Error> for Error {
-//   fn from(x: mlua::Error) -> Self {
-//     use mlua::Error::*;
-//     match x {
-//       ExternalError(error) => {
-//         error.downcast_ref();
-//       }
-//       _ => ErrorKind::Lua(error).into()
-//     }
-//   }
-// }
-
-// impl From<Error> for mlua::Error {
-//   fn from(x: Error) -> Self {
-//     match x.kind {
-//       ErrorKind::Lua(source) => source,
-//       _ => mlua::Error::external(x),
-//     }
-//   }
-// }
+impl From<Error> for mlua::Error {
+  fn from(x: Error) -> Self {
+    if let ErrorKind::Lua(x) = x.kind {
+      x
+    } else {
+      mlua::Error::external(x)
+    }
+  }
+}
 
 macro_rules! simple_impl_from_errors {
-  ($($error:ty),+) => {$(
+  ($($error:ty),+$(,)?) => {$(
     impl From<$error> for Error {
       fn from(error: $error) -> Self {
         ErrorKind::from(error).into()
@@ -93,4 +86,9 @@ macro_rules! simple_impl_from_errors {
   )+};
 }
 
-simple_impl_from_errors!(mlua::Error, regex::Error, hive_vfs::Error, tokio::io::Error);
+simple_impl_from_errors! {
+  mlua::Error,
+  regex::Error,
+  hive_vfs::Error,
+  tokio::io::Error,
+}

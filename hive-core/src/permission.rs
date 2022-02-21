@@ -1,4 +1,5 @@
 use crate::path::normalize_path;
+use crate::{ErrorKind, Result};
 use mlua::{ExternalError, ExternalResult, FromLua, Lua, String as LuaString, ToLua};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashSet;
@@ -115,7 +116,7 @@ impl Display for Permission {
 impl<'lua> FromLua<'lua> for Permission {
   fn from_lua(lua_value: mlua::Value<'lua>, _lua: &'lua Lua) -> mlua::Result<Self> {
     if let mlua::Value::Table(table) = lua_value {
-      let name: LuaString = table.raw_get("name")?;
+      let name: LuaString = table.raw_get("type")?;
       match name.as_bytes() {
         x @ b"read" | x @ b"write" => {
           let path: LuaString = table.raw_get("path")?;
@@ -128,10 +129,10 @@ impl<'lua> FromLua<'lua> for Permission {
           }
         }
         b"net" => {
-          let host: String = table.raw_get("string")?;
+          let host: String = table.raw_get("host")?;
           Self::net_parse(host).to_lua_err()
         }
-        _ => Err("invalid permission name".to_lua_err()),
+        _ => Err("invalid permission type".to_lua_err()),
       }
     } else {
       Err("failed to parse `Permission`: expected table".to_lua_err())
@@ -144,12 +145,12 @@ impl<'lua> ToLua<'lua> for Permission {
     use PermissionInner::*;
     let table = match self.0 {
       Read { path } => {
-        lua.create_table_from([("name", "read"), ("path", &path.to_string_lossy())])?
+        lua.create_table_from([("type", "read"), ("path", &path.to_string_lossy())])?
       }
       Write { path } => {
-        lua.create_table_from([("name", "write"), ("path", &path.to_string_lossy())])?
+        lua.create_table_from([("type", "write"), ("path", &path.to_string_lossy())])?
       }
-      Net { host } => lua.create_table_from([("name", "net"), ("host", &host.to_string())])?,
+      Net { host } => lua.create_table_from([("type", "net"), ("host", &host.to_string())])?,
     };
     Ok(mlua::Value::Table(table))
   }
@@ -226,8 +227,16 @@ impl PermissionSet {
     self.0.retain(|x| !x.is_subset(&p));
   }
 
-  pub fn check(&self, p: &Permission) -> bool {
+  pub fn check_ok(&self, p: &Permission) -> bool {
     self.0.iter().find(|x| x.is_superset(p)).is_some()
+  }
+
+  pub fn check(&self, p: &Permission) -> Result<()> {
+    if self.check_ok(p) {
+      Ok(())
+    } else {
+      Err(ErrorKind::PermissionNotGranted(p.clone()).into())
+    }
   }
 }
 
@@ -242,10 +251,4 @@ impl<'de> Deserialize<'de> for PermissionSet {
     }
     Ok(result)
   }
-}
-
-#[test]
-fn test() {
-  let x = r#"[{"type":"read","path":"/path/to/some/place"}]"#;
-  dbg!(serde_json::from_str::<PermissionSet>(x).unwrap());
 }
