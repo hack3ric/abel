@@ -1,6 +1,5 @@
 use crate::lua::context::create_context;
-use crate::lua::modules::create_module_request;
-use crate::lua::permission::PermissionBridge;
+use crate::lua::modules::{create_module_permission, create_module_request};
 use crate::lua::LuaTableExt;
 use crate::permission::PermissionSet;
 use crate::{Result, Source};
@@ -20,7 +19,10 @@ pub(super) fn create_local_env<'a>(
   hive.raw_set("context", create_context(service_name.into()))?;
 
   internal.raw_set("source", source)?;
-  internal.raw_set("permissions", PermissionBridge(permissions.clone()))?;
+  internal.raw_set(
+    "permissions",
+    create_module_permission(lua, permissions.clone())?,
+  )?;
 
   let preload: Table = internal.raw_get_path("<internal>", &["package", "preload"])?;
   preload.raw_set("request", create_module_request(lua, permissions)?)?;

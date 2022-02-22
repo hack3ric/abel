@@ -3,7 +3,6 @@ pub mod response;
 
 mod context;
 mod modules;
-mod permission;
 mod sandbox;
 mod table;
 
