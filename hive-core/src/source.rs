@@ -35,7 +35,7 @@ impl Source {
     }))
   }
 
-  pub(crate) async fn get<'a>(&'a self, path: &str) -> Result<RwLockReadGuard<'a, [u8]>> {
+  pub async fn get<'a>(&'a self, path: &str) -> Result<RwLockReadGuard<'a, [u8]>> {
     let read_guard =
       RwLockReadGuard::try_map(self.0.cache.read().await, |x| x.get(path).map(|x| &x[..]));
     match read_guard {

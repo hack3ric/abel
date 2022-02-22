@@ -4,7 +4,7 @@ use hyper::{Body, Method, Response, StatusCode};
 use serde_json::json;
 use serde_json::Value::{Object as JsonObject, String as JsonString};
 use std::borrow::Cow;
-use std::fmt::{self, Debug, Formatter, Display};
+use std::fmt::{self, Debug, Display, Formatter};
 
 #[derive(thiserror::Error)]
 pub struct Error {
@@ -29,6 +29,14 @@ impl Display for Error {
     f.write_str(&self.error)?;
     f.write_str(": ")?;
     match &self.detail {
+      serde_json::Value::Object(map) => {
+        if map.len() == 1 {
+          if let Some(serde_json::Value::String(s)) = map.get("msg") {
+            return f.write_str(s);
+          }
+        }
+        f.write_str(&serde_json::to_string_pretty(map).unwrap())
+      }
       serde_json::Value::String(s) => f.write_str(s),
       _ => f.write_str(&self.detail.to_string()),
     }
@@ -139,10 +147,8 @@ impl From<hive_core::Error> for Error {
       _ => (500, "hive core error", JsonString(error.to_string())),
     };
     Self {
-      status: status.try_into().unwrap(),
-      error: error_.into(),
-      detail,
       backtrace: error.into_backtrace(),
+      ..(status, error_, detail).into()
     }
   }
 }
