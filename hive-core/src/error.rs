@@ -39,6 +39,8 @@ pub enum ErrorKind {
   Io(#[from] tokio::io::Error),
   #[error(transparent)]
   Regex(#[from] regex::Error),
+  #[error(transparent)]
+  Hyper(#[from] hyper::Error),
 }
 
 impl Error {
@@ -88,7 +90,8 @@ macro_rules! simple_impl_from_errors {
 
 simple_impl_from_errors! {
   mlua::Error,
-  regex::Error,
   hive_vfs::Error,
   tokio::io::Error,
+  regex::Error,
+  hyper::Error,
 }

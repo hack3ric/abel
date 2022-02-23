@@ -1,14 +1,16 @@
+use super::byte_stream::ByteStream;
 use hyper::header::HeaderName;
 use hyper::http::{HeaderMap, HeaderValue, StatusCode};
 use hyper::Body;
 use mlua::{
-  ExternalError, ExternalResult, Function, Lua, LuaSerdeExt, Table, UserData, UserDataFields,
+  AnyUserData, ExternalError, ExternalResult, Function, Lua, LuaSerdeExt, Table, ToLua, UserData,
+  UserDataFields,
 };
 
 pub struct Response {
   pub status: StatusCode,
   pub headers: HeaderMap,
-  pub body: Body,
+  pub body: Option<Body>,
 }
 
 impl Response {
@@ -21,13 +23,24 @@ impl Response {
         Ok(Self {
           status: StatusCode::OK,
           headers,
-          body: lua
-            .from_value::<serde_json::Value>(value)?
-            .to_string()
-            .into(),
+          body: Some(
+            lua
+              .from_value::<serde_json::Value>(value)?
+              .to_string()
+              .into(),
+          ),
         })
       }
-      UserData(x) => x.take::<Self>(),
+      UserData(x) => {
+        // move user value out
+        let mut u = x.take::<Self>()?;
+        if u.body.is_none() {
+          let t = x.get_named_user_value::<_, AnyUserData>("body")?;
+          let t = t.take::<ByteStream>()?;
+          u.body = Some(Body::wrap_stream(t.0));
+        }
+        Ok(u)
+      }
       _ => Err("cannot convert to response".to_lua_err()),
     }
   }
@@ -37,7 +50,7 @@ impl Response {
     Self {
       status: parts.status,
       headers: parts.headers,
-      body,
+      body: Some(body),
     }
   }
 }
@@ -45,7 +58,18 @@ impl Response {
 impl UserData for Response {
   fn add_fields<'lua, F: UserDataFields<'lua, Self>>(fields: &mut F) {
     fields.add_field_method_get("status", |_lua, this| Ok(this.status.as_u16()));
-    // TODO: headers and body
+    fields.add_field_function_get("body", |lua, this| {
+      let mut this_ = this.borrow_mut::<Self>()?;
+      let body = this_.body.take();
+      if let Some(body) = body {
+        let x = ByteStream::from_body(body).to_lua(lua)?;
+        this.set_named_user_value("body", x.clone())?;
+        Ok(x)
+      } else {
+        this.get_named_user_value("body")
+      }
+    });
+    // TODO: headers
   }
 }
 
@@ -53,7 +77,7 @@ impl From<Response> for hyper::Response<Body> {
   fn from(x: Response) -> Self {
     let mut builder = hyper::Response::builder().status(x.status);
     *builder.headers_mut().unwrap() = x.headers;
-    builder.body(x.body).unwrap()
+    builder.body(x.body.unwrap()).unwrap()
   }
 }
 
@@ -91,10 +115,12 @@ pub fn create_fn_create_response(lua: &Lua) -> mlua::Result<Function> {
       .raw_get::<_, Option<mlua::Value>>("body")?
       .ok_or("missing body in response")
       .to_lua_err()?;
-    let body = lua
-      .from_value::<serde_json::Value>(body)?
-      .to_string()
-      .into();
+    let body = Some(
+      lua
+        .from_value::<serde_json::Value>(body)?
+        .to_string()
+        .into(),
+    );
 
     headers.insert("Content-Type", HeaderValue::from_static("application/json"));
 

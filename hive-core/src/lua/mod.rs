@@ -1,6 +1,7 @@
 pub mod request;
 pub mod response;
 
+mod byte_stream;
 mod context;
 mod modules;
 mod sandbox;
