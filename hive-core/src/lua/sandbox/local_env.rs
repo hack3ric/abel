@@ -16,6 +16,8 @@ pub(super) fn create_local_env<'a>(
   let (local_env, internal): (Table, Table) = local_env_fn.call(())?;
 
   let hive: Table = local_env.raw_get("hive")?;
+  // TODO: `lua.create_ser_userdata`
+  // Also on every creation of shared table userdata
   hive.raw_set("context", create_context(service_name.into()))?;
 
   internal.raw_set("source", source)?;

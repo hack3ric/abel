@@ -15,7 +15,7 @@ log = "0.4.14"
 mlua = { version = "0.7.0", features = ["lua54", "send", "async", "macros", "serialize"] }
 nonzero_ext = "0.3.0"
 once_cell = "1.9.0"
-parking_lot = "0.11.2"
+parking_lot = { version = "0.11.2", features = ["arc_lock"] }
 regex = "1.5.4"
 serde = { version = "1.0.132", features = ["derive"] }
 serde_bytes = "0.11.5"

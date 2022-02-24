@@ -134,7 +134,7 @@ local whitelist = {
   },
   table = {
     "insert", "maxn", "remove", "sort",
-    "dump",
+    "dump", "scope",
   },
 }
 
