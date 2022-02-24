@@ -1,15 +1,13 @@
 use mlua::{ExternalError, ExternalResult, FromLua, Function, Lua, ToLua, UserData};
 use parking_lot::lock_api::ArcRwLockWriteGuard;
 use parking_lot::{MappedRwLockReadGuard, RawRwLock, RwLock, RwLockReadGuard};
-use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 #[derive(Clone)]
-pub struct Table(Arc<RwLock<(BTreeMap<i64, Value>, HashMap<Key, Value>)>>);
-
-// impl Serialize
+pub struct Table(Arc<RwLock<TableRepr>>);
 
 impl Table {
   pub fn new() -> Self {
@@ -27,14 +25,14 @@ impl Table {
         other.insert(k, v);
       }
     }
-    Ok(Self(Arc::new(RwLock::new((int, other)))))
+    Ok(Self(Arc::new(RwLock::new(TableRepr(int, other)))))
   }
 
   fn get(&self, key: Key) -> MappedRwLockReadGuard<'_, Value> {
     const CONST_NIL: Value = Value::Nil;
     let lock = self.0.read();
 
-    RwLockReadGuard::map(lock, |(x, y)| {
+    RwLockReadGuard::map(lock, |TableRepr(x, y)| {
       (key.to_i64())
         .map(|i| x.get(&i))
         .unwrap_or_else(|| y.get(&key))
@@ -69,37 +67,22 @@ impl Table {
   }
 
   fn deep_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<mlua::Table<'lua>> {
-    Self::_deep_dump(&self.0, lua, &mut HashMap::new())
+    self._deep_dump(lua, &mut HashMap::new())
   }
 
   fn _deep_dump<'lua>(
-    this: &Arc<RwLock<(BTreeMap<i64, Value>, HashMap<Key, Value>)>>,
+    &self,
     lua: &'lua Lua,
     tables: &mut HashMap<usize, mlua::Table<'lua>>,
   ) -> mlua::Result<mlua::Table<'lua>> {
     // preserve recursive structure
-    if let Some(table) = tables.get(&(Arc::as_ptr(this) as _)) {
+    if let Some(table) = tables.get(&(Arc::as_ptr(&self.0) as _)) {
       Ok(table.clone())
     } else {
-      let lock = this.read();
-      let int_iter = (lock.0)
-        .iter()
-        .map(|(i, v)| Ok::<_, mlua::Error>((mlua::Value::Integer(*i), v)));
-      let other_iter = (lock.1)
-        .iter()
-        .map(|(k, v)| Ok::<_, mlua::Error>((k.to_lua(lua)?, v)));
-      let table = lua.create_table_with_capacity(lock.0.len() as _, lock.1.len() as _)?;
-      tables.insert(Arc::as_ptr(this) as _, table.clone());
-      for kv in int_iter.chain(other_iter) {
-        let (k, v) = kv?;
-        if let Value::Table(Table(table_repr)) = v {
-          let sub_table = Self::_deep_dump(table_repr, lua, tables)?;
-          table.raw_set(k, sub_table)?;
-        } else {
-          table.raw_set(k, v)?;
-        }
-      }
-      Ok(table)
+      self
+        .0
+        .read()
+        ._deep_dump(lua, Arc::as_ptr(&self.0) as _, tables)
     }
   }
 }
@@ -126,69 +109,33 @@ impl UserData for Table {
   }
 }
 
-struct TableScope(ArcRwLockWriteGuard<RawRwLock, (BTreeMap<i64, Value>, HashMap<Key, Value>)>);
+struct TableScope(ArcRwLockWriteGuard<RawRwLock, TableRepr>);
 
 impl TableScope {
-  fn new(x: Arc<RwLock<(BTreeMap<i64, Value>, HashMap<Key, Value>)>>) -> Self {
+  fn new(x: Arc<RwLock<TableRepr>>) -> Self {
     Self(x.write_arc())
   }
 
-  fn get(&self, key: Key) -> &Value {
-    const CONST_NIL: Value = Value::Nil;
-
-    (key.to_i64())
-      .map(|i| self.0 .0.get(&i))
-      .unwrap_or_else(|| self.0 .1.get(&key))
-      .unwrap_or(&CONST_NIL)
-  }
-
-  fn set(&mut self, key: Key, value: Value) -> Value {
-    if let Some(i) = key.to_i64() {
-      self.0 .0.insert(i, value)
-    } else {
-      self.0 .1.insert(key, value)
-    }
-    .unwrap_or(Value::Nil)
-  }
-
-  fn shallow_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<mlua::Table<'lua>> {
-    let int_iter = (self.0 .0)
-      .iter()
-      .map(|(i, v)| Ok::<_, mlua::Error>((mlua::Value::Integer(*i), v)));
-    let other_iter = (self.0 .1)
-      .iter()
-      .map(|(k, v)| Ok::<_, mlua::Error>((k.to_lua(lua)?, v)));
-    let t = lua.create_table_with_capacity(self.0 .0.len() as _, self.0 .1.len() as _)?;
-    for kv in int_iter.chain(other_iter) {
-      let (k, v) = kv?;
-      t.raw_set(k, v)?;
-    }
-    Ok(t)
-  }
-
   fn deep_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<mlua::Table<'lua>> {
-    let mut tables = HashMap::new();
-    let int_iter = (self.0 .0)
-      .iter()
-      .map(|(i, v)| Ok::<_, mlua::Error>((mlua::Value::Integer(*i), v)));
-    let other_iter = (self.0 .1)
-      .iter()
-      .map(|(k, v)| Ok::<_, mlua::Error>((k.to_lua(lua)?, v)));
-    let table = lua.create_table_with_capacity(self.0 .0.len() as _, self.0 .1.len() as _)?;
-    tables.insert(
+    self._deep_dump(
+      lua,
       Arc::as_ptr(ArcRwLockWriteGuard::rwlock(&self.0)) as _,
-      table.clone(),
-    );
-    for kv in int_iter.chain(other_iter) {
-      let (k, v) = kv?;
-      if let Value::Table(Table(table_repr)) = v {
-        let sub_table = Table::_deep_dump(table_repr, lua, &mut tables)?;
-        table.raw_set(k, sub_table)?;
-      } else {
-        table.raw_set(k, v)?;
-      }
-    }
-    Ok(table)
+      &mut HashMap::new(),
+    )
+  }
+}
+
+impl Deref for TableScope {
+  type Target = TableRepr;
+
+  fn deref(&self) -> &TableRepr {
+    &self.0
+  }
+}
+
+impl DerefMut for TableScope {
+  fn deref_mut(&mut self) -> &mut TableRepr {
+    &mut self.0
   }
 }
 
@@ -214,6 +161,80 @@ impl UserData for TableScope {
   }
 }
 
+#[derive(Default)]
+struct TableRepr(BTreeMap<i64, Value>, HashMap<Key, Value>);
+
+impl TableRepr {
+  fn get(&self, key: Key) -> &Value {
+    const CONST_NIL: Value = Value::Nil;
+
+    (key.to_i64())
+      .map(|i| self.0.get(&i))
+      .unwrap_or_else(|| self.1.get(&key))
+      .unwrap_or(&CONST_NIL)
+  }
+
+  fn set(&mut self, key: Key, value: Value) -> Value {
+    if let Some(i) = key.to_i64() {
+      self.0.insert(i, value)
+    } else {
+      self.1.insert(key, value)
+    }
+    .unwrap_or(Value::Nil)
+  }
+
+  fn shallow_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<mlua::Table<'lua>> {
+    let int_iter = (self.0)
+      .iter()
+      .map(|(i, v)| Ok::<_, mlua::Error>((mlua::Value::Integer(*i), v)));
+    let other_iter = (self.1)
+      .iter()
+      .map(|(k, v)| Ok::<_, mlua::Error>((k.to_lua(lua)?, v)));
+    let t = lua.create_table_with_capacity(self.0.len() as _, self.1.len() as _)?;
+    for kv in int_iter.chain(other_iter) {
+      let (k, v) = kv?;
+      t.raw_set(k, v)?;
+    }
+    Ok(t)
+  }
+
+  fn _deep_dump<'lua>(
+    &self,
+    lua: &'lua Lua,
+    ptr: usize,
+    tables: &mut HashMap<usize, mlua::Table<'lua>>,
+  ) -> mlua::Result<mlua::Table<'lua>> {
+    let int_iter = (self.0)
+      .iter()
+      .map(|(i, v)| Ok::<_, mlua::Error>((mlua::Value::Integer(*i), v)));
+    let other_iter = (self.1)
+      .iter()
+      .map(|(k, v)| Ok::<_, mlua::Error>((k.to_lua(lua)?, v)));
+    let table = lua.create_table_with_capacity(self.0.len() as _, self.1.len() as _)?;
+    tables.insert(ptr, table.clone());
+    for kv in int_iter.chain(other_iter) {
+      let (k, v) = kv?;
+      if let Value::Table(x @ Table(_)) = v {
+        let sub_table = Table::_deep_dump(x, lua, tables)?;
+        table.raw_set(k, sub_table)?;
+      } else {
+        table.raw_set(k, v)?;
+      }
+    }
+    Ok(table)
+  }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("failed to borrow userdata as shared table")]
+pub struct UserDataNotSharedTable(());
+
+#[derive(Debug, thiserror::Error)]
+#[error("expected table or shared table, found {found}")]
+pub struct ExpectedTable {
+  found: &'static str,
+}
+
 pub fn create_fn_table_dump(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, table: mlua::Value| match table {
     mlua::Value::Table(table) => Ok(table),
@@ -223,10 +244,15 @@ pub fn create_fn_table_dump(lua: &Lua) -> mlua::Result<Function> {
       } else if let Ok(x) = x.borrow::<TableScope>() {
         x.deep_dump(lua)
       } else {
-        Err("failed to borrow userdata as shared table".to_lua_err())
+        Err(UserDataNotSharedTable(()).to_lua_err())
       }
     }
-    _ => Err("expected table or shared table".to_lua_err()),
+    _ => Err(
+      ExpectedTable {
+        found: table.type_name(),
+      }
+      .to_lua_err(),
+    ),
   })
 }
 
@@ -244,24 +270,33 @@ pub fn create_fn_table_scope(lua: &Lua) -> mlua::Result<Function> {
         if x.borrow::<TableScope>().is_ok() {
           f.call_async::<_, mlua::Value>(x).await
         } else {
-          Err("failed to borrow userdata as shared table".to_lua_err())
+          Err(UserDataNotSharedTable(()).to_lua_err())
         }
       }
-      _ => Err("expected table or shared table".to_lua_err()),
+      _ => Err(
+        ExpectedTable {
+          found: table.type_name(),
+        }
+        .to_lua_err(),
+      ),
     }
   })
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("out of bounds")]
+pub struct OutOfBounds(());
 
 pub fn create_fn_table_insert_shared_3(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(
     |lua, (table, pos, value): (mlua::AnyUserData, i64, mlua::Value)| {
       if pos < 1 {
-        return Err("out of bounds".to_lua_err());
+        return Err(OutOfBounds(()).to_lua_err());
       }
       if let Ok(table) = table.borrow::<Table>() {
         let mut lock = table.0.write();
         if pos > len(&lock) + 1 {
-          return Err("out of bounds".to_lua_err());
+          return Err(OutOfBounds(()).to_lua_err());
         }
         let right = lock.0.split_off(&pos);
         let iter = right.into_iter().map(|(i, v)| (i + 1, v));
@@ -269,21 +304,21 @@ pub fn create_fn_table_insert_shared_3(lua: &Lua) -> mlua::Result<Function> {
         lock.0.extend(iter);
       } else if let Ok(mut table) = table.borrow_mut::<TableScope>() {
         if pos > len(&table.0) + 1 {
-          return Err("out of bounds".to_lua_err());
+          return Err(OutOfBounds(()).to_lua_err());
         }
         let right = table.0 .0.split_off(&pos);
         let iter = right.into_iter().map(|(i, v)| (i + 1, v));
         table.0 .0.insert(pos, Value::from_lua(value, lua)?);
         table.0 .0.extend(iter);
       } else {
-        return Err("failed to borrow userdata as shared table".to_lua_err());
+        return Err(UserDataNotSharedTable(()).to_lua_err());
       }
       Ok(())
     },
   )
 }
 
-fn len(x: &(BTreeMap<i64, Value>, HashMap<Key, Value>)) -> i64 {
+fn len(x: &TableRepr) -> i64 {
   x.0.iter().last().map(|x| (*x.0).max(0)).unwrap_or(0)
 }
 

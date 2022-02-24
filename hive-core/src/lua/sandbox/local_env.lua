@@ -6,7 +6,6 @@ local internal = {
   paths = {},
   sealed = false,
   source = nil,
-  permission_bridge = nil,
   package = {
     loaded = {},
     preload = {},
@@ -49,21 +48,15 @@ local function require(modname)
   error("module '" .. modname .. "' not found:\n\t" .. table.concat(error_msgs, "\n"))
 end
 
-local function permission_check(perm)
-  return internal.permission_bridge:check(perm)
-end
-
 -- Local env --
 
 local local_env = {
   hive = {
     register = register,
     context = nil,
+    permission = nil,
     create_response = create_response,
     current_worker = current_worker,
-    permission = {
-      check = permission_check,
-    },
   },
   require = require,
 }

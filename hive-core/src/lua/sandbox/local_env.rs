@@ -19,12 +19,12 @@ pub(super) fn create_local_env<'a>(
   // TODO: `lua.create_ser_userdata`
   // Also on every creation of shared table userdata
   hive.raw_set("context", create_context(service_name.into()))?;
-
-  internal.raw_set("source", source)?;
-  internal.raw_set(
-    "permissions",
+  hive.raw_set(
+    "permission",
     create_module_permission(lua, permissions.clone())?,
   )?;
+
+  internal.raw_set("source", source)?;
 
   let preload: Table = internal.raw_get_path("<internal>", &["package", "preload"])?;
   preload.raw_set("request", create_module_request(lua, permissions)?)?;

@@ -1,5 +1,6 @@
 use crate::util::json_response_raw;
 use backtrace::Backtrace;
+use hive_core::LuaError;
 use hyper::{Body, Method, Response, StatusCode};
 use serde_json::json;
 use serde_json::Value::{Object as JsonObject, String as JsonString};
@@ -136,7 +137,16 @@ impl From<hive_core::Error> for Error {
         "path not found in service",
         json!({ "service": service, "path": path }),
       ),
-      Lua(error) => (500, "Lua error", JsonString(error.to_string())),
+      Lua(error) => {
+        let msg = match error {
+          LuaError::CallbackError { traceback, cause } => match cause.as_ref() {
+            LuaError::ExternalError(cause) => format!("runtime error: {cause}\n{traceback}"),
+            _ => cause.to_string(),
+          },
+          _ => error.to_string(),
+        };
+        (500, "Lua error", JsonString(msg))
+      }
       Vfs(error) => {
         if let hive_vfs::Error::NotFound(path) = error {
           (400, "VFS path not found", json!({ "path": path }))
