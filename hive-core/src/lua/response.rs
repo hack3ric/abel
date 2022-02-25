@@ -3,8 +3,7 @@ use hyper::header::HeaderName;
 use hyper::http::{HeaderMap, HeaderValue, StatusCode};
 use hyper::Body;
 use mlua::{
-  AnyUserData, ExternalError, ExternalResult, Function, Lua, LuaSerdeExt, Table, ToLua, UserData,
-  UserDataFields,
+  AnyUserData, ExternalError, ExternalResult, Function, Lua, Table, ToLua, UserData, UserDataFields,
 };
 
 pub struct Response {
@@ -14,7 +13,7 @@ pub struct Response {
 }
 
 impl Response {
-  pub(crate) fn from_value(lua: &Lua, value: mlua::Value) -> mlua::Result<Self> {
+  pub(crate) fn from_value(value: mlua::Value) -> mlua::Result<Self> {
     use mlua::Value::*;
     match value {
       Table(_) => {
@@ -23,12 +22,7 @@ impl Response {
         Ok(Self {
           status: StatusCode::OK,
           headers,
-          body: Some(
-            lua
-              .from_value::<serde_json::Value>(value)?
-              .to_string()
-              .into(),
-          ),
+          body: Some(serde_json::to_value(value).to_lua_err()?.to_string().into()),
         })
       }
       UserData(x) => {
@@ -82,7 +76,7 @@ impl From<Response> for hyper::Response<Body> {
 }
 
 pub fn create_fn_create_response(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, params: Table| {
+  lua.create_function(|_lua, params: Table| {
     let status = params
       .raw_get::<_, Option<u16>>("status")?
       .map(|f| {
@@ -115,12 +109,7 @@ pub fn create_fn_create_response(lua: &Lua) -> mlua::Result<Function> {
       .raw_get::<_, Option<mlua::Value>>("body")?
       .ok_or("missing body in response")
       .to_lua_err()?;
-    let body = Some(
-      lua
-        .from_value::<serde_json::Value>(body)?
-        .to_string()
-        .into(),
-    );
+    let body = Some(serde_json::to_value(body).to_lua_err()?.to_string().into());
 
     headers.insert("Content-Type", HeaderValue::from_static("application/json"));
 

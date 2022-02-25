@@ -78,7 +78,7 @@ impl Sandbox {
         let handler = f.raw_get::<u8, Function>(2)?;
         let req = Request::new(req, params);
         let result: mlua::Value = handler.call_async(req).await?;
-        let resp = Response::from_value(&self.lua, result)?;
+        let resp = Response::from_value(result)?;
         return Ok(resp);
       }
     }

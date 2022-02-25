@@ -1,6 +1,9 @@
+use super::BadArgument;
 use mlua::{ExternalError, ExternalResult, FromLua, Function, Lua, ToLua, UserData};
 use parking_lot::lock_api::ArcRwLockWriteGuard;
 use parking_lot::{MappedRwLockReadGuard, RawRwLock, RwLock, RwLockReadGuard};
+use serde::ser::SerializeSeq;
+use serde::{Serialize, Serializer};
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
@@ -29,41 +32,15 @@ impl Table {
   }
 
   fn get(&self, key: Key) -> MappedRwLockReadGuard<'_, Value> {
-    const CONST_NIL: Value = Value::Nil;
-    let lock = self.0.read();
-
-    RwLockReadGuard::map(lock, |TableRepr(x, y)| {
-      (key.to_i64())
-        .map(|i| x.get(&i))
-        .unwrap_or_else(|| y.get(&key))
-        .unwrap_or(&CONST_NIL)
-    })
+    RwLockReadGuard::map(self.0.read(), |x| x.get(key))
   }
 
   fn set(&self, key: Key, value: Value) -> Value {
-    let mut lock = self.0.write();
-    if let Some(i) = key.to_i64() {
-      lock.0.insert(i, value)
-    } else {
-      lock.1.insert(key, value)
-    }
-    .unwrap_or(Value::Nil)
+    self.0.write().set(key, value)
   }
 
   fn shallow_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<mlua::Table<'lua>> {
-    let lock = self.0.read();
-    let int_iter = (lock.0)
-      .iter()
-      .map(|(i, v)| Ok::<_, mlua::Error>((mlua::Value::Integer(*i), v)));
-    let other_iter = (lock.1)
-      .iter()
-      .map(|(k, v)| Ok::<_, mlua::Error>((k.to_lua(lua)?, v)));
-    let t = lua.create_table_with_capacity(lock.0.len() as _, lock.1.len() as _)?;
-    for kv in int_iter.chain(other_iter) {
-      let (k, v) = kv?;
-      t.raw_set(k, v)?;
-    }
-    Ok(t)
+    self.0.read().shallow_dump(lua)
   }
 
   fn deep_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<mlua::Table<'lua>> {
@@ -79,10 +56,7 @@ impl Table {
     if let Some(table) = tables.get(&(Arc::as_ptr(&self.0) as _)) {
       Ok(table.clone())
     } else {
-      self
-        .0
-        .read()
-        ._deep_dump(lua, Arc::as_ptr(&self.0) as _, tables)
+      (self.0.read())._deep_dump(lua, Arc::as_ptr(&self.0) as _, tables)
     }
   }
 }
@@ -106,6 +80,15 @@ impl UserData for Table {
       let table = this.shallow_dump(lua)?;
       Ok((next, table, mlua::Value::Nil))
     });
+  }
+}
+
+impl Serialize for Table {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    self.0.read().serialize(serializer)
   }
 }
 
@@ -225,14 +208,42 @@ impl TableRepr {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("failed to borrow userdata as shared table")]
-pub struct UserDataNotSharedTable(());
+impl Serialize for TableRepr {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    if self.0.contains_key(&1) {
+      let mut seq = serializer.serialize_seq(None)?;
+      let mut prev = 0;
+      for (&i, v) in self.0.iter() {
+        if i < 1 {
+          continue;
+        }
+        if i - prev != 1 {
+          break;
+        }
+        seq.serialize_element(v)?;
+        prev = i;
+      }
+      seq.end()
+    } else {
+      self.1.serialize(serializer)
+    }
+  }
+}
 
-#[derive(Debug, thiserror::Error)]
-#[error("expected table or shared table, found {found}")]
-pub struct ExpectedTable {
-  found: &'static str,
+fn userdata_not_shared_table(fn_name: &'static str, pos: u8) -> mlua::Error {
+  BadArgument::new(fn_name, pos, "failed to borrow userdata as shared table").to_lua_err()
+}
+
+fn expected_table(fn_name: &'static str, pos: u8, found: &str) -> mlua::Error {
+  BadArgument::new(
+    fn_name,
+    pos,
+    format!("expected table or shared table, found {found}"),
+  )
+  .to_lua_err()
 }
 
 pub fn create_fn_table_dump(lua: &Lua) -> mlua::Result<Function> {
@@ -244,15 +255,10 @@ pub fn create_fn_table_dump(lua: &Lua) -> mlua::Result<Function> {
       } else if let Ok(x) = x.borrow::<TableScope>() {
         x.deep_dump(lua)
       } else {
-        Err(UserDataNotSharedTable(()).to_lua_err())
+        Err(userdata_not_shared_table("dump", 1))
       }
     }
-    _ => Err(
-      ExpectedTable {
-        found: table.type_name(),
-      }
-      .to_lua_err(),
-    ),
+    _ => Err(expected_table("dump", 1, table.type_name())),
   })
 }
 
@@ -270,33 +276,28 @@ pub fn create_fn_table_scope(lua: &Lua) -> mlua::Result<Function> {
         if x.borrow::<TableScope>().is_ok() {
           f.call_async::<_, mlua::Value>(x).await
         } else {
-          Err(UserDataNotSharedTable(()).to_lua_err())
+          Err(userdata_not_shared_table("scope", 1))
         }
       }
-      _ => Err(
-        ExpectedTable {
-          found: table.type_name(),
-        }
-        .to_lua_err(),
-      ),
+      _ => Err(expected_table("scope", 1, table.type_name())),
     }
   })
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("out of bounds")]
-pub struct OutOfBounds(());
+fn out_of_bounds(fn_name: &'static str, pos: u8) -> mlua::Error {
+  BadArgument::new(fn_name, pos, "out of bounds").to_lua_err()
+}
 
 pub fn create_fn_table_insert_shared_3(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(
     |lua, (table, pos, value): (mlua::AnyUserData, i64, mlua::Value)| {
       if pos < 1 {
-        return Err(OutOfBounds(()).to_lua_err());
+        return Err(out_of_bounds("insert", 2));
       }
       if let Ok(table) = table.borrow::<Table>() {
         let mut lock = table.0.write();
         if pos > len(&lock) + 1 {
-          return Err(OutOfBounds(()).to_lua_err());
+          return Err(out_of_bounds("insert", 2));
         }
         let right = lock.0.split_off(&pos);
         let iter = right.into_iter().map(|(i, v)| (i + 1, v));
@@ -304,14 +305,14 @@ pub fn create_fn_table_insert_shared_3(lua: &Lua) -> mlua::Result<Function> {
         lock.0.extend(iter);
       } else if let Ok(mut table) = table.borrow_mut::<TableScope>() {
         if pos > len(&table.0) + 1 {
-          return Err(OutOfBounds(()).to_lua_err());
+          return Err(out_of_bounds("insert", 2));
         }
         let right = table.0 .0.split_off(&pos);
         let iter = right.into_iter().map(|(i, v)| (i + 1, v));
         table.0 .0.insert(pos, Value::from_lua(value, lua)?);
         table.0 .0.extend(iter);
       } else {
-        return Err(UserDataNotSharedTable(()).to_lua_err());
+        return Err(userdata_not_shared_table("insert", 1));
       }
       Ok(())
     },
@@ -322,14 +323,23 @@ fn len(x: &TableRepr) -> i64 {
   x.0.iter().last().map(|x| (*x.0).max(0)).unwrap_or(0)
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
+#[serde(untagged)]
 pub enum Value {
   Nil,
   Boolean(bool),
   Integer(i64),
   Number(f64),
-  String(Vec<u8>),
+  String(#[serde(serialize_with = "serialize_slice_as_str")] Vec<u8>),
   Table(Table),
+}
+
+fn serialize_slice_as_str<S: Serializer>(slice: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+  if let Ok(x) = std::str::from_utf8(slice) {
+    serializer.serialize_str(x)
+  } else {
+    serializer.serialize_bytes(slice)
+  }
 }
 
 impl<'lua> FromLua<'lua> for Value {
@@ -364,7 +374,7 @@ impl<'a, 'lua> ToLua<'lua> for &'a Value {
       Integer(x) => mlua::Value::Integer(*x),
       Number(x) => mlua::Value::Number(*x),
       String(x) => mlua::Value::String(lua.create_string(x)?),
-      Table(x) => x.clone().to_lua(lua)?,
+      Table(x) => mlua::Value::UserData(lua.create_ser_userdata(x.clone())?),
     };
     Ok(result)
   }
@@ -379,7 +389,7 @@ impl<'lua> ToLua<'lua> for Value {
       Integer(x) => mlua::Value::Integer(x),
       Number(x) => mlua::Value::Number(x),
       String(x) => mlua::Value::String(lua.create_string(&x)?),
-      Table(x) => x.to_lua(lua)?,
+      Table(x) => mlua::Value::UserData(lua.create_ser_userdata(x)?),
     };
     Ok(result)
   }
@@ -412,7 +422,7 @@ impl PartialEq for Value {
   }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 pub struct Key(Value);
 
 #[derive(Debug, thiserror::Error)]
