@@ -2,7 +2,7 @@ mod impls;
 mod vfs;
 
 pub use impls::{FileSystem, ReadOnly, ReadOnlyVfs};
-pub use vfs::{FileMode, LocalVfs, Metadata, Vfs};
+pub use vfs::{FileMode, LocalVfs, Metadata, Vfs, ParseFileModeError};
 
 use tokio::io;
 
@@ -16,19 +16,15 @@ pub enum Error {
   /// An I/O error has encountered.
   #[error(transparent)]
   Io(#[from] io::Error),
-
   #[error("path not found: {0}")]
   NotFound(String),
-
   /// Method is not allowed, e.g. attempting to write on [`ReadOnlyVfs`].
   ///
   /// [`ReadOnlyVfs`]: struct.ReadOnly.html
   #[error("method not allowed")]
   MethodNotAllowed,
-
   #[error("'{0}' is not a directory")]
   NotADirectory(String),
-
   #[error("'{0}' is a directory")]
   IsADirectory(String),
 }

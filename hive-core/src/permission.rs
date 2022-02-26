@@ -19,11 +19,9 @@ pub enum PermissionInner {
   /// Reading a file.
   #[serde(rename = "read")]
   Read { path: PathBuf },
-
   /// Writing a file.
   #[serde(rename = "write")]
   Write { path: PathBuf },
-
   /// Connecting to specified host.
   #[serde(rename = "net")]
   Net { host: Host },

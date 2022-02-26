@@ -2,6 +2,7 @@ use crate::{Error, Result};
 use async_trait::async_trait;
 use futures::stream::{BoxStream, LocalBoxStream};
 use tokio::io::AsyncRead;
+use std::str::FromStr;
 
 /// Virtual file system interface.
 ///
@@ -86,23 +87,40 @@ impl<T: Vfs + Sync> LocalVfs for T {
 pub enum FileMode {
   /// Read-only mode. Corresponds to `r` in C's `fopen`.
   Read,
-
   /// Write-only mode. Corresponds to `w` in C's `fopen`.
   Write,
-
   /// Append mode. Corresponds to `a` in C's `fopen`.
   Append,
-
   /// Read-and-write mode, preserving original data. Corresponds to `r+` in C's
   /// `fopen`.
   ReadWrite,
-
   /// Read-and-write mode, removing original data. Corresponds to `w+` in C's
   /// `fopen`.
   ReadWriteNew,
-
   /// Read-and-append mode,. Corresponds to `a+` in C's `fopen`.
   ReadAppend,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("failed to parse file mode")]
+pub struct ParseFileModeError(());
+
+impl FromStr for FileMode {
+  type Err = ParseFileModeError;
+
+  fn from_str(value: &str) -> Result<Self, Self::Err> {
+    use FileMode::*;
+    let result = match value {
+      "r" => Read,
+      "w" => Write,
+      "a" => Append,
+      "r+" => ReadWrite,
+      "w+" => ReadWriteNew,
+      "a+" => ReadAppend,
+      _ => return Err(ParseFileModeError(()))
+    };
+    Ok(result)
+  }
 }
 
 /// Information of an entry in a VFS.
