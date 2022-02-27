@@ -1,69 +1,50 @@
+use crate::path::normalize_path_str;
 use crate::Result;
-use async_trait::async_trait;
-use futures::stream::BoxStream;
-use hive_vfs::{FileMode, Metadata, Vfs};
 use mlua::{ExternalResult, Function, Lua, String as LuaString, Table, UserData};
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::pin::Pin;
-use std::sync::Arc;
-use tokio::io::{AsyncRead, AsyncReadExt};
-use tokio::sync::{RwLock, RwLockReadGuard};
+use std::path::{Path, PathBuf};
+use tokio::fs;
+use tokio::io::AsyncReadExt;
 
-/// Shared, immutable source code storage.
 #[derive(Debug, Clone)]
-pub struct Source(Arc<SourceInner>);
-
-#[derive(Debug)]
-struct SourceInner {
-  vfs: Pin<Box<dyn DebugVfs<File = Pin<Box<dyn AsyncRead + Send + Sync>>> + Send + Sync>>,
-  cache: RwLock<HashMap<String, Vec<u8>>>,
+pub struct Source {
+  base: PathBuf,
 }
 
-trait DebugVfs: Debug + Vfs {}
-impl<T: Debug + Vfs> DebugVfs for T {}
-
 impl Source {
-  pub fn new<T>(vfs: T) -> Self
-  where
-    T: Vfs + Debug + Send + Sync + 'static,
-    T::File: Send + Sync + 'static,
-  {
-    Self(Arc::new(SourceInner {
-      vfs: Box::pin(ReadGenericVfs(vfs)),
-      cache: Default::default(),
-    }))
+  pub async fn new(base: impl AsRef<Path>) -> Result<Self> {
+    let base = fs::canonicalize(base).await?;
+    Ok(Self { base })
   }
 
-  pub async fn get<'a>(&'a self, path: &str) -> Result<RwLockReadGuard<'a, [u8]>> {
-    let read_guard =
-      RwLockReadGuard::try_map(self.0.cache.read().await, |x| x.get(path).map(|x| &x[..]));
-    match read_guard {
-      Ok(x) => Ok(x),
-      Err(_) => {
-        let mut f = self.0.vfs.open_file(path, FileMode::Read).await?;
-        let mut buf = Vec::new();
-        f.read_to_end(&mut buf).await?;
-        drop(read_guard);
-        let mut write_guard = self.0.cache.write().await;
-        write_guard.insert(path.to_string(), buf);
-        drop(write_guard);
-        Ok(RwLockReadGuard::map(self.0.cache.read().await, |x| {
-          x.get(path).unwrap().as_ref()
-        }))
-      }
-    }
+  pub async fn get(&self, path: &str) -> Result<fs::File> {
+    let path = normalize_path_str(path);
+    Ok(fs::File::open(self.base.join(path)).await?)
   }
 
-  pub(crate) async fn load<'a>(
+  pub async fn get_bytes(&self, path: &str) -> Result<Vec<u8>> {
+    let mut code_file = self.get(path).await?;
+    let mut code = if let Ok(metadata) = code_file.metadata().await {
+      Vec::with_capacity(metadata.len() as _)
+    } else {
+      Vec::new()
+    };
+    code_file.read_to_end(&mut code).await?;
+    Ok(code)
+  }
+
+  pub fn exists(&self, path: &str) -> bool {
+    self.base.join(normalize_path_str(path)).exists()
+  }
+
+  pub(crate) async fn load<'lua>(
     &self,
-    lua: &'a Lua,
+    lua: &'lua Lua,
     path: &str,
-    env: Table<'a>,
-  ) -> Result<Function<'a>> {
-    let code = self.get(path).await?;
+    env: Table<'lua>,
+  ) -> Result<Function<'lua>> {
+    let code = self.get_bytes(path).await?;
     let result = lua
-      .load(&*code)
+      .load(&code)
       .set_name(&format!("source:{path}"))?
       .set_environment(env)?
       .into_function()?;
@@ -75,7 +56,7 @@ impl UserData for Source {
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_async_method("exists", |_lua, this, path: LuaString| async move {
       let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
-      Ok(this.0.vfs.exists(path).await.to_lua_err()?)
+      Ok(this.exists(path))
     });
 
     methods.add_async_method(
@@ -85,46 +66,5 @@ impl UserData for Source {
         Ok(this.load(lua, path, env).await.to_lua_err()?)
       },
     )
-  }
-}
-
-#[derive(Debug)]
-struct ReadGenericVfs<T: Vfs + Send + Sync>(T)
-where
-  T::File: 'static;
-
-#[async_trait]
-impl<T: Vfs + Send + Sync> Vfs for ReadGenericVfs<T>
-where
-  T::File: 'static,
-{
-  type File = Pin<Box<dyn AsyncRead + Send + Sync>>;
-
-  async fn open_file(&self, path: &str, mode: FileMode) -> hive_vfs::Result<Self::File> {
-    Ok(Box::pin(self.0.open_file(path, mode).await?))
-  }
-
-  async fn read_dir(&self, path: &str) -> hive_vfs::Result<BoxStream<hive_vfs::Result<String>>> {
-    self.0.read_dir(path).await
-  }
-
-  async fn metadata(&self, path: &str) -> hive_vfs::Result<Metadata> {
-    self.0.metadata(path).await
-  }
-
-  async fn exists(&self, path: &str) -> hive_vfs::Result<bool> {
-    self.0.exists(path).await
-  }
-
-  async fn create_dir(&self, _path: &str) -> hive_vfs::Result<()> {
-    Err(hive_vfs::Error::MethodNotAllowed)
-  }
-
-  async fn remove_file(&self, _path: &str) -> hive_vfs::Result<()> {
-    Err(hive_vfs::Error::MethodNotAllowed)
-  }
-
-  async fn remove_dir(&self, _path: &str) -> hive_vfs::Result<()> {
-    Err(hive_vfs::Error::MethodNotAllowed)
   }
 }

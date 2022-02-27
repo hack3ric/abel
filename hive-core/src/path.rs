@@ -107,3 +107,18 @@ pub fn normalize_path(path: impl AsRef<Path>) -> PathBuf {
   }
   ret
 }
+
+/// Similar to `hive_core::path::normalize_path`, but for `str`s instead of
+/// `Path`s.
+pub fn normalize_path_str(path: &str) -> String {
+  let mut result = Vec::new();
+  let segments = path.split(['/', '\\']).filter(|&x| x != "" && x != ".");
+  for s in segments {
+    if s == ".." {
+      result.pop();
+    } else {
+      result.push(s);
+    }
+  }
+  result.join("/")
+}

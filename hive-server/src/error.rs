@@ -147,13 +147,6 @@ impl From<hive_core::Error> for Error {
         };
         (500, "Lua error", JsonString(msg))
       }
-      Vfs(error) => {
-        if let hive_vfs::Error::NotFound(path) = error {
-          (400, "VFS path not found", json!({ "path": path }))
-        } else {
-          (500, "hive core error", JsonString(error.to_string()))
-        }
-      }
       _ => (500, "hive core error", JsonString(error.to_string())),
     };
     Self {

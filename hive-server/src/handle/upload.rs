@@ -1,7 +1,7 @@
-use crate::util::{json_response, SingleMainLua};
+use crate::util::json_response;
 use crate::{MainState, Result};
 use futures::TryStreamExt;
-use hive_asar::FileArchive;
+use hive_asar::Archive;
 use hive_core::permission::PermissionSet;
 use hive_core::{ErrorKind, Source};
 use hyper::{Body, Request, Response, StatusCode};
@@ -12,7 +12,7 @@ use serde_json::json;
 use std::io::SeekFrom;
 use std::path::PathBuf;
 use tempfile::NamedTempFile;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use tokio::io::AsyncSeekExt;
 use tokio::{fs, io};
 use tokio_util::io::StreamReader;
 
@@ -93,11 +93,15 @@ pub(crate) async fn upload(
     let permissions = if kind == UploadType::Single {
       permissions_result.unwrap_or_else(PermissionSet::new)
     } else {
-      match source.get("/permissions.json").await {
+      match source.get_bytes("/permissions.json").await {
         Ok(bytes) => parse_permissions(&bytes).await?,
         Err(error) => {
-          if let ErrorKind::Vfs(hive_vfs::Error::NotFound(_)) = error.kind() {
-            permissions_result.unwrap_or_else(PermissionSet::new)
+          if let ErrorKind::Io(io_error) = error.kind() {
+            if let tokio::io::ErrorKind::NotFound = io_error.kind() {
+              permissions_result.unwrap_or_else(PermissionSet::new)
+            } else {
+              return Err(error.into());
+            }
           } else {
             return Err(error.into());
           }
@@ -187,22 +191,18 @@ async fn parse_source(
   }
   fs::create_dir(&source_path).await?;
 
+  file.seek(SeekFrom::Start(0)).await?;
   match kind {
     UploadType::Single => {
       fs::rename(path, source_path.join("main.lua")).await?;
-      file.seek(SeekFrom::Start(0)).await?;
-      // TODO: hint with length from multipart
-      let mut source_bytes = Vec::new();
-      file.read_to_end(&mut source_bytes).await?;
-      let vfs = SingleMainLua::from_slice(source_bytes);
-      Ok(Source::new(vfs))
+      Ok(Source::new(source_path).await?)
     }
     UploadType::Multi => {
-      fs::rename(&path, source_path.join("main.asar")).await?;
-      let vfs = FileArchive::new(path)
+      let mut archive = Archive::new(file)
         .await
         .map_err(|error| (400, "error parsing ASAR archive", error.to_string()))?;
-      Ok(Source::new(vfs))
+      archive.extract(&source_path).await?;
+      Ok(Source::new(source_path).await?)
     }
   }
 }

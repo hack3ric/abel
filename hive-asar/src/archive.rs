@@ -9,13 +9,13 @@ use tokio::fs;
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt, Take};
 
 #[derive(Debug)]
-pub struct Archive<R: AsyncRead + AsyncSeek + Unpin> {
+pub struct Archive<R: AsyncRead + AsyncSeek + Send + Sync + Unpin> {
   pub(crate) offset: u64,
   pub(crate) header: Directory,
   pub(crate) reader: R,
 }
 
-impl<R: AsyncRead + AsyncSeek + Unpin> Archive<R> {
+impl<R: AsyncRead + AsyncSeek + Send + Sync + Unpin> Archive<R> {
   pub async fn new(mut reader: R) -> io::Result<Self> {
     reader.seek(SeekFrom::Start(12)).await?;
     let header_size = reader.read_u32_le().await?;
@@ -62,13 +62,13 @@ impl<R: AsyncRead + AsyncSeek + Unpin> Archive<R> {
   }
 }
 
-fn extract_entry<'a, R: AsyncRead + AsyncSeek + Unpin>(
+fn extract_entry<'a, R: AsyncRead + AsyncSeek + Send + Sync + Unpin>(
   reader: &'a mut R,
   offset: u64,
   name: &'a str,
   entry: &'a Entry,
   path: &'a Path,
-) -> Pin<Box<dyn Future<Output = io::Result<()>> + 'a>> {
+) -> Pin<Box<dyn Future<Output = io::Result<()>> + Send + Sync + 'a>> {
   Box::pin(async move {
     match entry {
       Entry::File(file) => extract_file(reader, offset, name, file, path).await?,
@@ -78,7 +78,7 @@ fn extract_entry<'a, R: AsyncRead + AsyncSeek + Unpin>(
   })
 }
 
-async fn extract_file<R: AsyncRead + AsyncSeek + Unpin>(
+async fn extract_file<R: AsyncRead + AsyncSeek + Send + Sync + Unpin>(
   reader: &mut R,
   offset: u64,
   name: &str,
@@ -91,7 +91,7 @@ async fn extract_file<R: AsyncRead + AsyncSeek + Unpin>(
   Ok(())
 }
 
-async fn extract_dir<R: AsyncRead + AsyncSeek + Unpin>(
+async fn extract_dir<R: AsyncRead + AsyncSeek + Send + Sync + Unpin>(
   reader: &mut R,
   offset: u64,
   name: &str,
@@ -106,18 +106,18 @@ async fn extract_dir<R: AsyncRead + AsyncSeek + Unpin>(
   Ok(())
 }
 
-pub struct File<R: AsyncRead + AsyncSeek + Unpin> {
+pub struct File<R: AsyncRead + AsyncSeek + Send + Sync + Unpin> {
   pub(crate) metadata: FileMetadata,
   pub(crate) content: Take<R>,
 }
 
-impl<R: AsyncRead + AsyncSeek + Unpin> File<R> {
+impl<R: AsyncRead + AsyncSeek + Send + Sync + Unpin> File<R> {
   pub fn metadata(&self) -> &FileMetadata {
     &self.metadata
   }
 }
 
-impl<R: AsyncRead + AsyncSeek + Unpin> AsyncRead for File<R> {
+impl<R: AsyncRead + AsyncSeek + Send + Sync + Unpin> AsyncRead for File<R> {
   fn poll_read(
     mut self: Pin<&mut Self>,
     cx: &mut Context<'_>,
