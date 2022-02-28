@@ -174,25 +174,31 @@ impl Sandbox {
   }
 
   async fn load_service(&self, service: Service) -> Result<Ref<'_, LoadedService>> {
-    let mut self_loaded = self.loaded.borrow_mut();
     let service_guard = service.try_upgrade()?;
     let name = service_guard.name();
+    let mut self_loaded = self.loaded.borrow_mut();
     if let Some((name_owned, loaded)) = self_loaded.remove_entry(name) {
       if !loaded.service.is_dropped() && loaded.service.ptr_eq(&service) {
         self_loaded.insert(name_owned, loaded);
         drop(self_loaded);
         return Ok(Ref::map(self.loaded.borrow(), |x| x.get(name).unwrap()));
+      } else {
+        self.lua.remove_registry_value(loaded.internal)?;
+        self.lua.remove_registry_value(loaded.local_env)?;
       }
     }
+    drop(self_loaded);
     let source = service_guard.source();
     let (local_env, internal, _) = self
       .run_source(name, source.clone(), service_guard.permissions_arc())
       .await?;
+
     let loaded = LoadedService {
       service: service.clone(),
       local_env,
       internal,
     };
+    let mut self_loaded = self.loaded.borrow_mut();
     self_loaded.insert(name.into(), loaded);
     drop(self_loaded);
     Ok(Ref::map(self.loaded.borrow(), |x| x.get(name).unwrap()))

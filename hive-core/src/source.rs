@@ -4,21 +4,23 @@ use mlua::{ExternalResult, Function, Lua, String as LuaString, Table, UserData};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
+use tokio::sync::RwLock;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct Source {
-  base: PathBuf,
+  base: Arc<RwLock<PathBuf>>,
 }
 
 impl Source {
   pub async fn new(base: impl AsRef<Path>) -> Result<Self> {
     let base = fs::canonicalize(base).await?;
-    Ok(Self { base })
+    Ok(Self { base: Arc::new(RwLock::new(base)) })
   }
 
   pub async fn get(&self, path: &str) -> Result<fs::File> {
     let path = normalize_path_str(path);
-    Ok(fs::File::open(self.base.join(path)).await?)
+    Ok(fs::File::open(self.base.read().await.join(path)).await?)
   }
 
   pub async fn get_bytes(&self, path: &str) -> Result<Vec<u8>> {
@@ -32,8 +34,15 @@ impl Source {
     Ok(code)
   }
 
-  pub fn exists(&self, path: &str) -> bool {
-    self.base.join(normalize_path_str(path)).exists()
+  pub async fn exists(&self, path: &str) -> bool {
+    self.base.read().await.join(normalize_path_str(path)).exists()
+  }
+
+  pub async fn rename_base(&self, new_path: PathBuf) -> Result<()> {
+    let mut base = self.base.write().await;
+    fs::rename(&*base, &new_path).await?;
+    *base = new_path;
+    Ok(())
   }
 
   pub(crate) async fn load<'lua>(
@@ -56,7 +65,7 @@ impl UserData for Source {
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_async_method("exists", |_lua, this, path: LuaString| async move {
       let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
-      Ok(this.exists(path))
+      Ok(this.exists(path).await)
     });
 
     methods.add_async_method(

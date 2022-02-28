@@ -144,7 +144,6 @@ impl ServicePool {
 
     let service_impl = sandbox_pool
       .scope(move |sandbox| async move {
-        // TODO: init permissions
         let permissions = Arc::new(permissions);
         let (paths, local_env, internal) = sandbox
           .pre_create_service(&name, source.clone(), permissions.clone())
