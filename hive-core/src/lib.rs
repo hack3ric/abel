@@ -8,8 +8,7 @@ mod source;
 mod task;
 
 pub use error::{Error, ErrorKind, Result};
-pub use lua::request::Request;
-pub use lua::response::Response;
+pub use lua::http::{Request, Response};
 pub use mlua::Error as LuaError;
 pub use service::{Service, ServiceGuard};
 pub use source::Source;

@@ -1,5 +1,10 @@
+mod request;
+mod response;
+
+pub use request::Request;
+pub use response::{create_fn_create_response, Response};
+
 use crate::permission::{Permission, PermissionSet};
-use crate::{Request, Response};
 use hyper::client::HttpConnector;
 use hyper::Client;
 use hyper_tls::HttpsConnector;

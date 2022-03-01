@@ -1,4 +1,4 @@
-use super::byte_stream::ByteStream;
+use crate::lua::byte_stream::ByteStream;
 use hyper::header::HeaderName;
 use hyper::http::{HeaderMap, HeaderValue, StatusCode};
 use hyper::Body;

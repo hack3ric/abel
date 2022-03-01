@@ -1,8 +1,6 @@
-pub mod request;
-pub mod response;
-
 mod byte_stream;
 mod context;
+pub mod http;
 mod modules;
 mod sandbox;
 mod table;

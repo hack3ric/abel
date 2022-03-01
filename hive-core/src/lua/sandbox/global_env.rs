@@ -1,4 +1,4 @@
-use crate::lua::response::create_fn_create_response;
+use crate::lua::http::create_fn_create_response;
 use crate::lua::table::{
   create_fn_table_dump, create_fn_table_insert_shared_3, create_fn_table_scope,
 };

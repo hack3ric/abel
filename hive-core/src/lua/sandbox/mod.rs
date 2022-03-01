@@ -2,13 +2,15 @@ mod global_env;
 mod local_env;
 
 use super::context::remove_service_contexts;
+use super::http::Response;
 use super::LuaTableExt;
+use crate::lua::http::Request;
 use crate::path::PathMatcher;
 use crate::permission::PermissionSet;
 use crate::service::Service;
 use crate::source::Source;
 use crate::ErrorKind::*;
-use crate::{Request, Response, Result};
+use crate::Result;
 use global_env::modify_global_env;
 use hyper::Body;
 use local_env::create_local_env;

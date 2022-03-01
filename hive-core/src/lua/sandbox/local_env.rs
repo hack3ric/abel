@@ -1,5 +1,6 @@
 use crate::lua::context::create_context;
-use crate::lua::modules::{create_module_fs, create_module_permission, create_module_request};
+use crate::lua::http::create_module_request;
+use crate::lua::modules::{create_module_fs, create_module_permission};
 use crate::lua::LuaTableExt;
 use crate::permission::PermissionSet;
 use crate::{Result, Source};
