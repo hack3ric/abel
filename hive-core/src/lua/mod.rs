@@ -10,7 +10,7 @@ mod table;
 pub use sandbox::Sandbox;
 
 use crate::Result;
-use mlua::{FromLua, Table};
+use mlua::{ExternalError, FromLua, Table};
 use std::sync::Arc;
 
 pub trait LuaTableExt<'a> {
@@ -62,5 +62,11 @@ impl BadArgument {
       pos,
       msg: msg.into().into(),
     }
+  }
+}
+
+impl From<BadArgument> for mlua::Error {
+  fn from(x: BadArgument) -> mlua::Error {
+    x.to_lua_err()
   }
 }

@@ -234,7 +234,7 @@ impl Serialize for TableRepr {
 }
 
 fn userdata_not_shared_table(fn_name: &'static str, pos: u8) -> mlua::Error {
-  BadArgument::new(fn_name, pos, "failed to borrow userdata as shared table").to_lua_err()
+  BadArgument::new(fn_name, pos, "failed to borrow userdata as shared table").into()
 }
 
 fn expected_table(fn_name: &'static str, pos: u8, found: &str) -> mlua::Error {
@@ -243,7 +243,7 @@ fn expected_table(fn_name: &'static str, pos: u8, found: &str) -> mlua::Error {
     pos,
     format!("expected table or shared table, found {found}"),
   )
-  .to_lua_err()
+  .into()
 }
 
 pub fn create_fn_table_dump(lua: &Lua) -> mlua::Result<Function> {
@@ -285,7 +285,7 @@ pub fn create_fn_table_scope(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn out_of_bounds(fn_name: &'static str, pos: u8) -> mlua::Error {
-  BadArgument::new(fn_name, pos, "out of bounds").to_lua_err()
+  BadArgument::new(fn_name, pos, "out of bounds").into()
 }
 
 pub fn create_fn_table_insert_shared_3(lua: &Lua) -> mlua::Result<Function> {
