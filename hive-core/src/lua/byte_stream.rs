@@ -4,12 +4,18 @@ use futures::{StreamExt, TryStreamExt};
 use hyper::body::Bytes;
 use hyper::Body;
 use mlua::{AnyUserData, ExternalResult, LuaSerdeExt, UserData, UserDataMethods};
+use tokio::io::AsyncRead;
+use tokio_util::io::ReaderStream;
 
 pub struct ByteStream(pub(crate) BoxStream<'static, Result<Bytes>>);
 
 impl ByteStream {
   pub fn from_body(body: Body) -> Self {
     Self(body.map_err(crate::Error::from).boxed())
+  }
+
+  pub fn from_async_read(r: impl AsyncRead + Send + 'static) -> Self {
+    Self(ReaderStream::new(r).map_err(crate::Error::from).boxed())
   }
 
   async fn to_bytes(&mut self) -> Result<Vec<u8>> {
