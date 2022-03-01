@@ -105,11 +105,13 @@ pub fn create_fn_create_response(lua: &Lua) -> mlua::Result<Function> {
       })
       .unwrap_or_else(|| Ok(HeaderMap::new()))?;
 
-    let body = params
-      .raw_get::<_, Option<mlua::Value>>("body")?
-      .ok_or("missing body in response")
-      .to_lua_err()?;
-    let body = Some(serde_json::to_value(body).to_lua_err()?.to_string().into());
+    // TODO: byte stream as body
+    let body = if let Some(body) = params.raw_get::<_, Option<mlua::Value>>("body")? {
+      serde_json::to_value(body).to_lua_err()?.to_string().into()
+    } else {
+      Body::empty()
+    };
+    let body = Some(body);
 
     headers.insert("Content-Type", HeaderValue::from_static("application/json"));
 
