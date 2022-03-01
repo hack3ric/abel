@@ -2,10 +2,10 @@ use crate::path::normalize_path_str;
 use crate::Result;
 use mlua::{ExternalResult, Function, Lua, String as LuaString, Table, UserData};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::fs;
 use tokio::io::AsyncReadExt;
 use tokio::sync::RwLock;
-use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct Source {
@@ -15,7 +15,9 @@ pub struct Source {
 impl Source {
   pub async fn new(base: impl AsRef<Path>) -> Result<Self> {
     let base = fs::canonicalize(base).await?;
-    Ok(Self { base: Arc::new(RwLock::new(base)) })
+    Ok(Self {
+      base: Arc::new(RwLock::new(base)),
+    })
   }
 
   pub async fn get(&self, path: &str) -> Result<fs::File> {
@@ -35,7 +37,9 @@ impl Source {
   }
 
   pub async fn exists(&self, path: &str) -> bool {
-    self.base.read().await.join(normalize_path_str(path)).exists()
+    (self.base.read().await)
+      .join(normalize_path_str(path))
+      .exists()
   }
 
   pub async fn rename_base(&self, new_path: PathBuf) -> Result<()> {

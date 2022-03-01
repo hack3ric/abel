@@ -1,5 +1,5 @@
 use crate::lua::context::create_context;
-use crate::lua::modules::{create_module_permission, create_module_request};
+use crate::lua::modules::{create_module_fs, create_module_permission, create_module_request};
 use crate::lua::LuaTableExt;
 use crate::permission::PermissionSet;
 use crate::{Result, Source};
@@ -25,10 +25,11 @@ pub(super) fn create_local_env<'a>(
     create_module_permission(lua, permissions.clone())?,
   )?;
 
-  internal.raw_set("source", source)?;
+  internal.raw_set("source", source.clone())?;
 
   let preload: Table = internal.raw_get_path("<internal>", &["package", "preload"])?;
   preload.raw_set("request", create_module_request(lua, permissions)?)?;
+  preload.raw_set("fs", create_module_fs(lua, source)?)?;
 
   Ok((local_env, internal))
 }
