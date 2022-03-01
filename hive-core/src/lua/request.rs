@@ -87,22 +87,24 @@ impl<'lua> FromLua<'lua> for Request {
           .try_into()
           .to_lua_err()?;
 
-        let headers_table: Table = table.raw_get("headers")?;
+        let headers_table: Option<Table> = table.raw_get("headers")?;
         let mut headers = HeaderMap::new();
-        for entry in headers_table.pairs::<LuaString, mlua::Value>() {
-          let (k, v) = entry?;
-          let k = HeaderName::from_bytes(k.as_bytes()).to_lua_err()?;
-          match v {
-            mlua::Value::String(v) => {
-              headers.append(k, HeaderValue::from_bytes(v.as_bytes()).to_lua_err()?);
-            }
-            mlua::Value::Table(vs) => {
-              for v in vs.sequence_values::<LuaString>() {
-                let v = v?;
-                headers.append(&k, HeaderValue::from_bytes(v.as_bytes()).to_lua_err()?);
+        if let Some(headers_table) = headers_table {
+          for entry in headers_table.pairs::<LuaString, mlua::Value>() {
+            let (k, v) = entry?;
+            let k = HeaderName::from_bytes(k.as_bytes()).to_lua_err()?;
+            match v {
+              mlua::Value::String(v) => {
+                headers.append(k, HeaderValue::from_bytes(v.as_bytes()).to_lua_err()?);
               }
+              mlua::Value::Table(vs) => {
+                for v in vs.sequence_values::<LuaString>() {
+                  let v = v?;
+                  headers.append(&k, HeaderValue::from_bytes(v.as_bytes()).to_lua_err()?);
+                }
+              }
+              _ => return Err("expected string or table".to_lua_err()),
             }
-            _ => return Err("expected string or table".to_lua_err()),
           }
         }
 
