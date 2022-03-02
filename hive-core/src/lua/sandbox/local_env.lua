@@ -55,7 +55,6 @@ local local_env = {
     register = register,
     context = nil,
     permission = nil,
-    create_response = create_response,
     current_worker = current_worker,
   },
   require = require,

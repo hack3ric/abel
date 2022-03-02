@@ -1,5 +1,4 @@
-use crate::lua::http::create_fn_create_response;
-use crate::lua::table::{
+use crate::lua::context::{
   create_fn_table_dump, create_fn_table_insert_shared_3, create_fn_table_scope,
 };
 use crate::Result;
@@ -15,7 +14,6 @@ pub(super) fn modify_global_env(lua: &Lua) -> Result<()> {
   )?;
 
   let globals = lua.globals();
-  globals.raw_set("create_response", create_fn_create_response(lua)?)?;
   globals.raw_set("current_worker", create_fn_current_worker(lua)?)?;
 
   let table_module = globals.raw_get::<_, Table>("table")?;

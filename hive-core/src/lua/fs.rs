@@ -209,7 +209,7 @@ fn create_fn_fs_open(lua: &Lua, source: Source) -> mlua::Result<Function> {
   })
 }
 
-pub fn create_module_fs(lua: &Lua, source: Source) -> mlua::Result<Function> {
+pub fn create_preload_fs(lua: &Lua, source: Source) -> mlua::Result<Function> {
   lua.create_function(move |lua, ()| {
     let fs_table = lua.create_table()?;
     fs_table.raw_set("open", create_fn_fs_open(lua, source.clone())?)?;

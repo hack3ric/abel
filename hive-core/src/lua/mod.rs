@@ -1,9 +1,10 @@
+pub mod http;
+
 mod byte_stream;
 mod context;
-pub mod http;
-mod modules;
+mod fs;
+mod permission;
 mod sandbox;
-mod table;
 
 pub use sandbox::Sandbox;
 
