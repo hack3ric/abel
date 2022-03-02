@@ -2,8 +2,8 @@ use crate::lua::byte_stream::ByteStream;
 use crate::lua::BadArgument;
 use crate::Source;
 use mlua::{
-  AnyUserData, ExternalError, ExternalResult, Function, Lua, String as LuaString, UserData,
-  UserDataMethods, Variadic,
+  AnyUserData, ExternalError, ExternalResult, Function, Lua, MultiValue, String as LuaString,
+  ToLua, UserData, UserDataMethods, Variadic,
 };
 use std::io::SeekFrom;
 use tokio::fs::{File, OpenOptions};
@@ -63,30 +63,84 @@ enum ReadMode {
 }
 
 impl ReadMode {
-  fn from_lua(mode: Option<mlua::Value>) -> mlua::Result<Self> {
-    if let Some(mode) = mode {
-      match mode {
-        mlua::Value::Integer(i) => {
-          if i > 0 {
-            return Ok(Self::Exact(i as _));
-          }
+  fn from_lua(mode: mlua::Value) -> mlua::Result<Self> {
+    match mode {
+      mlua::Value::Integer(i) => {
+        if i > 0 {
+          return Ok(Self::Exact(i as _));
         }
-        mlua::Value::String(s) => match s.as_bytes() {
-          b"a" => return Ok(Self::All),
-          b"l" => return Ok(Self::Line),
-          b"L" => return Ok(Self::LineWithDelimiter),
-          _ => (),
-        },
-        _ => (),
       }
-      Err("invalid file read mode".to_lua_err())
-    } else {
-      Ok(Self::Line)
+      mlua::Value::String(s) => match s.as_bytes() {
+        b"a" => return Ok(Self::All),
+        b"l" => return Ok(Self::Line),
+        b"L" => return Ok(Self::LineWithDelimiter),
+        _ => (),
+      },
+      _ => (),
     }
+    Err("invalid file read mode".to_lua_err())
   }
 }
 
 pub struct LuaFile(BufReader<File>);
+
+async fn read_once<'lua>(
+  this: &mut LuaFile,
+  lua: &'lua Lua,
+  mode: ReadMode,
+) -> mlua::Result<mlua::Value<'lua>> {
+  use ReadMode::*;
+  match mode {
+    All => {
+      let file_ref = this.0.get_mut();
+      let file_len = file_ref.metadata().await?.len();
+      let pos = file_ref.seek(SeekFrom::Current(0)).await?;
+      let len = file_len - pos;
+      let mut buf = Vec::with_capacity(len as _);
+      this.0.read_to_end(&mut buf).await?;
+      Ok(mlua::Value::String(lua.create_string(&buf)?))
+    }
+    Exact(len) => {
+      if len == 0 {
+        "".to_lua(lua)
+      } else {
+        let len = len.min(this.0.get_ref().metadata().await?.len());
+        let mut buf = vec![0; len as _];
+        let actual_len = this.0.read_exact(&mut buf).await?;
+        if actual_len == 0 {
+          Ok(mlua::Value::Nil)
+        } else {
+          buf.truncate(actual_len);
+          Ok(mlua::Value::String(lua.create_string(&buf)?))
+        }
+      }
+    }
+    Line => {
+      let mut buf = String::new();
+      let bytes = this.0.read_line(&mut buf).await?;
+      if bytes == 0 {
+        Ok(mlua::Value::Nil)
+      } else {
+        if buf.ends_with('\n') {
+          buf.pop();
+        }
+        if buf.ends_with('\r') {
+          buf.pop();
+        }
+        Ok(mlua::Value::String(lua.create_string(&buf)?))
+      }
+    }
+    LineWithDelimiter => {
+      let mut buf = String::new();
+      let bytes = this.0.read_line(&mut buf).await?;
+      if bytes == 0 {
+        Ok(mlua::Value::Nil)
+      } else {
+        Ok(mlua::Value::String(lua.create_string(&buf)?))
+      }
+    }
+  }
+}
 
 impl UserData for LuaFile {
   fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
@@ -95,56 +149,27 @@ impl UserData for LuaFile {
       Ok(())
     });
 
-    // TODO: multiple modes, according to Lua
     methods.add_async_function(
       "read",
-      |lua, (this, mode): (AnyUserData, Option<mlua::Value>)| async move {
-        use ReadMode::*;
+      |lua, (this, modes): (AnyUserData, MultiValue)| async move {
         let mut this = this.borrow_mut::<Self>()?;
-        let mode = ReadMode::from_lua(mode)
-          .map_err(|error| BadArgument::new("read", 1, error.to_string()))?;
-        match mode {
-          All => {
-            let file_ref = this.0.get_mut();
-            let file_len = file_ref.metadata().await?.len();
-            let pos = file_ref.seek(SeekFrom::Current(0)).await?;
-            let len = file_len - pos;
-            let mut buf = Vec::with_capacity(len as _);
-            this.0.read_to_end(&mut buf).await?;
-            Ok(lua.create_string(&buf))
-          }
-          Exact(len) => {
-            let len = len.min(this.0.get_ref().metadata().await?.len() + 1);
-            let mut buf = vec![0; len as _];
-            let actual_len = this.0.read_exact(&mut buf).await?;
-            buf.truncate(actual_len);
-            Ok(lua.create_string(&buf))
-          }
-          Line => {
-            let mut buf = String::new();
-            let bytes = this.0.read_line(&mut buf).await?;
-            if bytes == 0 {
-              Err("eof reached".to_lua_err())
+        let mut results = Vec::new();
+        if modes.is_empty() {
+          results.push(read_once(&mut this, lua, ReadMode::Line).await?);
+        } else {
+          for (i, mode) in modes.into_iter().enumerate() {
+            let mode = ReadMode::from_lua(mode)
+              .map_err(|error| BadArgument::new("read", i as u8 + 1, error.to_string()))?;
+            let result = read_once(&mut this, lua, mode).await?;
+            if let mlua::Value::Nil = result {
+              results.push(result);
+              break;
             } else {
-              if buf.ends_with('\n') {
-                buf.pop();
-              }
-              if buf.ends_with('\r') {
-                buf.pop();
-              }
-              Ok(lua.create_string(&buf))
-            }
-          }
-          LineWithDelimiter => {
-            let mut buf = String::new();
-            let bytes = this.0.read_line(&mut buf).await?;
-            if bytes == 0 {
-              Err("eof reached".to_lua_err())
-            } else {
-              Ok(lua.create_string(&buf))
+              results.push(result);
             }
           }
         }
+        Ok(MultiValue::from_vec(results))
       },
     );
 
