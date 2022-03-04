@@ -1,5 +1,6 @@
 use crate::permission::Permission;
 use backtrace::Backtrace;
+use hyper::StatusCode;
 use std::fmt::{self, Debug, Formatter};
 use thiserror::Error;
 
@@ -19,6 +20,7 @@ impl Debug for Error {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ErrorKind {
   #[error("invalid service name: {0}")]
   InvalidServiceName(Box<str>),
@@ -39,6 +41,13 @@ pub enum ErrorKind {
   Regex(#[from] regex::Error),
   #[error(transparent)]
   Hyper(#[from] hyper::Error),
+
+  #[error("{error} ({detail:?})")]
+  LuaCustom {
+    status: StatusCode,
+    error: String,
+    detail: serde_json::Value,
+  },
 }
 
 impl Error {
@@ -46,12 +55,8 @@ impl Error {
     &self.kind
   }
 
-  pub fn backtrace(&self) -> Option<&Backtrace> {
-    self.backtrace.as_ref()
-  }
-
-  pub fn into_backtrace(self) -> Option<Backtrace> {
-    self.backtrace
+  pub fn into_parts(self) -> (ErrorKind, Option<Backtrace>) {
+    (self.kind, self.backtrace)
   }
 }
 

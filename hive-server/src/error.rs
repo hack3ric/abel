@@ -3,7 +3,7 @@ use backtrace::Backtrace;
 use hive_core::LuaError;
 use hyper::{Body, Method, Response, StatusCode};
 use serde_json::json;
-use serde_json::Value::{Object as JsonObject, String as JsonString};
+use serde_json::Value::Object as JsonObject;
 use std::borrow::Cow;
 use std::fmt::{self, Debug, Display, Formatter};
 
@@ -129,14 +129,16 @@ impl From<&'static str> for Error {
 impl From<hive_core::Error> for Error {
   fn from(error: hive_core::Error) -> Self {
     use hive_core::ErrorKind::*;
-    let (status, error_, detail) = match error.kind() {
-      InvalidServiceName(name) => (400, "invalid service name", json!({ "name": name })),
-      ServiceNotFound(name) => (404, "service not found", json!({ "name": name })),
+    let (kind, backtrace) = error.into_parts();
+    let mut this: Self = match kind {
+      InvalidServiceName(name) => (400, "invalid service name", json!({ "name": name })).into(),
+      ServiceNotFound(name) => (404, "service not found", json!({ "name": name })).into(),
       ServicePathNotFound { service, path } => (
         404,
         "path not found in service",
         json!({ "service": service, "path": path }),
-      ),
+      )
+        .into(),
       Lua(error) => {
         let msg = match error {
           LuaError::CallbackError { traceback, cause } => match cause.as_ref() {
@@ -145,14 +147,17 @@ impl From<hive_core::Error> for Error {
           },
           _ => error.to_string(),
         };
-        (500, "Lua error", JsonString(msg))
+        (500, "Lua error", msg).into()
       }
-      _ => (500, "hive core error", JsonString(error.to_string())),
+      LuaCustom {
+        status,
+        error,
+        detail,
+      } => (status, error, detail.clone()).into(),
+      kind => (500, "hive core error", kind.to_string()).into(),
     };
-    Self {
-      backtrace: error.into_backtrace(),
-      ..(status, error_, detail).into()
-    }
+    this.backtrace = backtrace;
+    this
   }
 }
 

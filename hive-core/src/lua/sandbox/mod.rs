@@ -14,7 +14,10 @@ use crate::Result;
 use global_env::modify_global_env;
 use hyper::Body;
 use local_env::create_local_env;
-use mlua::{Function, Lua, RegistryKey, Table};
+use mlua::{
+  ExternalResult, FromLuaMulti, Function, Lua, LuaSerdeExt, MultiValue, RegistryKey, Table,
+  ToLuaMulti,
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cell::{Ref, RefCell};
@@ -46,6 +49,37 @@ impl Sandbox {
 }
 
 impl Sandbox {
+  async fn pcall<'a, T, R>(&'a self, f: Function<'a>, v: T) -> Result<R>
+  where
+    T: ToLuaMulti<'a>,
+    R: FromLuaMulti<'a>,
+  {
+    let pcall: Function = self.lua.globals().raw_get("pcall")?;
+    let error: Function = self.lua.globals().raw_get("error")?;
+    let (succeeded, obj) = pcall.call_async::<_, (bool, MultiValue)>((f, v)).await?;
+    if succeeded {
+      Ok(FromLuaMulti::from_lua_multi(obj, &self.lua)?)
+    } else {
+      let error_obj = obj.into_vec().remove(0);
+      if let mlua::Value::Table(custom_error) = error_obj {
+        Err(
+          crate::ErrorKind::LuaCustom {
+            status: custom_error
+              .raw_get::<_, u16>("status")?
+              .try_into()
+              .to_lua_err()?,
+            error: custom_error.raw_get("error")?,
+            detail: (self.lua).from_value(custom_error.raw_get::<_, mlua::Value>("detail")?)?,
+          }
+          .into(),
+        )
+      } else {
+        error.call(error_obj)?;
+        unreachable!()
+      }
+    }
+  }
+
   pub async fn run(
     &self,
     service: Service,
@@ -79,7 +113,7 @@ impl Sandbox {
       if path == matcher.as_str() {
         let handler = f.raw_get::<u8, Function>(2)?;
         let req = Request::new(req, params);
-        let resp = handler.call_async(req).await?;
+        let resp = self.pcall(handler, req).await?;
         return Ok(resp);
       }
     }

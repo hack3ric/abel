@@ -8,7 +8,7 @@ use crate::permission::{Permission, PermissionSet};
 use hyper::client::HttpConnector;
 use hyper::Client;
 use hyper_tls::HttpsConnector;
-use mlua::{ExternalError, ExternalResult, Function, Lua, Table};
+use mlua::{ExternalError, ExternalResult, Function, Lua};
 use nonzero_ext::nonzero;
 use once_cell::sync::Lazy;
 use response::create_fn_create_response;
@@ -23,14 +23,14 @@ pub fn create_preload_http(lua: &Lua, permissions: Arc<PermissionSet>) -> mlua::
     let http = lua.create_table()?;
 
     http.raw_set("request", create_fn_request(lua, permissions.clone())?)?;
-    http.raw_set("create_response", create_fn_create_response(lua)?)?;
+    http.raw_set("Response", create_fn_create_response(lua)?)?;
 
     Ok(http)
   })
 }
 
 fn create_fn_request(lua: &Lua, permissions: Arc<PermissionSet>) -> mlua::Result<Function> {
-  lua.create_async_function(move |_lua, (_this, req): (Table, Request)| {
+  lua.create_async_function(move |_lua, req: Request| {
     let permissions = permissions.clone();
     async move {
       if let Some(auth) = req.uri.authority() {
