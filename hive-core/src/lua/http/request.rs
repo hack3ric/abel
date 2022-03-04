@@ -1,9 +1,11 @@
+use crate::lua::byte_stream::ByteStream;
 use crate::path::Params;
 use hyper::header::{HeaderName, HeaderValue};
 use hyper::http::request::Parts;
 use hyper::{Body, HeaderMap, Method, Uri};
 use mlua::{
-  ExternalError, ExternalResult, FromLua, Lua, String as LuaString, Table, ToLua, UserData,
+  AnyUserData, ExternalError, ExternalResult, FromLua, Lua, String as LuaString, Table, ToLua,
+  UserData,
 };
 
 #[derive(Debug)]
@@ -12,7 +14,7 @@ pub struct Request {
   /// Must be absolute
   pub(crate) uri: Uri,
   pub(crate) headers: HeaderMap,
-  pub(crate) body: Body,
+  pub(crate) body: Option<Body>,
   /// Only used in Hive core
   params: Option<Params>,
 }
@@ -22,7 +24,7 @@ impl Request {
   pub fn new(req: hyper::Request<Body>, params: Params) -> Self {
     let (Parts { method, uri, headers, .. }, body) = req.into_parts();
     let params = Some(params);
-    Self { method, uri, headers, body, params }
+    Self { method, uri, headers, body: Some(body), params }
   }
 }
 
@@ -32,7 +34,7 @@ impl Default for Request {
       method: Method::GET,
       uri: Uri::default(),
       headers: HeaderMap::new(),
-      body: Body::empty(),
+      body: Some(Body::empty()),
       params: None,
     }
   }
@@ -62,7 +64,20 @@ impl UserData for Request {
 
     fields.add_field_method_get("method", |lua, this| this.method.as_str().to_lua(lua));
     fields.add_field_method_get("uri", |_lua, this| Ok(this.uri.to_string()));
-    // TODO: headers and body
+
+    fields.add_field_function_get("body", |lua, this| {
+      let mut this_ = this.borrow_mut::<Self>()?;
+      let body = this_.body.take();
+      if let Some(body) = body {
+        let x = ByteStream::from_body(body).to_lua(lua)?;
+        this.set_named_user_value("body", x.clone())?;
+        Ok(x)
+      } else {
+        this.get_named_user_value("body")
+      }
+    });
+
+    // TODO: headers
   }
 }
 
@@ -117,6 +132,15 @@ impl<'lua> FromLua<'lua> for Request {
           ..Default::default()
         })
       }
+      mlua::Value::UserData(x) => {
+        let mut u = x.take::<Self>()?;
+        if u.body.is_none() {
+          let t = x.get_named_user_value::<_, AnyUserData>("body")?;
+          let t = t.take::<ByteStream>()?;
+          u.body = Some(Body::wrap_stream(t.0));
+        }
+        Ok(u)
+      }
       _ => Err("expected string or table".to_lua_err()),
     }
   }
@@ -126,6 +150,6 @@ impl From<Request> for hyper::Request<Body> {
   fn from(x: Request) -> Self {
     let mut builder = hyper::Request::builder().method(x.method).uri(x.uri);
     *builder.headers_mut().unwrap() = x.headers;
-    builder.body(x.body).unwrap()
+    builder.body(x.body.unwrap()).unwrap()
   }
 }

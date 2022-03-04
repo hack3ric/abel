@@ -3,7 +3,8 @@ use hyper::header::HeaderName;
 use hyper::http::{HeaderMap, HeaderValue, StatusCode};
 use hyper::Body;
 use mlua::{
-  AnyUserData, ExternalError, ExternalResult, Function, Lua, Table, ToLua, UserData, UserDataFields,
+  AnyUserData, ExternalError, ExternalResult, FromLua, Function, Lua, Table, ToLua, UserData,
+  UserDataFields,
 };
 
 pub struct Response {
@@ -13,32 +14,6 @@ pub struct Response {
 }
 
 impl Response {
-  pub(crate) fn from_value(value: mlua::Value) -> mlua::Result<Self> {
-    use mlua::Value::*;
-    match value {
-      Table(_) => {
-        let mut headers = HeaderMap::new();
-        headers.insert("content-type", HeaderValue::from_static("application/json"));
-        Ok(Self {
-          status: StatusCode::OK,
-          headers,
-          body: Some(serde_json::to_value(value).to_lua_err()?.to_string().into()),
-        })
-      }
-      UserData(x) => {
-        // move user value out
-        let mut u = x.take::<Self>()?;
-        if u.body.is_none() {
-          let t = x.get_named_user_value::<_, AnyUserData>("body")?;
-          let t = t.take::<ByteStream>()?;
-          u.body = Some(Body::wrap_stream(t.0));
-        }
-        Ok(u)
-      }
-      _ => Err("cannot convert to response".to_lua_err()),
-    }
-  }
-
   pub(crate) fn from_hyper(resp: hyper::Response<Body>) -> Self {
     let (parts, body) = resp.into_parts();
     Self {
@@ -64,6 +39,33 @@ impl UserData for Response {
       }
     });
     // TODO: headers
+  }
+}
+
+impl<'lua> FromLua<'lua> for Response {
+  fn from_lua(value: mlua::Value, _lua: &Lua) -> mlua::Result<Self> {
+    match value {
+      mlua::Value::Table(_) => {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", HeaderValue::from_static("application/json"));
+        Ok(Self {
+          status: StatusCode::OK,
+          headers,
+          body: Some(serde_json::to_value(value).to_lua_err()?.to_string().into()),
+        })
+      }
+      mlua::Value::UserData(x) => {
+        // move user value out
+        let mut u = x.take::<Self>()?;
+        if u.body.is_none() {
+          let t = x.get_named_user_value::<_, AnyUserData>("body")?;
+          let t = t.take::<ByteStream>()?;
+          u.body = Some(Body::wrap_stream(t.0));
+        }
+        Ok(u)
+      }
+      _ => Err("cannot convert to response".to_lua_err()),
+    }
   }
 }
 

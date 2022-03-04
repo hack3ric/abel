@@ -3,6 +3,7 @@ pub mod http;
 mod byte_stream;
 mod context;
 mod fs;
+mod json;
 mod permission;
 mod sandbox;
 

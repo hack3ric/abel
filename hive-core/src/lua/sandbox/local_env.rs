@@ -1,6 +1,7 @@
 use crate::lua::context::create_module_context;
 use crate::lua::fs::create_preload_fs;
 use crate::lua::http::create_preload_http;
+use crate::lua::json::create_preload_json;
 use crate::lua::permission::create_module_permission;
 use crate::lua::LuaTableExt;
 use crate::permission::PermissionSet;
@@ -27,8 +28,9 @@ pub(super) fn create_local_env<'a>(
   internal.raw_set("source", source.clone())?;
 
   let preload: Table = internal.raw_get_path("<internal>", &["package", "preload"])?;
-  preload.raw_set("http", create_preload_http(lua, permissions)?)?;
   preload.raw_set("fs", create_preload_fs(lua, source)?)?;
+  preload.raw_set("http", create_preload_http(lua, permissions)?)?;
+  preload.raw_set("json", create_preload_json(lua)?)?;
 
   Ok((local_env, internal))
 }
