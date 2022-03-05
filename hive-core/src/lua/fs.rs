@@ -1,11 +1,14 @@
 use crate::lua::byte_stream::ByteStream;
 use crate::lua::BadArgument;
-use crate::Source;
+use crate::path::normalize_path_str;
+use crate::{HiveState, Result, Source};
 use mlua::{
   AnyUserData, ExternalError, ExternalResult, Function, Lua, MultiValue, String as LuaString,
   ToLua, UserData, UserDataMethods, Variadic,
 };
 use std::io::SeekFrom;
+use std::path::Path;
+use std::sync::Arc;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 
@@ -200,7 +203,9 @@ impl UserData for LuaFile {
             b"set" => SeekFrom::Start(offset.try_into().to_lua_err()?),
             b"cur" => SeekFrom::Current(offset),
             b"end" => SeekFrom::End(offset),
-            _ => return Err("invalid seek base".to_lua_err()),
+            x => {
+              return Err(format!("invalid seek base: {}", String::from_utf8_lossy(x)).to_lua_err())
+            }
           }
         } else {
           SeekFrom::Current(0)
@@ -216,28 +221,63 @@ impl UserData for LuaFile {
   }
 }
 
-fn create_fn_fs_open(lua: &Lua, source: Source) -> mlua::Result<Function> {
+fn create_fn_fs_open<'lua>(
+  lua: &'lua Lua,
+  source: Source,
+  local_storage_path: Arc<Path>,
+) -> mlua::Result<Function<'lua>> {
   lua.create_async_function(move |_lua, (path, mode): (LuaString, Option<LuaString>)| {
     let source = source.clone();
+    let local_storage_path = local_storage_path.clone();
     async move {
       // TODO: source file open
       let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
       let (scheme, path) = path.split_once(':').unwrap_or(("global", path));
-      if scheme != "source" {
-        return Err(format!("scheme currently not supported: {scheme}").to_lua_err());
+      let mode = OpenMode::from_lua(mode)?;
+      match scheme {
+        "local" => {
+          let path = normalize_path_str(path);
+          let file = mode
+            .to_open_options()
+            .open(local_storage_path.join(path))
+            .await?;
+          Ok(LuaFile(BufReader::new(file)))
+        }
+        "source" => {
+          // For `source:`, the only open mode is "read".
+          let file = source.get(path).await?;
+          Ok(LuaFile(BufReader::new(file)))
+        }
+        _ => {
+          Err(format!("scheme currently not supported: {scheme}").to_lua_err())
+        }
       }
-      // For `source:`, the only open mode is "read".
-      let _mode = OpenMode::from_lua(mode)?;
-      let file = source.get(path).await?;
-      Ok(LuaFile(BufReader::new(file)))
     }
   })
 }
 
-pub fn create_preload_fs(lua: &Lua, source: Source) -> mlua::Result<Function> {
+pub async fn create_preload_fs<'lua>(
+  lua: &'lua Lua,
+  state: &HiveState,
+  service_name: &str,
+  source: Source,
+) -> mlua::Result<Function<'lua>> {
+  let local_storage_path: Arc<Path> = state.local_storage_path.join(service_name).into();
+  if !local_storage_path.exists() {
+    tokio::fs::create_dir(&local_storage_path).await?;
+  }
+
   lua.create_function(move |lua, ()| {
     let fs_table = lua.create_table()?;
-    fs_table.raw_set("open", create_fn_fs_open(lua, source.clone())?)?;
+    let local_storage_path = local_storage_path.clone();
+    fs_table.raw_set(
+      "open",
+      create_fn_fs_open(lua, source.clone(), local_storage_path)?,
+    )?;
     Ok(fs_table)
   })
+}
+
+pub async fn remove_service_local_storage(path: &Path) -> Result<()> {
+  Ok(tokio::fs::remove_dir_all(path).await?)
 }

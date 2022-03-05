@@ -17,13 +17,19 @@ use hyper::Body;
 use lua::Sandbox;
 use permission::PermissionSet;
 use service::ServicePool;
-use task::Pool;
 use std::path::PathBuf;
+use std::sync::Arc;
+use task::Pool;
 
 pub struct Hive {
   sandbox_pool: Pool<Sandbox>,
   service_pool: ServicePool,
-  local_storage_path: PathBuf,
+  state: Arc<HiveState>,
+}
+
+#[derive(Debug)]
+pub struct HiveState {
+  pub local_storage_path: PathBuf,
 }
 
 pub struct HiveOptions {
@@ -33,10 +39,16 @@ pub struct HiveOptions {
 
 impl Hive {
   pub fn new(options: HiveOptions) -> Result<Self> {
-    Ok(Self {
-      sandbox_pool: Pool::new("hive-worker", options.sandbox_pool_size, Sandbox::new)?,
-      service_pool: ServicePool::new(),
+    let state = Arc::new(HiveState {
       local_storage_path: options.local_storage_path,
+    });
+    let state2 = state.clone();
+    Ok(Self {
+      sandbox_pool: Pool::new("hive-worker", options.sandbox_pool_size, move || {
+        Sandbox::new(state2.clone())
+      })?,
+      service_pool: ServicePool::new(),
+      state,
     })
   }
 

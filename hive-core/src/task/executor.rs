@@ -38,6 +38,16 @@ impl Wake for MyWaker {
   }
 }
 
+struct PanicNotifier(Arc<AtomicBool>);
+
+impl Drop for PanicNotifier {
+  fn drop(&mut self) {
+    if std::thread::panicking() {
+      self.0.store(true, Ordering::Release)
+    }
+  }
+}
+
 type AnyBox = Box<dyn Any + Send>;
 type Task<T> = Arc<Mutex<Option<(TaskFn<T>, oneshot::Sender<AnyBox>)>>>;
 type TaskFn<T> = Box<(dyn FnOnce(Rc<T>) -> LocalBoxFuture<'static, AnyBox> + Send + 'static)>;
@@ -45,18 +55,22 @@ type TaskFn<T> = Box<(dyn FnOnce(Rc<T>) -> LocalBoxFuture<'static, AnyBox> + Sen
 pub struct Executor<T: Send + 'static> {
   pub task_count: Arc<AtomicU32>,
   task_tx: mpsc::UnboundedSender<Task<T>>,
+  panicked: Arc<AtomicBool>,
 }
 
 impl<T: Send + 'static> Executor<T> {
   pub fn new(obj: T, name: String) -> Self {
     let task_count = Arc::new(AtomicU32::new(0));
     let (task_tx, mut task_rx) = mpsc::unbounded_channel::<Task<T>>();
+    let panicked = Arc::new(AtomicBool::new(false));
+    let panic_notifier = PanicNotifier(panicked.clone());
 
     let rt = Handle::current();
     let task_count2 = task_count.clone();
     std::thread::Builder::new()
       .name(name)
       .spawn(move || {
+        let _panic_notifier = panic_notifier;
         rt.block_on(async move {
           let mut tasks = FuturesUnordered::<LocalBoxFuture<()>>::new();
           let (waker_tx, mut waker_rx) = mpsc::unbounded_channel();
@@ -104,10 +118,15 @@ impl<T: Send + 'static> Executor<T> {
     Self {
       task_count,
       task_tx,
+      panicked,
     }
   }
 
   pub(crate) fn push<R: Send + 'static>(&self, task: Task<T>) {
     let _ = self.task_tx.send(task);
+  }
+
+  pub fn is_panicked(&self) -> bool {
+    self.panicked.load(Ordering::Acquire)
   }
 }

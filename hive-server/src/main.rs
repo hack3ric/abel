@@ -63,7 +63,7 @@ async fn run() -> anyhow::Result<()> {
   let state = Arc::new(MainState {
     hive: Hive::new(HiveOptions {
       sandbox_pool_size: opt.pool_size.unwrap_or(*HALF_NUM_CPUS),
-      local_storage_path
+      local_storage_path,
     })?,
     config_path,
   });

@@ -10,7 +10,7 @@ use crate::permission::PermissionSet;
 use crate::service::Service;
 use crate::source::Source;
 use crate::ErrorKind::*;
-use crate::Result;
+use crate::{HiveState, Result};
 use global_env::modify_global_env;
 use hyper::Body;
 use local_env::create_local_env;
@@ -30,6 +30,7 @@ static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}
 pub struct Sandbox {
   lua: Lua,
   loaded: RefCell<HashMap<Box<str>, LoadedService>>,
+  state: Arc<HiveState>,
 }
 
 #[derive(Debug)]
@@ -40,11 +41,11 @@ struct LoadedService {
 }
 
 impl Sandbox {
-  pub fn new() -> Result<Self> {
+  pub fn new(state: Arc<HiveState>) -> Result<Self> {
     let lua = Lua::new();
     let loaded = RefCell::new(HashMap::new());
     modify_global_env(&lua)?;
-    Ok(Self { lua, loaded })
+    Ok(Self { lua, loaded, state })
   }
 }
 
@@ -196,7 +197,8 @@ impl Sandbox {
     source: Source,
     permissions: Arc<PermissionSet>,
   ) -> Result<(RegistryKey, RegistryKey, Table<'a>)> {
-    let (local_env, internal) = create_local_env(&self.lua, name, source.clone(), permissions)?;
+    let (local_env, internal) =
+      create_local_env(&self.lua, &self.state, name, source.clone(), permissions).await?;
     source
       .load(&self.lua, "/main.lua", local_env.clone())
       .await?

@@ -5,12 +5,13 @@ use crate::lua::json::create_preload_json;
 use crate::lua::permission::create_module_permission;
 use crate::lua::LuaTableExt;
 use crate::permission::PermissionSet;
-use crate::{Result, Source};
+use crate::{HiveState, Result, Source};
 use mlua::{Function, Lua, Table};
 use std::sync::Arc;
 
-pub(super) fn create_local_env<'a>(
+pub(super) async fn create_local_env<'a>(
   lua: &'a Lua,
+  state: &HiveState,
   service_name: &str,
   source: Source,
   permissions: Arc<PermissionSet>,
@@ -28,7 +29,10 @@ pub(super) fn create_local_env<'a>(
   internal.raw_set("source", source.clone())?;
 
   let preload: Table = internal.raw_get_path("<internal>", &["package", "preload"])?;
-  preload.raw_set("fs", create_preload_fs(lua, source)?)?;
+  preload.raw_set(
+    "fs",
+    create_preload_fs(lua, state, service_name, source).await?,
+  )?;
   preload.raw_set("http", create_preload_http(lua, permissions)?)?;
   preload.raw_set("json", create_preload_json(lua)?)?;
 

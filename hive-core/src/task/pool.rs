@@ -4,28 +4,36 @@ use futures::{Future, FutureExt};
 use std::any::Any;
 use std::rc::Rc;
 use std::sync::Arc;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{oneshot, Mutex, RwLock};
 
 pub struct Pool<T: Send + 'static> {
-  executors: Vec<Executor<T>>,
+  executors: Vec<RwLock<Executor<T>>>,
+  init: Box<dyn Fn() -> Result<T> + Send + Sync + 'static>,
 }
 
 impl<T: Send + 'static> Pool<T> {
-  pub fn new(name: &str, size: usize, mut init: impl FnMut() -> Result<T>) -> Result<Self> {
+  pub fn new(
+    name: &str,
+    size: usize,
+    init: impl Fn() -> Result<T> + Send + Sync + 'static,
+  ) -> Result<Self> {
     let executors = (0..size)
       .map(|i| {
-        Ok(Executor::new(
+        Ok(RwLock::new(Executor::new(
           init()?,
           name.to_string() + "-" + &i.to_string(),
-        ))
+        )))
       })
       .collect::<Result<_>>()?;
-    Ok(Self { executors })
+    Ok(Self {
+      executors,
+      init: Box::new(init),
+    })
   }
 
-  pub async fn scope<'a, F, Fut, R>(&self, task_fn: F) -> R
+  pub async fn scope<'a, F2, Fut, R>(&self, task_fn: F2) -> R
   where
-    F: FnOnce(Rc<T>) -> Fut + Send + 'static,
+    F2: FnOnce(Rc<T>) -> Fut + Send + 'static,
     Fut: Future<Output = R> + 'a,
     R: Send + 'static,
   {
@@ -35,8 +43,17 @@ impl<T: Send + 'static> Pool<T> {
     let (tx, rx) = oneshot::channel();
     let task = Arc::new(Mutex::new(Some((wrapped_task_fn, tx))));
 
+    // TODO: if the thread isn't running (panicked), create a new `Executor` and
+    // replace it
     for e in self.executors.iter() {
-      e.push::<R>(task.clone());
+      let rl = e.read().await;
+      if rl.is_panicked() {
+        drop(rl);
+        let mut wl = e.write().await;
+        *wl = Executor::new((self.init)().unwrap(), "name".to_string());
+      } else {
+        rl.push::<R>(task.clone());
+      }
     }
 
     *rx.await.unwrap().downcast().unwrap()
