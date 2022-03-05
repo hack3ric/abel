@@ -85,7 +85,7 @@ local function source_searcher(modname)
   if file_exists and init_exists then
     return nil, "file '@source:" .. path .. ".lua' and '@source:" .. path .. "/init.lua' conflicts"
   elseif not file_exists and not init_exists then
-    return nil, "no file '@source:" .. path .. ".lua'\n\tno file '@source:" .. path .. "/init.lua'"
+    return nil, "no file '@source:" .. path .. ".lua'\n\tno file 'source:" .. path .. "/init.lua'"
   else
     path = path .. (file_exists and ".lua" or "/init.lua")
     local function source_loader(modname, path)
@@ -125,22 +125,36 @@ local whitelist = {
     "match", "reverse", "sub", "upper",
   },
   table = {
-    "insert", "maxn", "remove", "sort",
-    "dump", "scope",
+    "remove", "sort", "concat", "pack",
+    "unpack",
   },
 }
 
-for module, fields in pairs(whitelist) do
-  if module then
-    local_env[module] = {}
-    for _, field in ipairs(fields) do
-      local_env[module][field] = _G[module][field]
-    end
-  else
-    for _, field in ipairs(fields) do
-      local_env[field] = _G[field]
+local monkey_patch = {
+  [false] = {
+    "Error",
+  },
+  table = {
+    "insert", "dump", "scope"
+  },
+}
+
+local function apply_whitelist(whitelist)
+  for module, fields in pairs(whitelist) do
+    if module then
+      local_env[module] = {}
+      for _, field in ipairs(fields) do
+        local_env[module][field] = _G[module][field]
+      end
+    else
+      for _, field in ipairs(fields) do
+        local_env[field] = _G[field]
+      end
     end
   end
 end
+
+apply_whitelist(whitelist)
+apply_whitelist(monkey_patch)
 
 return local_env, internal

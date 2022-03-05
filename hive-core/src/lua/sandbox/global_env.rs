@@ -5,6 +5,11 @@ use crate::Result;
 use mlua::{Function, Lua, Table, ToLua};
 
 pub(super) fn modify_global_env(lua: &Lua) -> Result<()> {
+  lua
+    .load(include_str!("global_env.lua"))
+    .set_name("<global_env>")?
+    .exec()?;
+
   lua.set_named_registry_value(
     "local_env_fn",
     lua
