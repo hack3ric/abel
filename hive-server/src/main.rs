@@ -34,7 +34,7 @@ pub(crate) struct MainState {
 
 static HALF_NUM_CPUS: Lazy<usize> = Lazy::new(|| 1.max(num_cpus::get() / 2));
 
-async fn _main() -> anyhow::Result<()> {
+async fn run() -> anyhow::Result<()> {
   if option_env!("RUST_LOG").is_none() {
     std::env::set_var("RUST_LOG", "INFO");
   }
@@ -43,7 +43,7 @@ async fn _main() -> anyhow::Result<()> {
 
   let mut config_path = home::home_dir().expect("no home directory found");
   config_path.push(".hive");
-  async {
+  let local_storage_path = async {
     if !config_path.exists() {
       fs::create_dir(&config_path).await?;
     }
@@ -51,7 +51,11 @@ async fn _main() -> anyhow::Result<()> {
     if !services_path.exists() {
       fs::create_dir(&services_path).await?;
     }
-    Ok::<_, io::Error>(())
+    let local_storage_path = config_path.join("storage");
+    if !local_storage_path.exists() {
+      fs::create_dir(&local_storage_path).await?;
+    }
+    Ok::<_, io::Error>(local_storage_path)
   }
   .await
   .expect("failed to create Hive config directory");
@@ -59,6 +63,7 @@ async fn _main() -> anyhow::Result<()> {
   let state = Arc::new(MainState {
     hive: Hive::new(HiveOptions {
       sandbox_pool_size: opt.pool_size.unwrap_or(*HALF_NUM_CPUS),
+      local_storage_path
     })?,
     config_path,
   });
@@ -83,5 +88,5 @@ fn main() -> anyhow::Result<()> {
     .worker_threads(*HALF_NUM_CPUS)
     .build()
     .unwrap()
-    .block_on(_main())
+    .block_on(run())
 }

@@ -18,14 +18,17 @@ use lua::Sandbox;
 use permission::PermissionSet;
 use service::ServicePool;
 use task::Pool;
+use std::path::PathBuf;
 
 pub struct Hive {
   sandbox_pool: Pool<Sandbox>,
   service_pool: ServicePool,
+  local_storage_path: PathBuf,
 }
 
 pub struct HiveOptions {
   pub sandbox_pool_size: usize,
+  pub local_storage_path: PathBuf,
 }
 
 impl Hive {
@@ -33,6 +36,7 @@ impl Hive {
     Ok(Self {
       sandbox_pool: Pool::new("hive-worker", options.sandbox_pool_size, Sandbox::new)?,
       service_pool: ServicePool::new(),
+      local_storage_path: options.local_storage_path,
     })
   }
 
