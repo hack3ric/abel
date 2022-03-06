@@ -65,7 +65,6 @@ impl Hive {
   }
 
   pub async fn get_service(&self, name: &str) -> Result<Service> {
-    let name = name.as_ref();
     self
       .service_pool
       .get(name)

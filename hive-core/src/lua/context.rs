@@ -27,12 +27,12 @@ pub fn remove_service_contexts(service_name: &str) {
   CONTEXT_STORE.retain(|k, _| k.as_ref() != service_name);
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Table(Arc<RwLock<TableRepr>>);
 
 impl Table {
   pub fn new() -> Self {
-    Self(Default::default())
+    Default::default()
   }
 
   pub fn from_lua_table(table: mlua::Table) -> mlua::Result<Self> {

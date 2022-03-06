@@ -76,7 +76,7 @@ impl UserData for Source {
       "load",
       |lua, this, (path, env): (LuaString, Table)| async move {
         let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
-        Ok(this.load(lua, path, env).await.to_lua_err()?)
+        this.load(lua, path, env).await.to_lua_err()
       },
     )
   }

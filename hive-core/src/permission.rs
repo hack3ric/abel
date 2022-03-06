@@ -200,12 +200,12 @@ impl<'de> Deserialize<'de> for Host {
   }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 pub struct PermissionSet(HashSet<Permission>);
 
 impl PermissionSet {
   pub fn new() -> Self {
-    Self(HashSet::new())
+    Default::default()
   }
 
   pub fn insert(&mut self, p: Permission) {
@@ -228,11 +228,11 @@ impl PermissionSet {
 
   pub fn remove(&mut self, p: &Permission) {
     // remove all subsets
-    self.0.retain(|x| !x.is_subset(&p));
+    self.0.retain(|x| !x.is_subset(p));
   }
 
   pub fn check_ok(&self, p: &Permission) -> bool {
-    self.0.iter().find(|x| x.is_superset(p)).is_some()
+    self.0.iter().any(|x| x.is_superset(p))
   }
 
   pub fn check(&self, p: &Permission) -> Result<()> {

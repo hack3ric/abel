@@ -23,7 +23,7 @@ pub(crate) async fn handle(
   let method = req.method();
   let path = req.uri().path();
   let segments = path
-    .split("/")
+    .split('/')
     .filter(|x| !x.is_empty())
     .collect::<Box<_>>();
 

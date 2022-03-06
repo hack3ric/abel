@@ -65,6 +65,6 @@ mod serde_offset {
   }
 
   pub fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<u64, D::Error> {
-    u64::from_str_radix(&String::deserialize(de)?, 10).map_err(D::Error::custom)
+    String::deserialize(de)?.parse().map_err(D::Error::custom)
   }
 }

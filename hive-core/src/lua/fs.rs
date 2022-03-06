@@ -222,12 +222,12 @@ impl UserData for LuaFile {
   }
 }
 
-fn create_fn_fs_open<'lua>(
-  lua: &'lua Lua,
+fn create_fn_fs_open(
+  lua: &Lua,
   source: Source,
   local_storage_path: Arc<Path>,
   permissions: Arc<PermissionSet>,
-) -> mlua::Result<Function<'lua>> {
+) -> mlua::Result<Function<'_>> {
   lua.create_async_function(move |_lua, (path, mode): (LuaString, Option<LuaString>)| {
     use OpenMode::*;
     let source = source.clone();

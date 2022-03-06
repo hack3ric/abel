@@ -153,7 +153,7 @@ impl From<hive_core::Error> for Error {
         status,
         error,
         detail,
-      } => (status, error, detail.clone()).into(),
+      } => (status, error, detail).into(),
       kind => (500, "hive core error", kind.to_string()).into(),
     };
     this.backtrace = backtrace;

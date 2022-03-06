@@ -146,10 +146,7 @@ async fn upload_multi<'a>(
   .await
 }
 
-async fn response<'a>(
-  service: Service,
-  replaced: Option<ServiceGuard<'a>>,
-) -> Result<Response<Body>> {
+async fn response(service: Service, replaced: Option<ServiceGuard<'_>>) -> Result<Response<Body>> {
   let service = service.upgrade();
   if let Some(replaced) = replaced {
     info!(
@@ -183,7 +180,7 @@ async fn read_source(
     .or_else(|| {
       field.file_name().map(|x| {
         let x = x.rsplit_once('.').map(|x| x.0).unwrap_or(x);
-        slug::slugify(x).into()
+        slug::slugify(x)
       })
     })
     .ok_or("no service name provided")?;
@@ -203,7 +200,7 @@ async fn read_source(
 }
 
 async fn replace_service<'a>(state: &'a MainState, name: &str) -> Result<Option<ServiceGuard<'a>>> {
-  match state.hive.remove_service(&name).await {
+  match state.hive.remove_service(name).await {
     Ok(replaced) => Ok(Some(replaced)),
     Err(error) if matches!(error.kind(), ErrorKind::ServiceNotFound(_)) => Ok(None),
     Err(error) => Err(error.into()),
@@ -211,11 +208,11 @@ async fn replace_service<'a>(state: &'a MainState, name: &str) -> Result<Option<
 }
 
 // Currently cold reloading
-async fn service_scope<'a, F, Fut>(
-  state: &'a MainState,
+async fn service_scope<F, Fut>(
+  state: &MainState,
   name: String,
   f: F,
-) -> Result<(Service, Option<ServiceGuard<'a>>)>
+) -> Result<(Service, Option<ServiceGuard<'_>>)>
 where
   F: FnOnce(PathBuf) -> Fut,
   Fut: Future<Output = Result<(Source, PermissionSet)>> + Send,

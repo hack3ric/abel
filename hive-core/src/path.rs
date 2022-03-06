@@ -112,7 +112,9 @@ pub fn normalize_path(path: impl AsRef<Path>) -> PathBuf {
 /// `Path`s.
 pub fn normalize_path_str(path: &str) -> String {
   let mut result = Vec::new();
-  let segments = path.split(['/', '\\']).filter(|&x| x != "" && x != ".");
+  let segments = path
+    .split(['/', '\\'])
+    .filter(|&x| !x.is_empty() && x != ".");
   for s in segments {
     if s == ".." {
       result.pop();

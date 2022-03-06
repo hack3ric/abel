@@ -7,7 +7,6 @@ pub fn create_module_permission(
   permissions: Arc<PermissionSet>,
 ) -> mlua::Result<mlua::Table> {
   let permission_table = lua.create_table()?;
-  let permissions = permissions.clone();
   permission_table.raw_set(
     "check",
     lua.create_function(move |_lua, perm: Permission| Ok(permissions.clone().check_ok(&perm)))?,

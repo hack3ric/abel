@@ -38,9 +38,9 @@ fn create_fn_request(lua: &Lua, permissions: Arc<PermissionSet>) -> mlua::Result
         let port = (auth.port())
           .and_then(|x| NonZeroU16::new(x.as_u16()))
           .or_else(|| {
-            req.uri.scheme().and_then(|x| match x.as_str() {
-              "https" => Some(nonzero!(443u16)),
-              _ => Some(nonzero!(80u16)),
+            req.uri.scheme().map(|x| match x.as_str() {
+              "https" => nonzero!(443u16),
+              _ => nonzero!(80u16),
             })
           });
         permissions.check(&Permission::net(host, port))?;
