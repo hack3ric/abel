@@ -1,6 +1,7 @@
 use crate::lua::byte_stream::ByteStream;
 use crate::lua::BadArgument;
 use crate::path::normalize_path_str;
+use crate::permission::{Permission, PermissionSet};
 use crate::{HiveState, Result, Source};
 use mlua::{
   AnyUserData, ExternalError, ExternalResult, Function, Lua, MultiValue, String as LuaString,
@@ -225,33 +226,45 @@ fn create_fn_fs_open<'lua>(
   lua: &'lua Lua,
   source: Source,
   local_storage_path: Arc<Path>,
+  permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function<'lua>> {
   lua.create_async_function(move |_lua, (path, mode): (LuaString, Option<LuaString>)| {
+    use OpenMode::*;
     let source = source.clone();
     let local_storage_path = local_storage_path.clone();
+    let permissions = permissions.clone();
     async move {
       // TODO: source file open
       let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
-      let (scheme, path) = path.split_once(':').unwrap_or(("global", path));
+      let (scheme, path) = path.split_once(':').unwrap_or(("local", path));
       let mode = OpenMode::from_lua(mode)?;
-      match scheme {
+      let file = match scheme {
         "local" => {
           let path = normalize_path_str(path);
-          let file = mode
+          mode
             .to_open_options()
             .open(local_storage_path.join(path))
-            .await?;
-          Ok(LuaFile(BufReader::new(file)))
+            .await?
+        }
+        "external" => {
+          let path = normalize_path_str(path);
+          match mode {
+            Read => permissions.check(&Permission::read_unchecked(&path))?,
+            Write | Append => permissions.check(&Permission::read_unchecked(&path))?,
+            ReadWrite | ReadWriteNew | ReadAppend => {
+              permissions.check(&Permission::read_unchecked(&path))?;
+              permissions.check(&Permission::write_unchecked(&path))?;
+            }
+          }
+          mode.to_open_options().open(path).await?
         }
         "source" => {
-          // For `source:`, the only open mode is "read".
-          let file = source.get(path).await?;
-          Ok(LuaFile(BufReader::new(file)))
+          // For `source:`, the only open mode is "read"
+          source.get(path).await?
         }
-        _ => {
-          Err(format!("scheme currently not supported: {scheme}").to_lua_err())
-        }
-      }
+        _ => return Err(format!("scheme currently not supported: {scheme}").to_lua_err()),
+      };
+      Ok(LuaFile(BufReader::new(file)))
     }
   })
 }
@@ -261,6 +274,7 @@ pub async fn create_preload_fs<'lua>(
   state: &HiveState,
   service_name: &str,
   source: Source,
+  permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function<'lua>> {
   let local_storage_path: Arc<Path> = state.local_storage_path.join(service_name).into();
   if !local_storage_path.exists() {
@@ -272,12 +286,13 @@ pub async fn create_preload_fs<'lua>(
     let local_storage_path = local_storage_path.clone();
     fs_table.raw_set(
       "open",
-      create_fn_fs_open(lua, source.clone(), local_storage_path)?,
+      create_fn_fs_open(lua, source.clone(), local_storage_path, permissions.clone())?,
     )?;
     Ok(fs_table)
   })
 }
 
-pub async fn remove_service_local_storage(path: &Path) -> Result<()> {
+pub async fn remove_service_local_storage(state: &HiveState, service_name: &str) -> Result<()> {
+  let path = state.local_storage_path.join(service_name);
   Ok(tokio::fs::remove_dir_all(path).await?)
 }

@@ -31,7 +31,7 @@ pub(super) async fn create_local_env<'a>(
   let preload: Table = internal.raw_get_path("<internal>", &["package", "preload"])?;
   preload.raw_set(
     "fs",
-    create_preload_fs(lua, state, service_name, source).await?,
+    create_preload_fs(lua, state, service_name, source, permissions.clone()).await?,
   )?;
   preload.raw_set("http", create_preload_http(lua, permissions)?)?;
   preload.raw_set("json", create_preload_json(lua)?)?;

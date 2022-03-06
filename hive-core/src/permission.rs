@@ -29,13 +29,19 @@ pub enum PermissionInner {
 
 impl Permission {
   pub fn read(path: impl AsRef<Path>) -> Self {
-    let path = normalize_path(path);
-    Self(PermissionInner::Read { path })
+    Self::read_unchecked(normalize_path(path))
+  }
+
+  pub fn read_unchecked(path: impl Into<PathBuf>) -> Self {
+    Self(PermissionInner::Read { path: path.into() })
   }
 
   pub fn write(path: impl AsRef<Path>) -> Self {
-    let path = normalize_path(path);
-    Self(PermissionInner::Write { path })
+    Self::write_unchecked(normalize_path(path))
+  }
+
+  pub fn write_unchecked(path: impl Into<PathBuf>) -> Self {
+    Self(PermissionInner::Write { path: path.into() })
   }
 
   pub fn net_parse(host: impl Into<String>) -> Result<Self, ParseIntError> {
