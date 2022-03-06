@@ -4,16 +4,17 @@ mod handle;
 mod util;
 
 use crate::handle::handle;
-use hive_core::{Hive, HiveOptions};
+use hive_core::{Hive, HiveOptions, Source};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
-use log::{error, info};
+use log::{error, info, warn};
 use once_cell::sync::Lazy;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use structopt::StructOpt;
+use tokio::io::AsyncReadExt;
 use tokio::{fs, io};
 
 type Result<T, E = error::Error> = std::result::Result<T, E>;
@@ -65,10 +66,35 @@ async fn run() -> anyhow::Result<()> {
       sandbox_pool_size: opt.pool_size.unwrap_or(*HALF_NUM_CPUS),
       local_storage_path,
     })?,
-    config_path,
+    config_path: config_path.clone(),
   });
 
-  // TODO: load services from `~/.hive/services/` folder
+  let mut services = fs::read_dir(config_path.join("services")).await?;
+  while let Some(service_folder) = services.next_entry().await? {
+    if service_folder.file_type().await?.is_dir() {
+      let name = service_folder.file_name().to_string_lossy().into_owned();
+      let result = async {
+        let source = Source::new(service_folder.path()).await?;
+        let mut permissions = source.get("permissions.json").await?;
+        let mut bytes = Vec::with_capacity(permissions.metadata().await?.len() as _);
+        permissions.read_to_end(&mut bytes).await?;
+        let permissions = serde_json::from_slice(&bytes)?;
+
+        let service = (state.hive)
+          .create_service(name.clone(), source, permissions)
+          .await?;
+        Ok::<_, crate::error::Error>(service)
+      }
+      .await;
+      match result {
+        Ok(service) => {
+          let service = service.upgrade();
+          info!("Loaded service '{}' ({})", service.name(), service.uuid())
+        }
+        Err(error) => warn!("Error preloading service '{name}': {error}"),
+      }
+    }
+  }
 
   let make_svc = make_service_fn(move |_conn| {
     let state = state.clone();

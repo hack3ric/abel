@@ -47,6 +47,7 @@ pub(crate) async fn upload(
     UploadType::Multi => upload_multi(state, name, multipart).await?,
   };
   response(service, replaced).await
+  // todo!()
 }
 
 fn parse_multipart(
@@ -78,7 +79,9 @@ async fn upload_single<'a>(
   mut name: Option<String>,
   mut multipart: Multipart<'static>,
 ) -> Result<(Service, Option<ServiceGuard<'a>>)> {
-  let mut source_result = None::<(String, fs::File, PathBuf)>;
+  let temp_dir = tempfile::tempdir()?;
+
+  let mut source_result = None::<String>;
   let mut permissions_result = None::<PermissionSet>;
 
   while let Some(field) = multipart.next_field().await? {
@@ -87,7 +90,9 @@ async fn upload_single<'a>(
         if source_result.is_some() {
           return Err("multiple sources uploaded".into());
         }
-        source_result = Some(read_source(state, field, name.take()).await?);
+        let (name, _, path) = read_source(state, field, name.take()).await?;
+        tokio::fs::rename(path, temp_dir.path().join("main.lua")).await?;
+        source_result = Some(name);
       }
       Some("permissions") => {
         if permissions_result.is_some() {
@@ -95,16 +100,22 @@ async fn upload_single<'a>(
         }
         let bytes = &field.bytes().await?;
         permissions_result = Some(serde_json::from_slice(bytes)?);
+        tokio::fs::write(temp_dir.path().join("permissions.json"), bytes).await?;
       }
       _ => unreachable!(),
     }
   }
 
-  let (name, _, path) = source_result.ok_or("no source code uploaded")?;
-  let permissions = permissions_result.unwrap_or_else(PermissionSet::new);
+  let name = source_result.ok_or("no source code uploaded")?;
+  let permissions = if let Some(permissions) = permissions_result {
+    permissions
+  } else {
+    tokio::fs::write(temp_dir.path().join("permissions.json"), b"[]").await?;
+    PermissionSet::new()
+  };
 
   service_scope(state, name, move |source_path| async move {
-    fs::rename(path, source_path.join("main.lua")).await?;
+    fs::rename(temp_dir.into_path(), &source_path).await?;
     let source = Source::new(source_path).await?;
     Ok((source, permissions))
   })
@@ -125,7 +136,7 @@ async fn upload_multi<'a>(
       .await
       .map_err(|error| (400, "error parsing asar archive", error.to_string()))?;
     archive.extract(&source_path).await?;
-    // drop(archive);
+    drop(archive);
     fs::remove_file(path).await?;
     let source = Source::new(&source_path).await?;
     let permissions = match source.get_bytes("/permissions.json").await {
@@ -170,7 +181,6 @@ async fn response(service: Service, replaced: Option<ServiceGuard<'_>>) -> Resul
 }
 
 /// Stores source to a tempfile
-// TODO: get length and hint operations afterwards
 async fn read_source(
   state: &MainState,
   field: Field<'_>,
