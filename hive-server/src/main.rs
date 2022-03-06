@@ -68,6 +68,8 @@ async fn run() -> anyhow::Result<()> {
     config_path,
   });
 
+  // TODO: load services from `~/.hive/services/` folder
+
   let make_svc = make_service_fn(move |_conn| {
     let state = state.clone();
     async move { Ok::<_, Infallible>(service_fn(move |req| handle(state.clone(), req))) }

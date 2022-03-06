@@ -128,9 +128,17 @@ impl From<&'static str> for Error {
 
 impl From<hive_core::Error> for Error {
   fn from(error: hive_core::Error) -> Self {
-    use hive_core::ErrorKind::*;
     let (kind, backtrace) = error.into_parts();
-    let mut this: Self = match kind {
+    let mut this: Self = kind.into();
+    this.backtrace = backtrace;
+    this
+  }
+}
+
+impl From<hive_core::ErrorKind> for Error {
+  fn from(error: hive_core::ErrorKind) -> Self {
+    use hive_core::ErrorKind::*;
+    match error {
       InvalidServiceName(name) => (400, "invalid service name", json!({ "name": name })).into(),
       ServiceNotFound(name) => (404, "service not found", json!({ "name": name })).into(),
       ServicePathNotFound { service, path } => (
@@ -139,6 +147,7 @@ impl From<hive_core::Error> for Error {
         json!({ "service": service, "path": path }),
       )
         .into(),
+      ServiceExists(name) => (409, "service already exists", json!({ "name": name })).into(),
       Lua(error) => {
         let msg = match error {
           LuaError::CallbackError { traceback, cause } => match cause.as_ref() {
@@ -155,9 +164,7 @@ impl From<hive_core::Error> for Error {
         detail,
       } => (status, error, detail).into(),
       kind => (500, "hive core error", kind.to_string()).into(),
-    };
-    this.backtrace = backtrace;
-    this
+    }
   }
 }
 

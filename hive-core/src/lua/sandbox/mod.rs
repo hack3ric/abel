@@ -2,6 +2,7 @@ mod global_env;
 mod local_env;
 
 use super::context::remove_service_contexts;
+use super::fs::remove_service_local_storage;
 use super::http::Response;
 use super::LuaTableExt;
 use crate::lua::http::Request;
@@ -187,7 +188,11 @@ impl Sandbox {
       f.call_async(()).await?;
     }
     // Call modules' `stop`
-    remove_service_contexts(loaded.service.try_upgrade()?.name());
+    let service = loaded.service.try_upgrade()?;
+    let service_name = service.name();
+    remove_service_contexts(service_name);
+    // TODO:
+    remove_service_local_storage(&self.state, service_name).await?;
     Ok(())
   }
 

@@ -9,7 +9,7 @@ pub fn json_response(status: StatusCode, body: impl Serialize) -> Result<Respons
 pub fn json_response_raw(status: StatusCode, body: impl Serialize) -> Response<Body> {
   Response::builder()
     .status(status)
-    .header("Content-Type", "application/json")
+    .header("content-type", "application/json")
     .body(serde_json::to_string(&body).unwrap().into())
     .unwrap()
 }

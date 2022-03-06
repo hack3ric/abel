@@ -115,7 +115,7 @@ pub fn create_fn_create_response(lua: &Lua) -> mlua::Result<Function> {
     };
     let body = Some(body);
 
-    headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+    headers.insert("content-type", HeaderValue::from_static("application/json"));
 
     Ok(Response {
       status,

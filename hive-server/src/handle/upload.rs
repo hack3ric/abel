@@ -3,6 +3,7 @@ use crate::{MainState, Result};
 use futures::{Future, TryStreamExt};
 use hive_asar::Archive;
 use hive_core::permission::PermissionSet;
+use hive_core::ErrorKind::ServiceExists;
 use hive_core::{ErrorKind, Service, ServiceGuard, Source};
 use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 use log::info;
@@ -61,7 +62,7 @@ fn parse_multipart(
   }
 
   let content_type = headers
-    .get("Content-Type")
+    .get("content-type")
     .ok_or("no Content-Type given")?
     .to_str()
     .or(Err("Content-Type is not valid UTF-8"))?;
@@ -186,7 +187,7 @@ async fn read_source(
     .ok_or("no service name provided")?;
 
   if !name_provided && state.hive.get_service(&name).await.is_ok() {
-    return Err((409, "service already exists", json!({ "name": name })).into());
+    return Err(ServiceExists(name.into()).into());
   }
 
   let (file, path) = NamedTempFile::new()?.keep().map_err(io::Error::from)?;

@@ -28,6 +28,8 @@ pub enum ErrorKind {
   ServiceNotFound(Box<str>),
   #[error("path not found in service '{service}': {path}")]
   ServicePathNotFound { service: Box<str>, path: Box<str> },
+  #[error("service '{0}' already exists")]
+  ServiceExists(Box<str>),
   #[error("service is dropped")]
   ServiceDropped,
   #[error("permission '{0}' not granted")]

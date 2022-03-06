@@ -128,7 +128,7 @@ impl ServicePool {
     }
   }
 
-  /// Creates a new service from source, replacing the old one.
+  /// Creates a new service from source.
   pub async fn create(
     &self,
     sandbox_pool: &Pool<Sandbox>,
@@ -136,10 +136,8 @@ impl ServicePool {
     source: Source,
     permissions: PermissionSet,
   ) -> Result<Service> {
-    match self.remove(sandbox_pool, &name).await {
-      Ok(_) => (),
-      Err(error) if matches!(error.kind(), ServiceNotFound(_)) => (),
-      Err(error) => return Err(error),
+    if self.services.contains(<&Str>::from(&*name)) {
+      return Err(ServiceExists(name.into()).into());
     }
 
     let service_impl = sandbox_pool
