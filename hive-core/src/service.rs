@@ -112,6 +112,7 @@ impl Serialize for ServiceGuard<'_> {
     let mut x = serializer.serialize_struct("Service", 3)?;
     x.serialize_field("name", self.name())?;
     x.serialize_field("paths", self.paths())?;
+    x.serialize_field("permissions", &self.permissions())?;
     x.serialize_field("uuid", &self.uuid())?;
     x.end()
   }

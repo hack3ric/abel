@@ -1,6 +1,6 @@
 use crate::lua::byte_stream::ByteStream;
 use crate::lua::BadArgument;
-use crate::path::normalize_path_str;
+use crate::path::{normalize_path, normalize_path_str};
 use crate::permission::{Permission, PermissionSet};
 use crate::{HiveState, Result, Source};
 use mlua::{
@@ -247,7 +247,7 @@ fn create_fn_fs_open(
             .await?
         }
         "external" => {
-          let path = normalize_path_str(path);
+          let path = normalize_path(path);
           match mode {
             Read => permissions.check(&Permission::read_unchecked(&path))?,
             Write | Append => permissions.check(&Permission::read_unchecked(&path))?,
