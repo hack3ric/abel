@@ -8,18 +8,17 @@ default = []
 mlua-vendored = ["mlua/vendored"]
 
 [dependencies]
-# async-trait = "0.1.52"
 backtrace = "0.3.63"
 dashmap = "5.0.0"
 futures = "0.3.17"
-# hive-vfs = { path = "../hive-vfs" }
 hyper = "0.14.16"
 hyper-tls = "0.5.0"
 log = "0.4.14"
 mlua = { version = "0.7.0", features = ["lua54", "send", "async", "macros", "serialize"] }
 nonzero_ext = "0.3.0"
 once_cell = "1.9.0"
-parking_lot = { version = "0.11.2", features = ["arc_lock"] }
+# `send_guard` is to make sure `ArcRwLockWriteGuard` in `TableScope` is `Send`
+parking_lot = { version = "0.11.2", features = ["arc_lock", "send_guard"] }
 regex = "1.5.4"
 serde = { version = "1.0.132", features = ["derive"] }
 serde_bytes = "0.11.5"
