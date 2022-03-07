@@ -77,5 +77,6 @@ async fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
 
 async fn remove(state: &MainState, service_name: &str) -> Result<Response<Body>> {
   let removed = state.hive.remove_service(service_name).await?;
+  tokio::fs::remove_dir_all(state.config_path.join("services").join(service_name)).await?;
   json_response(StatusCode::OK, json!({ "removed_service": removed }))
 }
