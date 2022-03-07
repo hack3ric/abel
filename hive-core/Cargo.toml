@@ -3,6 +3,10 @@ name = "hive-core"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+mlua-vendored = ["mlua/vendored"]
+
 [dependencies]
 # async-trait = "0.1.52"
 backtrace = "0.3.63"
@@ -22,8 +26,9 @@ serde_bytes = "0.11.5"
 serde_json = "1.0.73"
 thiserror = "1.0.30"
 tokio = { version = "1.14.0", features = ["full"] }
-tokio-util = "0.7.0"
+tokio-util = { version = "0.7.0", features = ["io"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 
 [dev-dependencies]
 hyper = { version = "0.14.16", features = ["full"] }
+test-case = "2.0.0"
