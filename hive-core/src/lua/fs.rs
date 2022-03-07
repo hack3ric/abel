@@ -7,10 +7,11 @@ use mlua::{
   AnyUserData, ExternalError, ExternalResult, Function, Lua, MultiValue, String as LuaString,
   ToLua, UserData, UserDataMethods, Variadic,
 };
+use std::borrow::Cow;
 use std::io::SeekFrom;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::fs::{File, OpenOptions};
+use tokio::fs::{self, File, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -234,9 +235,7 @@ fn create_fn_fs_open(
     let local_storage_path = local_storage_path.clone();
     let permissions = permissions.clone();
     async move {
-      // TODO: source file open
-      let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
-      let (scheme, path) = path.split_once(':').unwrap_or(("local", path));
+      let (scheme, path) = parse_path(&path)?;
       let mode = OpenMode::from_lua(mode)?;
       let file = match scheme {
         "local" => {
@@ -262,7 +261,7 @@ fn create_fn_fs_open(
           // For `source:`, the only open mode is "read"
           source.get(path).await?
         }
-        _ => return Err(format!("scheme currently not supported: {scheme}").to_lua_err()),
+        _ => return scheme_not_supported(scheme),
       };
       Ok(LuaFile(BufReader::new(file)))
     }
@@ -283,13 +282,103 @@ pub async fn create_preload_fs<'lua>(
 
   lua.create_function(move |lua, ()| {
     let fs_table = lua.create_table()?;
-    let local_storage_path = local_storage_path.clone();
+    // TODO: Symlink `io.open`
     fs_table.raw_set(
       "open",
-      create_fn_fs_open(lua, source.clone(), local_storage_path, permissions.clone())?,
+      create_fn_fs_open(
+        lua,
+        source.clone(),
+        local_storage_path.clone(),
+        permissions.clone(),
+      )?,
+    )?;
+    fs_table.raw_set(
+      "mkdir",
+      create_fn_fs_mkdir(lua, local_storage_path.clone(), permissions.clone())?,
+    )?;
+    // TODO: Symlink `os.remove`
+    fs_table.raw_set(
+      "remove",
+      create_fn_fs_remove(lua, local_storage_path.clone(), permissions.clone())?,
     )?;
     Ok(fs_table)
   })
+}
+
+fn create_fn_fs_mkdir(
+  lua: &Lua,
+  local_storage_path: Arc<Path>,
+  permissions: Arc<PermissionSet>,
+) -> mlua::Result<Function> {
+  lua.create_async_function(move |_lua, (path, all): (LuaString, bool)| {
+    let local_storage_path = local_storage_path.clone();
+    let permissions = permissions.clone();
+    async move {
+      let (scheme, path) = parse_path(&path)?;
+
+      let path: Cow<Path> = match scheme {
+        "local" => local_storage_path.join(normalize_path_str(path)).into(),
+        "external" => {
+          permissions.check(&Permission::write(&path))?;
+          Path::new(path).into()
+        }
+        "source" => return Err("cannot modify service source".to_lua_err()),
+        _ => return scheme_not_supported(scheme),
+      };
+
+      if all {
+        fs::create_dir_all(path).await?;
+      } else {
+        fs::create_dir(path).await?;
+      }
+      Ok(())
+    }
+  })
+}
+
+fn create_fn_fs_remove(
+  lua: &Lua,
+  local_storage_path: Arc<Path>,
+  permissions: Arc<PermissionSet>,
+) -> mlua::Result<Function> {
+  lua.create_async_function(move |_lua, (path, all): (LuaString, bool)| {
+    let local_storage_path = local_storage_path.clone();
+    let permissions = permissions.clone();
+    async move {
+      let (scheme, path) = parse_path(&path)?;
+
+      let path: Cow<Path> = match scheme {
+        "local" => local_storage_path.join(normalize_path_str(path)).into(),
+        "external" => {
+          permissions.check(&Permission::write(&path))?;
+          Path::new(path).into()
+        }
+        "source" => return Err("cannot modify service source".to_lua_err()),
+        _ => return scheme_not_supported(scheme),
+      };
+
+      let metadata = fs::metadata(&path).await?;
+      if metadata.is_dir() {
+        if all {
+          fs::remove_dir_all(path).await?;
+        } else {
+          fs::remove_dir(path).await?;
+        }
+      } else {
+        fs::remove_file(path).await?;
+      }
+      Ok(())
+    }
+  })
+}
+
+fn parse_path<'a>(path: &'a LuaString<'a>) -> mlua::Result<(&'a str, &'a str)> {
+  let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
+  Ok(path.split_once(':').unwrap_or(("local", path)))
+}
+
+fn scheme_not_supported<T>(scheme: &str) -> mlua::Result<T> {
+  Err(format!("scheme currently not supported: {scheme}").to_lua_err())
 }
 
 pub async fn remove_service_local_storage(state: &HiveState, service_name: &str) -> Result<()> {
