@@ -135,6 +135,21 @@ mod tests {
   use std::ffi::OsString;
   use test_case::test_case;
 
+  macro_rules! some_map {
+    ($($key:expr => $val:expr),*$(,)?) => ({
+      let mut map = HashMap::new();
+      $( map.insert($key.into(), $val.into()); )*
+      Some(map)
+    });
+  }
+
+  #[test_case("/hello/:name", "/hello/world" => some_map!("name" => "world"))]
+  #[test_case("/hello/:name", "/hello/world/" => None)]
+  #[test_case("/files/*", "/files/path/to/secret/file" => some_map!("*" => "path/to/secret/file"))]
+  fn test_path_matcher(matcher: &str, path: &str) -> Option<Params> {
+    PathMatcher::new(matcher).unwrap().gen_params(path)
+  }
+
   #[cfg(unix)]
   #[test_case("" => "/"; "empty string")]
   #[test_case("etc/rpc" => "/etc/rpc"; "force absolute")]
