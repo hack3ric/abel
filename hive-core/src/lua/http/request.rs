@@ -1,12 +1,11 @@
+use super::body::Body;
 use crate::path::Params;
 use hyper::header::{HeaderName, HeaderValue};
 use hyper::http::request::Parts;
 use hyper::{HeaderMap, Method, Uri};
 use mlua::{
-  ExternalError, ExternalResult, FromLua, Lua, String as LuaString, Table, ToLua,
-  UserData,
+  ExternalError, ExternalResult, FromLua, Lua, String as LuaString, Table, ToLua, UserData,
 };
-use super::body::Body;
 
 pub struct Request {
   pub(crate) method: Method,

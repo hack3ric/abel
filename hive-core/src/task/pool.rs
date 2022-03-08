@@ -1,4 +1,5 @@
 use super::executor::Executor;
+use crate::lua::Sandbox;
 use crate::Result;
 use futures::{Future, FutureExt};
 use std::any::Any;
@@ -7,33 +8,30 @@ use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex, RwLock};
 
 pub struct Pool<T: Send + 'static> {
+  name: String,
   executors: Vec<RwLock<Executor<T>>>,
   init: Box<dyn Fn() -> Result<T> + Send + Sync + 'static>,
 }
 
-impl<T: Send + 'static> Pool<T> {
+impl Pool<Sandbox> {
   pub fn new(
-    name: &str,
+    name: String,
     size: usize,
-    init: impl Fn() -> Result<T> + Send + Sync + 'static,
+    init: impl Fn() -> Result<Sandbox> + Send + Sync + 'static,
   ) -> Result<Self> {
     let executors = (0..size)
-      .map(|i| {
-        Ok(RwLock::new(Executor::new(
-          init()?,
-          name.to_string() + "-" + &i.to_string(),
-        )))
-      })
+      .map(|i| Ok(RwLock::new(Executor::new(init()?, format!("{}-{i}", name)))))
       .collect::<Result<_>>()?;
     Ok(Self {
+      name,
       executors,
       init: Box::new(init),
     })
   }
 
-  pub async fn scope<'a, F2, Fut, R>(&self, task_fn: F2) -> R
+  pub async fn scope<'a, F, Fut, R>(&self, task_fn: F) -> R
   where
-    F2: FnOnce(Rc<T>) -> Fut + Send + 'static,
+    F: FnOnce(Rc<Sandbox>) -> Fut + Send + 'static,
     Fut: Future<Output = R> + 'a,
     R: Send + 'static,
   {
@@ -45,12 +43,12 @@ impl<T: Send + 'static> Pool<T> {
 
     // TODO: if the thread isn't running (panicked), create a new `Executor` and
     // replace it
-    for e in self.executors.iter() {
+    for (i, e) in self.executors.iter().enumerate() {
       let rl = e.read().await;
       if rl.is_panicked() {
         drop(rl);
         let mut wl = e.write().await;
-        *wl = Executor::new((self.init)().unwrap(), "name".to_string());
+        *wl = Executor::new((self.init)().unwrap(), format!("{}-{i}", self.name));
       } else {
         rl.push::<R>(task.clone());
       }

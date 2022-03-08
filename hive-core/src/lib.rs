@@ -45,9 +45,11 @@ impl Hive {
     });
     let state2 = state.clone();
     Ok(Self {
-      sandbox_pool: Pool::new("hive-worker", options.sandbox_pool_size, move || {
-        Sandbox::new(state2.clone())
-      })?,
+      sandbox_pool: Pool::new(
+        "hive-worker".to_string(),
+        options.sandbox_pool_size,
+        move || Sandbox::new(state2.clone()),
+      )?,
       service_pool: ServicePool::new(),
       state,
     })

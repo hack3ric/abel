@@ -246,4 +246,17 @@ impl Sandbox {
     drop(self_loaded);
     Ok(Ref::map(self.loaded.borrow(), |x| x.get(name).unwrap()))
   }
+
+  pub(crate) async fn clean_loaded(&self) -> u32 {
+    let mut x = self.loaded.borrow_mut();
+    let mut count = 0;
+    x.retain(|_, v| {
+      let r = !v.service.is_dropped();
+      if !r {
+        count += 1;
+      }
+      r
+    });
+    count
+  }
 }

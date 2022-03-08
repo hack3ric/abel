@@ -1,6 +1,8 @@
+use crate::lua::Sandbox;
 use futures::future::{select, Either, LocalBoxFuture};
 use futures::stream::FuturesUnordered;
 use futures::{pin_mut, FutureExt, Stream};
+use log::info;
 use std::any::Any;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -8,8 +10,10 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Wake, Waker};
+use std::time::Duration;
 use tokio::runtime::Handle;
 use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::time::Instant;
 
 struct MyWaker {
   tx: mpsc::UnboundedSender<()>,
@@ -52,16 +56,17 @@ type AnyBox = Box<dyn Any + Send>;
 type Task<T> = Arc<Mutex<Option<(TaskFn<T>, oneshot::Sender<AnyBox>)>>>;
 type TaskFn<T> = Box<(dyn FnOnce(Rc<T>) -> LocalBoxFuture<'static, AnyBox> + Send + 'static)>;
 
+// TODO: use broadcast?
 pub struct Executor<T: Send + 'static> {
   pub task_count: Arc<AtomicU32>,
   task_tx: mpsc::UnboundedSender<Task<T>>,
   panicked: Arc<AtomicBool>,
 }
 
-impl<T: Send + 'static> Executor<T> {
-  pub fn new(obj: T, name: String) -> Self {
+impl Executor<Sandbox> {
+  pub fn new(obj: Sandbox, name: String) -> Self {
     let task_count = Arc::new(AtomicU32::new(0));
-    let (task_tx, mut task_rx) = mpsc::unbounded_channel::<Task<T>>();
+    let (task_tx, mut task_rx) = mpsc::unbounded_channel::<Task<_>>();
     let panicked = Arc::new(AtomicBool::new(false));
     let panic_notifier = PanicNotifier(panicked.clone());
 
@@ -77,18 +82,29 @@ impl<T: Send + 'static> Executor<T> {
           let mut waker = MyWaker::from_tx(waker_tx.clone());
           let obj = Rc::new(obj);
 
+          let dur = Duration::from_secs(600);
+          let mut clean_interval = tokio::time::interval_at(Instant::now() + dur, dur);
+
           loop {
             let waker_recv = waker_rx.recv();
             let new_task_recv = task_rx.recv();
-            pin_mut!(waker_recv, new_task_recv);
+            let clean = clean_interval.tick();
+            pin_mut!(waker_recv, new_task_recv, clean);
 
-            match select(waker_recv, new_task_recv).await {
-              Either::Left(..) => {
+            match select(select(waker_recv, clean), new_task_recv).await {
+              Either::Left((Either::Left(..), _)) => {
                 waker = MyWaker::from_tx(waker_tx.clone());
                 let tasks = Pin::new(&mut tasks);
                 let mut context = Context::from_waker(&waker);
                 if let Poll::Ready(Some(_)) = tasks.poll_next(&mut context) {
                   waker.wake_by_ref();
+                }
+              }
+              Either::Left((Either::Right(..), _)) => {
+                // TODO: better cleaning trigger
+                let count = obj.clean_loaded().await;
+                if count > 0 {
+                  info!("successfully cleaned {count} dropped services");
                 }
               }
               Either::Right((Some(msg), _)) => {
@@ -122,7 +138,7 @@ impl<T: Send + 'static> Executor<T> {
     }
   }
 
-  pub(crate) fn push<R: Send + 'static>(&self, task: Task<T>) {
+  pub(crate) fn push<R: Send + 'static>(&self, task: Task<Sandbox>) {
     let _ = self.task_tx.send(task);
   }
 
