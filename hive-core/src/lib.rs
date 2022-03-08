@@ -24,6 +24,7 @@ use task::Pool;
 pub struct Hive {
   sandbox_pool: Pool<Sandbox>,
   service_pool: ServicePool,
+  #[allow(unused)]
   state: Arc<HiveState>,
 }
 

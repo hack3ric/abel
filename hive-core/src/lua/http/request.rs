@@ -1,14 +1,13 @@
-use crate::lua::byte_stream::ByteStream;
 use crate::path::Params;
 use hyper::header::{HeaderName, HeaderValue};
 use hyper::http::request::Parts;
-use hyper::{Body, HeaderMap, Method, Uri};
+use hyper::{HeaderMap, Method, Uri};
 use mlua::{
-  AnyUserData, ExternalError, ExternalResult, FromLua, Lua, String as LuaString, Table, ToLua,
+  ExternalError, ExternalResult, FromLua, Lua, String as LuaString, Table, ToLua,
   UserData,
 };
+use super::body::Body;
 
-#[derive(Debug)]
 pub struct Request {
   pub(crate) method: Method,
   /// Must be absolute
@@ -21,10 +20,10 @@ pub struct Request {
 
 impl Request {
   #[rustfmt::skip]
-  pub fn new(req: hyper::Request<Body>, params: Params) -> Self {
+  pub fn new(req: hyper::Request<hyper::Body>, params: Params) -> Self {
     let (Parts { method, uri, headers, .. }, body) = req.into_parts();
     let params = Some(params);
-    Self { method, uri, headers, body: Some(body), params }
+    Self { method, uri, headers, body: Some(body.into()), params }
   }
 }
 
@@ -34,7 +33,7 @@ impl Default for Request {
       method: Method::GET,
       uri: Uri::default(),
       headers: HeaderMap::new(),
-      body: Some(Body::empty()),
+      body: Some(Body::Empty),
       params: None,
     }
   }
@@ -69,7 +68,7 @@ impl UserData for Request {
       let mut this_ = this.borrow_mut::<Self>()?;
       let body = this_.body.take();
       if let Some(body) = body {
-        let x = ByteStream::from_body(body).to_lua(lua)?;
+        let x = lua.pack(body)?;
         this.set_named_user_value("body", x.clone())?;
         Ok(x)
       } else {
@@ -135,9 +134,8 @@ impl<'lua> FromLua<'lua> for Request {
       mlua::Value::UserData(x) => {
         let mut u = x.take::<Self>()?;
         if u.body.is_none() {
-          let t = x.get_named_user_value::<_, AnyUserData>("body")?;
-          let t = t.take::<ByteStream>()?;
-          u.body = Some(Body::wrap_stream(t.0));
+          let t = x.get_named_user_value::<_, Body>("body")?;
+          u.body = Some(t);
         }
         Ok(u)
       }
@@ -146,10 +144,10 @@ impl<'lua> FromLua<'lua> for Request {
   }
 }
 
-impl From<Request> for hyper::Request<Body> {
+impl From<Request> for hyper::Request<hyper::Body> {
   fn from(x: Request) -> Self {
     let mut builder = hyper::Request::builder().method(x.method).uri(x.uri);
     *builder.headers_mut().unwrap() = x.headers;
-    builder.body(x.body.unwrap()).unwrap()
+    builder.body(x.body.unwrap().into()).unwrap()
   }
 }

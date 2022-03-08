@@ -1,12 +1,11 @@
-use crate::lua::byte_stream::ByteStream;
+use super::body::Body;
 use hyper::header::HeaderName;
 use hyper::http::{HeaderMap, HeaderValue, StatusCode};
-use hyper::Body;
 use mlua::{
-  AnyUserData, ExternalError, ExternalResult, FromLua, Function, Lua, Table, ToLua, UserData,
-  UserDataFields,
+  ExternalError, ExternalResult, FromLua, Function, Lua, Table, UserData, UserDataFields,
 };
 
+#[derive(Default)]
 pub struct Response {
   pub status: StatusCode,
   pub headers: HeaderMap,
@@ -14,12 +13,12 @@ pub struct Response {
 }
 
 impl Response {
-  pub(crate) fn from_hyper(resp: hyper::Response<Body>) -> Self {
+  pub(crate) fn from_hyper(resp: hyper::Response<hyper::Body>) -> Self {
     let (parts, body) = resp.into_parts();
     Self {
       status: parts.status,
       headers: parts.headers,
-      body: Some(body),
+      body: Some(body.into()),
     }
   }
 }
@@ -31,7 +30,7 @@ impl UserData for Response {
       let mut this_ = this.borrow_mut::<Self>()?;
       let body = this_.body.take();
       if let Some(body) = body {
-        let x = ByteStream::from_body(body).to_lua(lua)?;
+        let x = lua.pack(body)?;
         this.set_named_user_value("body", x.clone())?;
         Ok(x)
       } else {
@@ -43,84 +42,61 @@ impl UserData for Response {
 }
 
 impl<'lua> FromLua<'lua> for Response {
-  fn from_lua(value: mlua::Value, _lua: &Lua) -> mlua::Result<Self> {
+  fn from_lua(value: mlua::Value, lua: &Lua) -> mlua::Result<Self> {
+    use mlua::Value::*;
     match value {
-      mlua::Value::Table(_) => {
-        let mut headers = HeaderMap::new();
-        headers.insert("content-type", HeaderValue::from_static("application/json"));
-        Ok(Self {
-          status: StatusCode::OK,
-          headers,
-          body: Some(serde_json::to_value(value).to_lua_err()?.to_string().into()),
-        })
-      }
-      mlua::Value::UserData(x) => {
-        // move user value out
-        let mut u = x.take::<Self>()?;
-        if u.body.is_none() {
-          let t = x.get_named_user_value::<_, AnyUserData>("body")?;
-          let t = t.take::<ByteStream>()?;
-          u.body = Some(Body::wrap_stream(t.0));
+      x @ Table(_) | x @ Nil | x @ String(_) => Ok(lua.unpack::<Body>(x)?.into_default_response()),
+      UserData(x) => {
+        if let Ok(mut u) = x.take::<Self>() {
+          if u.body.is_none() {
+            let t = x.get_named_user_value::<_, Body>("body")?;
+            u.body = Some(t);
+          }
+          Ok(u)
+        } else {
+          Ok(lua.unpack::<Body>(UserData(x))?.into_default_response())
         }
-        Ok(u)
       }
       _ => Err("cannot convert to response".to_lua_err()),
     }
   }
 }
 
-impl From<Response> for hyper::Response<Body> {
+impl From<Response> for hyper::Response<hyper::Body> {
   fn from(x: Response) -> Self {
     let mut builder = hyper::Response::builder().status(x.status);
     *builder.headers_mut().unwrap() = x.headers;
-    builder.body(x.body.unwrap()).unwrap()
+    builder.body(x.body.unwrap().into()).unwrap()
   }
 }
 
 pub fn create_fn_create_response(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|_lua, params: Table| {
-    let status = params
-      .raw_get::<_, Option<u16>>("status")?
-      .map(|f| {
-        StatusCode::from_u16(f)
-          .map_err(|_| format!("invalid status code: {}", f))
-          .to_lua_err()
-      })
-      .unwrap_or(Ok(StatusCode::OK))?;
+    let body = params.raw_get::<_, Body>("body")?;
+    let mut response = body.into_default_response();
 
-    let mut headers = params
-      .raw_get::<_, Option<Table>>("headers")?
-      .map(|t| -> mlua::Result<_> {
-        let mut header_map = HeaderMap::new();
-        for f in t.pairs::<String, String>() {
-          let (k, v) = f?;
-          header_map.insert(
-            HeaderName::from_bytes(k.as_bytes())
-              .map_err(|_| format!("invalid header value: {}", k))
-              .to_lua_err()?,
-            HeaderValue::from_str(&v)
-              .map_err(|_| format!("invalid header value: {}", v))
-              .to_lua_err()?,
-          );
-        }
-        Ok(header_map)
-      })
-      .unwrap_or_else(|| Ok(HeaderMap::new()))?;
+    let status = params.raw_get::<_, Option<u16>>("status")?;
+    if let Some(x) = status {
+      response.status = StatusCode::from_u16(x)
+        .map_err(|_| format!("invalid status code: {x}"))
+        .to_lua_err()?;
+    }
 
-    // TODO: byte stream as body
-    let body = if let Some(body) = params.raw_get::<_, Option<mlua::Value>>("body")? {
-      serde_json::to_value(body).to_lua_err()?.to_string().into()
-    } else {
-      Body::empty()
-    };
-    let body = Some(body);
+    let headers = params.raw_get::<_, Option<Table>>("headers")?;
+    if let Some(x) = headers {
+      for f in x.pairs::<String, String>() {
+        let (k, v) = f?;
+        response.headers.insert(
+          HeaderName::from_bytes(k.as_bytes())
+            .map_err(|_| format!("invalid header value: {}", k))
+            .to_lua_err()?,
+          HeaderValue::from_str(&v)
+            .map_err(|_| format!("invalid header value: {}", v))
+            .to_lua_err()?,
+        );
+      }
+    }
 
-    headers.insert("content-type", HeaderValue::from_static("application/json"));
-
-    Ok(Response {
-      status,
-      headers,
-      body,
-    })
+    Ok(response)
   })
 }

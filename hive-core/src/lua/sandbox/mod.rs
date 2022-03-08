@@ -51,6 +51,7 @@ impl Sandbox {
 }
 
 impl Sandbox {
+  // TODO: also put it in Lua global
   async fn pcall<'a, T, R>(&'a self, f: Function<'a>, v: T) -> Result<R>
   where
     T: ToLuaMulti<'a>,
