@@ -1,10 +1,12 @@
 mod body;
 mod request;
 mod response;
+mod uri;
 
 pub use request::Request;
 pub use response::Response;
 
+use self::uri::create_fn_create_uri;
 use crate::permission::{Permission, PermissionSet};
 use hyper::client::HttpConnector;
 use hyper::Client;
@@ -25,6 +27,7 @@ pub fn create_preload_http(lua: &Lua, permissions: Arc<PermissionSet>) -> mlua::
 
     http.raw_set("request", create_fn_request(lua, permissions.clone())?)?;
     http.raw_set("Response", create_fn_create_response(lua)?)?;
+    http.raw_set("Uri", create_fn_create_uri(lua)?)?;
 
     Ok(http)
   })

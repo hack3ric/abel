@@ -1,16 +1,15 @@
 use super::body::Body;
+use super::uri::Uri;
 use crate::path::Params;
 use hyper::header::{HeaderName, HeaderValue};
 use hyper::http::request::Parts;
-use hyper::{HeaderMap, Method, Uri};
-use mlua::{
-  ExternalError, ExternalResult, FromLua, Lua, String as LuaString, Table, ToLua, UserData,
-};
+use hyper::{HeaderMap, Method};
+use mlua::{ExternalError, ExternalResult, FromLua, Lua, String as LuaString, Table, UserData};
 
 pub struct Request {
   pub(crate) method: Method,
   /// Must be absolute
-  pub(crate) uri: Uri,
+  pub(crate) uri: hyper::Uri,
   pub(crate) headers: HeaderMap,
   pub(crate) body: Option<Body>,
   /// Only used in Hive core
@@ -30,7 +29,7 @@ impl Default for Request {
   fn default() -> Self {
     Self {
       method: Method::GET,
-      uri: Uri::default(),
+      uri: hyper::Uri::default(),
       headers: HeaderMap::new(),
       body: Some(Body::Empty),
       params: None,
@@ -60,8 +59,8 @@ impl UserData for Request {
         })
     });
 
-    fields.add_field_method_get("method", |lua, this| this.method.as_str().to_lua(lua));
-    fields.add_field_method_get("uri", |_lua, this| Ok(this.uri.to_string()));
+    fields.add_field_method_get("method", |lua, this| lua.pack(this.method.as_str()));
+    fields.add_field_method_get("uri", |_lua, this| Ok(Uri(this.uri.clone())));
 
     fields.add_field_function_get("body", |lua, this| {
       let mut this_ = this.borrow_mut::<Self>()?;
@@ -83,7 +82,7 @@ impl<'lua> FromLua<'lua> for Request {
   fn from_lua(lua_value: mlua::Value<'lua>, _lua: &'lua Lua) -> mlua::Result<Self> {
     match lua_value {
       mlua::Value::String(uri) => Ok(Self {
-        uri: Uri::try_from(uri.as_bytes()).to_lua_err()?,
+        uri: hyper::Uri::try_from(uri.as_bytes()).to_lua_err()?,
         ..Default::default()
       }),
       mlua::Value::Table(table) => {
@@ -94,7 +93,7 @@ impl<'lua> FromLua<'lua> for Request {
           .to_lua_err()?
           .unwrap_or(Method::GET);
 
-        let uri: Uri = table
+        let uri: hyper::Uri = table
           .raw_get::<_, LuaString>("uri")?
           .as_bytes()
           .try_into()

@@ -28,6 +28,6 @@ fn create_fn_json_stringify(lua: &Lua) -> mlua::Result<Function> {
 fn create_fn_json_array(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, table: Table| {
     table.set_metatable(Some(lua.array_metatable()));
-    Ok(())
+    Ok(table)
   })
 }
