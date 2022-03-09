@@ -72,8 +72,8 @@ local function preload_searcher(modname)
   end
 end
 
-local source = internal.source
 local function source_searcher(modname)
+  local source = internal.source
   local path = ""
   for str in string.gmatch(modname, "([^%.]+)") do
     path = path .. "/" .. str
