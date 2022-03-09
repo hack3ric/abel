@@ -1,7 +1,7 @@
-local request = require "request"
+local http = require "http"
 
 hive.register("/", function(req)
-  local resp = request "https://httpbin.org/get"
+  local resp = http.request "https://httpbin.org/get"
 
   return {
     status = resp.status,
