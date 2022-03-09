@@ -1,5 +1,6 @@
 pub mod permission;
 
+mod config;
 mod error;
 mod lua;
 mod path;
@@ -7,6 +8,7 @@ mod service;
 mod source;
 mod task;
 
+pub use config::Config;
 pub use error::{Error, ErrorKind, Result};
 pub use lua::http::{Request, Response};
 pub use mlua::Error as LuaError;
@@ -15,7 +17,6 @@ pub use source::Source;
 
 use hyper::Body;
 use lua::Sandbox;
-use permission::PermissionSet;
 use service::ServicePool;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -59,11 +60,11 @@ impl Hive {
     &self,
     name: String,
     source: Source,
-    permissions: PermissionSet,
+    config: Config,
   ) -> Result<Service> {
     self
       .service_pool
-      .create(&self.sandbox_pool, name, source, permissions)
+      .create(&self.sandbox_pool, name, source, config)
       .await
   }
 

@@ -75,13 +75,13 @@ async fn run() -> anyhow::Result<()> {
       let name = service_folder.file_name().to_string_lossy().into_owned();
       let result = async {
         let source = Source::new(service_folder.path()).await?;
-        let mut permissions = source.get("permissions.json").await?;
-        let mut bytes = Vec::with_capacity(permissions.metadata().await?.len() as _);
-        permissions.read_to_end(&mut bytes).await?;
-        let permissions = serde_json::from_slice(&bytes)?;
+        let mut config = source.get("hive.json").await?;
+        let mut bytes = Vec::with_capacity(config.metadata().await?.len() as _);
+        config.read_to_end(&mut bytes).await?;
+        let config = serde_json::from_slice(&bytes)?;
 
         let service = (state.hive)
-          .create_service(name.clone(), source, permissions)
+          .create_service(name.clone(), source, config)
           .await?;
         Ok::<_, crate::error::Error>(service)
       }

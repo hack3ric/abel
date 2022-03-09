@@ -2,9 +2,8 @@ use crate::util::json_response;
 use crate::{MainState, Result};
 use futures::{Future, TryStreamExt};
 use hive_asar::Archive;
-use hive_core::permission::PermissionSet;
 use hive_core::ErrorKind::ServiceExists;
-use hive_core::{ErrorKind, Service, ServiceGuard, Source};
+use hive_core::{Config, ErrorKind, Service, ServiceGuard, Source};
 use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 use log::info;
 use multer::{Constraints, Field, Multipart, SizeLimit};
@@ -58,8 +57,8 @@ fn parse_multipart(
   let mut allowed_fields = vec!["source"];
   let mut size_limit = SizeLimit::new().for_field("source", 1024u64.pow(2) * 100);
   if let UploadType::Single = kind {
-    allowed_fields.push("permissions");
-    size_limit = size_limit.for_field("permissions", 1024u64 * 5);
+    allowed_fields.push("config");
+    size_limit = size_limit.for_field("config", 1024u64 * 5);
   }
 
   let content_type = headers
@@ -82,7 +81,7 @@ async fn upload_single<'a>(
   let temp_dir = tempfile::tempdir()?;
 
   let mut source_result = None::<String>;
-  let mut permissions_result = None::<PermissionSet>;
+  let mut config_result = None::<Config>;
 
   while let Some(field) = multipart.next_field().await? {
     match field.name() {
@@ -94,30 +93,30 @@ async fn upload_single<'a>(
         tokio::fs::rename(path, temp_dir.path().join("main.lua")).await?;
         source_result = Some(name);
       }
-      Some("permissions") => {
-        if permissions_result.is_some() {
-          return Err("multiple permission sets uploaded".into());
+      Some("config") => {
+        if config_result.is_some() {
+          return Err("multiple configs uploaded".into());
         }
         let bytes = &field.bytes().await?;
-        permissions_result = Some(serde_json::from_slice(bytes)?);
-        tokio::fs::write(temp_dir.path().join("permissions.json"), bytes).await?;
+        config_result = Some(serde_json::from_slice(bytes)?);
+        tokio::fs::write(temp_dir.path().join("hive.json"), bytes).await?;
       }
       _ => unreachable!(),
     }
   }
 
   let name = source_result.ok_or("no source code uploaded")?;
-  let permissions = if let Some(permissions) = permissions_result {
-    permissions
+  let config = if let Some(config) = config_result {
+    config
   } else {
-    tokio::fs::write(temp_dir.path().join("permissions.json"), b"[]").await?;
-    PermissionSet::new()
+    tokio::fs::write(temp_dir.path().join("hive.json"), b"{}").await?;
+    Default::default()
   };
 
   service_scope(state, name, move |source_path| async move {
     fs::rename(temp_dir.into_path(), &source_path).await?;
     let source = Source::new(source_path).await?;
-    Ok((source, permissions))
+    Ok((source, config))
   })
   .await
 }
@@ -139,12 +138,12 @@ async fn upload_multi<'a>(
     drop(archive);
     fs::remove_file(path).await?;
     let source = Source::new(&source_path).await?;
-    let permissions = match source.get_bytes("/permissions.json").await {
+    let config = match source.get_bytes("/hive.json").await {
       Ok(bytes) => serde_json::from_slice(&bytes)?,
       Err(error) => {
         if let ErrorKind::Io(io_error) = error.kind() {
           if let tokio::io::ErrorKind::NotFound = io_error.kind() {
-            PermissionSet::new()
+            Default::default()
           } else {
             return Err(error.into());
           }
@@ -153,7 +152,7 @@ async fn upload_multi<'a>(
         }
       }
     };
-    Ok((source, permissions))
+    Ok((source, config))
   })
   .await
 }
@@ -226,16 +225,16 @@ async fn service_scope<F, Fut>(
 ) -> Result<(Service, Option<ServiceGuard<'_>>)>
 where
   F: FnOnce(PathBuf) -> Fut,
-  Fut: Future<Output = Result<(Source, PermissionSet)>> + Send,
+  Fut: Future<Output = Result<(Source, Config)>> + Send,
 {
   let temp_path = tempfile::tempdir()?.into_path();
   let source_path = state.config_path.join(format!("services/{name}"));
 
   let replaced = replace_service(state, &name).await?;
   let result = async {
-    let (source, permissions) = f(temp_path.clone()).await?;
+    let (source, config) = f(temp_path.clone()).await?;
     let service = (state.hive)
-      .create_service(name, source.clone(), permissions)
+      .create_service(name, source.clone(), config)
       .await?;
     if source_path.exists() {
       fs::remove_dir_all(&source_path).await?;

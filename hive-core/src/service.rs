@@ -4,6 +4,7 @@ use crate::path::PathMatcher;
 use crate::permission::PermissionSet;
 use crate::source::Source;
 use crate::task::Pool;
+use crate::Config;
 use crate::ErrorKind::*;
 use dashmap::DashSet;
 use serde::ser::SerializeStruct;
@@ -14,9 +15,11 @@ use std::marker::PhantomData;
 use std::sync::{Arc, Weak};
 use uuid::Uuid;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ServiceImpl {
   name: Box<str>,
+  pkg_name: Option<String>,
+  description: Option<String>,
   paths: Vec<PathMatcher>,
   source: Source,
   permissions: Arc<PermissionSet>,
@@ -99,6 +102,8 @@ pub struct ServiceGuard<'a> {
 #[rustfmt::skip]
 impl ServiceGuard<'_> {
   pub fn name(&self) -> &str { &self.inner.name }
+  pub fn pkg_name(&self) -> Option<&str> { self.inner.pkg_name.as_deref() }
+  pub fn description(&self) -> Option<&str> { self.inner.description.as_deref() }
   pub fn paths(&self) -> &[PathMatcher] { &self.inner.paths }
   pub fn source(&self) -> &Source { &self.inner.source }
   pub fn permissions(&self) -> &PermissionSet { &self.inner.permissions }
@@ -111,6 +116,8 @@ impl Serialize for ServiceGuard<'_> {
   fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
     let mut x = serializer.serialize_struct("Service", 3)?;
     x.serialize_field("name", self.name())?;
+    x.serialize_field("pkg_name", &self.pkg_name())?;
+    x.serialize_field("description", &self.description())?;
     x.serialize_field("paths", self.paths())?;
     x.serialize_field("permissions", &self.permissions())?;
     x.serialize_field("uuid", &self.uuid())?;
@@ -135,7 +142,7 @@ impl ServicePool {
     sandbox_pool: &Pool<Sandbox>,
     name: String,
     source: Source,
-    permissions: PermissionSet,
+    config: Config,
   ) -> Result<Service> {
     if self.services.contains(<&Str>::from(&*name)) {
       return Err(ServiceExists(name.into()).into());
@@ -143,12 +150,19 @@ impl ServicePool {
 
     let service_impl = sandbox_pool
       .scope(move |sandbox| async move {
+        let Config {
+          pkg_name,
+          description,
+          permissions,
+        } = config;
         let permissions = Arc::new(permissions);
         let (paths, local_env, internal) = sandbox
           .pre_create_service(&name, source.clone(), permissions.clone())
           .await?;
         let service_impl = Arc::new(ServiceImpl {
           name: name.into_boxed_str(),
+          pkg_name,
+          description,
           paths,
           source,
           permissions,

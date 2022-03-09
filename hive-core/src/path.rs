@@ -11,7 +11,7 @@ static PATH_PARAMS_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r":([^/]+)|\*").
 
 pub type Params = HashMap<Box<str>, Box<str>>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PathMatcher {
   path: Box<str>,
   regex: Regex,
