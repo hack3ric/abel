@@ -1,6 +1,8 @@
 use crate::Result;
 use hyper::{Body, Response, StatusCode};
 use serde::Serialize;
+use tokio::io;
+use tokio::task::spawn_blocking;
 
 pub fn json_response(status: StatusCode, body: impl Serialize) -> Result<Response<Body>> {
   Ok(json_response_raw(status, body))
@@ -12,4 +14,18 @@ pub fn json_response_raw(status: StatusCode, body: impl Serialize) -> Response<B
     .header("content-type", "application/json")
     .body(serde_json::to_string(&body).unwrap().into())
     .unwrap()
+}
+
+/// Taken from `tokio::fs`
+pub async fn asyncify<F, T, E>(f: F) -> Result<T>
+where
+  F: FnOnce() -> Result<T, E> + Send + 'static,
+  T: Send + 'static,
+  E: Send + 'static,
+  crate::Error: From<E>,
+{
+  match spawn_blocking(f).await {
+    Ok(res) => res.map_err(From::from),
+    Err(_) => Err(io::Error::new(io::ErrorKind::Other, "background task failed").into()),
+  }
 }

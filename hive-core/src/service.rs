@@ -7,23 +7,28 @@ use crate::task::Pool;
 use crate::Config;
 use crate::ErrorKind::*;
 use dashmap::DashSet;
-use serde::ser::SerializeStruct;
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::sync::{Arc, Weak};
 use uuid::Uuid;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 struct ServiceImpl {
   name: Box<str>,
   pkg_name: Option<String>,
   description: Option<String>,
   paths: Vec<PathMatcher>,
+  #[serde(skip)]
   source: Source,
+  #[serde(serialize_with = "serialize_arc")]
   permissions: Arc<PermissionSet>,
   uuid: Uuid,
+}
+
+fn serialize_arc<S: Serializer>(arc: &Arc<impl Serialize>, ser: S) -> Result<S::Ok, S::Error> {
+  arc.as_ref().serialize(ser)
 }
 
 impl Hash for ServiceImpl {
@@ -114,14 +119,7 @@ impl ServiceGuard<'_> {
 
 impl Serialize for ServiceGuard<'_> {
   fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-    let mut x = serializer.serialize_struct("Service", 3)?;
-    x.serialize_field("name", self.name())?;
-    x.serialize_field("pkg_name", &self.pkg_name())?;
-    x.serialize_field("description", &self.description())?;
-    x.serialize_field("paths", self.paths())?;
-    x.serialize_field("permissions", &self.permissions())?;
-    x.serialize_field("uuid", &self.uuid())?;
-    x.end()
+    self.inner.as_ref().serialize(serializer)
   }
 }
 

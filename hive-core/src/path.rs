@@ -1,5 +1,4 @@
-pub use regex::Error as RegexError;
-
+use crate::Result;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::ser::SerializeStruct;
@@ -19,7 +18,7 @@ pub struct PathMatcher {
 }
 
 impl PathMatcher {
-  pub fn new(matcher: &str) -> Result<Self, RegexError> {
+  pub fn new(matcher: &str) -> Result<Self> {
     let mut regex = "^".to_owned();
     let mut param_names = Vec::new();
 

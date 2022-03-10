@@ -4,6 +4,7 @@ mod handle;
 mod util;
 
 use crate::handle::handle;
+use error::Error;
 use hive_core::{Hive, HiveOptions, Source};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
@@ -17,7 +18,7 @@ use structopt::StructOpt;
 use tokio::io::AsyncReadExt;
 use tokio::{fs, io};
 
-type Result<T, E = error::Error> = std::result::Result<T, E>;
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(StructOpt)]
 struct Opt {
@@ -83,7 +84,7 @@ async fn run() -> anyhow::Result<()> {
         let service = (state.hive)
           .create_service(name.clone(), source, config)
           .await?;
-        Ok::<_, crate::error::Error>(service)
+        Ok::<_, crate::Error>(service)
       }
       .await;
       match result {
