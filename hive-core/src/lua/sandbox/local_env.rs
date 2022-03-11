@@ -1,4 +1,5 @@
 use crate::lua::context::create_module_context;
+use crate::lua::env::create_fn_os_getenv;
 use crate::lua::fs::create_preload_fs;
 use crate::lua::http::create_preload_http;
 use crate::lua::json::create_preload_json;
@@ -33,8 +34,11 @@ pub(super) async fn create_local_env<'a>(
     "fs",
     create_preload_fs(lua, state, service_name, source, permissions.clone()).await?,
   )?;
-  preload.raw_set("http", create_preload_http(lua, permissions)?)?;
+  preload.raw_set("http", create_preload_http(lua, permissions.clone())?)?;
   preload.raw_set("json", create_preload_json(lua)?)?;
+
+  let os_module: Table = local_env.raw_get("os")?;
+  os_module.raw_set("getenv", create_fn_os_getenv(lua, permissions)?)?;
 
   Ok((local_env, internal))
 }

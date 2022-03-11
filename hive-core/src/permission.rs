@@ -4,6 +4,7 @@ use mlua::{ExternalError, ExternalResult, FromLua, Lua, String as LuaString, ToL
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashSet;
 use std::fmt::{Display, Write};
+use std::mem::discriminant;
 use std::num::{NonZeroU16, ParseIntError};
 use std::path::{Path, PathBuf};
 
@@ -19,12 +20,17 @@ pub enum PermissionInner {
   /// Reading a file.
   #[serde(rename = "read")]
   Read { path: PathBuf },
+
   /// Writing a file.
   #[serde(rename = "write")]
   Write { path: PathBuf },
+
   /// Connecting to specified host.
   #[serde(rename = "net")]
   Net { host: Host },
+
+  #[serde(rename = "env")]
+  Env { name: Box<str> },
 }
 
 impl Permission {
@@ -59,6 +65,10 @@ impl Permission {
     })
   }
 
+  pub fn env(name: impl Into<String>) -> Self {
+    Self(PermissionInner::Env { name: name.into().into() })
+  }
+
   pub fn is_subset(&self, other: &Self) -> bool {
     use PermissionInner::*;
     match (&self.0, &other.0) {
@@ -71,24 +81,13 @@ impl Permission {
         (Some(p1), Some(p2)) => p1 == p2,
         (Some(_), None) => false,
       },
+      (Env { name: n1 }, Env { name: n2 }) => n1 == n2,
       _ => false,
     }
   }
 
   pub fn is_superset(&self, other: &Self) -> bool {
-    use PermissionInner::*;
-    match (&self.0, &other.0) {
-      (Read { path: p1 }, Read { path: p2 }) | (Write { path: p1 }, Write { path: p2 }) => {
-        p2.starts_with(p1)
-      }
-      (Net { host: h1 }, Net { host: h2 }) => match (&h1.port, &h2.port) {
-        _ if h1.host != h2.host => false,
-        (None, _) => true,
-        (Some(p1), Some(p2)) => p1 == p2,
-        (Some(_), None) => false,
-      },
-      _ => false,
-    }
+    discriminant(&self.0) == discriminant(&other.0) && (!self.is_subset(other) || self == other)
   }
 
   pub fn inner(&self) -> &PermissionInner {
@@ -101,6 +100,7 @@ impl Permission {
       Read { .. } => "read",
       Write { .. } => "write",
       Net { .. } => "net",
+      Env { .. } => "env",
     }
   }
 }
@@ -113,6 +113,7 @@ impl Display for Permission {
     match &self.0 {
       Read { path } | Write { path } => f.write_str(&path.to_string_lossy()),
       Net { host } => <Host as Display>::fmt(host, f),
+      Env { name } => f.write_str(name),
     }
   }
 }
@@ -155,6 +156,7 @@ impl<'lua> ToLua<'lua> for Permission {
         lua.create_table_from([("type", "write"), ("path", &path.to_string_lossy())])?
       }
       Net { host } => lua.create_table_from([("type", "net"), ("host", &host.to_string())])?,
+      Env { name } => lua.create_table_from([("type", "env"), ("name", &name)])?,
     };
     Ok(mlua::Value::Table(table))
   }
@@ -254,5 +256,19 @@ impl<'de> Deserialize<'de> for PermissionSet {
       result.insert(i);
     }
     Ok(result)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use test_case::test_case;
+
+  #[test_case(Permission::read("/foo/bar/baz"), Permission::read("/foo/bar") => (true, false); "subpath")]
+  #[test_case(Permission::read("/foo/bar"), Permission::read("/foo/bar/baz") => (false, true); "super path")]
+  #[test_case(Permission::read("/foo/bar"), Permission::read("/foo/bar") => (true, true); "same path")]
+  #[test_case(Permission::read("/foo/bar"), Permission::write("/foo/bar") => (false, false); "different type")]
+  fn test_subset_superset(a: Permission, b: Permission) -> (bool, bool) {
+    (a.is_subset(&b), a.is_superset(&b))
   }
 }

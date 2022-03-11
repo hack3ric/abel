@@ -6,6 +6,7 @@ mod fs;
 mod json;
 mod permission;
 mod sandbox;
+mod env;
 
 pub use sandbox::Sandbox;
 
