@@ -220,7 +220,7 @@ impl PermissionSet {
       if perm.is_superset(&p) {
         insert_flag = false;
       }
-      perm.is_subset(&p)
+      !perm.is_subset(&p)
     });
 
     if insert_flag {
