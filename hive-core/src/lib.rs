@@ -7,6 +7,8 @@ mod path;
 mod service;
 mod source;
 mod task;
+mod util;
+
 
 pub use config::Config;
 pub use error::{Error, ErrorKind, Result};

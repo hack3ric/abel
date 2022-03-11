@@ -4,10 +4,11 @@ use crate::path::PathMatcher;
 use crate::permission::PermissionSet;
 use crate::source::Source;
 use crate::task::Pool;
+use crate::util::MyStr;
 use crate::Config;
 use crate::ErrorKind::*;
 use dashmap::DashSet;
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -22,13 +23,9 @@ struct ServiceImpl {
   paths: Vec<PathMatcher>,
   #[serde(skip)]
   source: Source,
-  #[serde(serialize_with = "serialize_arc")]
+  #[serde(serialize_with = "crate::util::serialize_arc")]
   permissions: Arc<PermissionSet>,
   uuid: Uuid,
-}
-
-fn serialize_arc<S: Serializer>(arc: &Arc<impl Serialize>, ser: S) -> Result<S::Ok, S::Error> {
-  arc.as_ref().serialize(ser)
 }
 
 impl Hash for ServiceImpl {
@@ -45,8 +42,8 @@ impl PartialEq for ServiceImpl {
 
 impl Eq for ServiceImpl {}
 
-impl Borrow<Str> for Arc<ServiceImpl> {
-  fn borrow(&self) -> &Str {
+impl Borrow<MyStr> for Arc<ServiceImpl> {
+  fn borrow(&self) -> &MyStr {
     self.name.as_ref().into()
   }
 }
@@ -56,16 +53,6 @@ impl ServiceImpl {
     Service {
       inner: Arc::downgrade(self),
     }
-  }
-}
-
-/// Helper struct for implementing `Borrow` for `Arc<ServiceImpl>`.
-#[derive(Hash, PartialEq, Eq)]
-pub(crate) struct Str(str);
-
-impl<'a> From<&'a str> for &'a Str {
-  fn from(x: &str) -> &Str {
-    unsafe { &*(x as *const str as *const Str) }
   }
 }
 
@@ -142,7 +129,7 @@ impl ServicePool {
     source: Source,
     config: Config,
   ) -> Result<Service> {
-    if self.services.contains(<&Str>::from(&*name)) {
+    if self.services.contains(<&MyStr>::from(&*name)) {
       return Err(ServiceExists(name.into()).into());
     }
 
@@ -183,7 +170,10 @@ impl ServicePool {
   }
 
   pub async fn get(&self, name: &str) -> Option<Service> {
-    self.services.get::<Str>(name.into()).map(|x| x.downgrade())
+    self
+      .services
+      .get::<MyStr>(name.into())
+      .map(|x| x.downgrade())
   }
 
   pub async fn list(&self) -> Vec<Service> {
@@ -192,11 +182,11 @@ impl ServicePool {
 
   // TODO: gracefully
   pub async fn remove(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<ServiceGuard<'_>> {
-    if let Some(old_service_impl) = self.services.remove(<&Str>::from(&*name)) {
+    if let Some(old_service_impl) = self.services.remove(<&MyStr>::from(&*name)) {
       let old_service_impl_clone = old_service_impl.clone();
       sandbox_pool
         .scope(move |sandbox| async move {
-          sandbox.run_stop(old_service_impl_clone.downgrade()).await?;
+          sandbox.run_stop(old_service_impl_clone.downgrade(), true).await?;
           Ok::<_, crate::Error>(())
         })
         .await?;

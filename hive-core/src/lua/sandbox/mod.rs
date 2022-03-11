@@ -180,7 +180,7 @@ impl Sandbox {
     Ok(())
   }
 
-  pub(crate) async fn run_stop(&self, service: Service) -> Result<()> {
+  pub(crate) async fn run_stop(&self, service: Service, destroy: bool) -> Result<()> {
     let loaded = self.load_service(service).await?;
     let stop_fn: Option<Function> = (self.lua)
       .registry_value::<Table>(&loaded.local_env)?
@@ -192,8 +192,9 @@ impl Sandbox {
     let service = loaded.service.try_upgrade()?;
     let service_name = service.name();
     remove_service_contexts(service_name);
-    // TODO:
-    remove_service_local_storage(&self.state, service_name).await?;
+    if destroy {
+      remove_service_local_storage(&self.state, service_name).await?;
+    }
     Ok(())
   }
 

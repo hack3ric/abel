@@ -9,6 +9,7 @@ use std::num::{NonZeroU16, ParseIntError};
 use std::path::{Path, PathBuf};
 
 /// A permission flag.
+// TODO: better grammar in `hive.json` (human-friendly serde)
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Permission(pub(crate) PermissionInner);
 
