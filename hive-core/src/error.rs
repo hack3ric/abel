@@ -30,6 +30,10 @@ pub enum ErrorKind {
   ServicePathNotFound { service: Box<str>, path: Box<str> },
   #[error("service '{0}' already exists")]
   ServiceExists(Box<str>),
+  #[error("service '{0}' is still running")]
+  ServiceRunning(Box<str>),
+  #[error("service '{0}' is stopped")]
+  ServiceStopped(Box<str>),
   #[error("service is dropped")]
   ServiceDropped,
   #[error("permission '{0}' not granted")]
@@ -66,7 +70,12 @@ impl From<ErrorKind> for Error {
   fn from(kind: ErrorKind) -> Self {
     use ErrorKind::*;
     let backtrace = match kind {
-      InvalidServiceName(_) | ServiceNotFound(_) | ServicePathNotFound { .. } => None,
+      InvalidServiceName(_)
+      | ServiceNotFound(_)
+      | ServicePathNotFound { .. }
+      | ServiceExists(_)
+      | ServiceRunning(_)
+      | ServiceStopped(_) => None,
       _ => Some(Backtrace::new()),
     };
     Self { kind, backtrace }

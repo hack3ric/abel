@@ -2,12 +2,13 @@ pub mod http;
 
 mod byte_stream;
 mod context;
+mod env;
 mod fs;
 mod json;
 mod permission;
 mod sandbox;
-mod env;
 
+pub use fs::remove_service_local_storage;
 pub use sandbox::Sandbox;
 
 use crate::Result;

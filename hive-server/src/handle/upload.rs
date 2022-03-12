@@ -3,7 +3,7 @@ use crate::{MainState, Result};
 use futures::TryStreamExt;
 use hive_asar::Archive;
 use hive_core::ErrorKind::{ServiceExists, ServiceNotFound};
-use hive_core::{Config, Service, ServiceGuard, Source};
+use hive_core::{Config, RunningService, ServiceImpl, Source};
 use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 use log::info;
 use multer::{Constraints, Field, Multipart, SizeLimit};
@@ -157,7 +157,7 @@ async fn create_service(
   name: String,
   config: Config,
   source_path: impl AsRef<Path>,
-) -> Result<(Service, Option<ServiceGuard<'_>>)> {
+) -> Result<(RunningService, Option<ServiceImpl>)> {
   let replaced = match state.hive.remove_service(&name).await {
     Ok(replaced) => Some(replaced),
     Err(error) if matches!(error.kind(), ServiceNotFound(_)) => None,
@@ -166,8 +166,7 @@ async fn create_service(
 
   let result = async {
     let source = Source::new(source_path.as_ref()).await?;
-    let service = state
-      .hive
+    let service = (state.hive)
       .create_service(name, source.clone(), config)
       .await?;
 
@@ -197,7 +196,10 @@ async fn create_service(
   result
 }
 
-async fn response(service: Service, replaced: Option<ServiceGuard<'_>>) -> Result<Response<Body>> {
+async fn response(
+  service: RunningService,
+  replaced: Option<ServiceImpl>,
+) -> Result<Response<Body>> {
   let service = service.upgrade();
   if let Some(replaced) = replaced {
     info!(

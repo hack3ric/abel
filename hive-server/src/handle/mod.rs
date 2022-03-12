@@ -3,11 +3,13 @@ mod upload;
 use crate::error::method_not_allowed;
 use crate::util::json_response;
 use crate::{MainState, Result};
-use hive_core::Service;
+use hive_core::RunningService;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use log::error;
+use serde::Deserialize;
 use serde_json::json;
 use std::convert::Infallible;
+use std::ops::Deref;
 use std::sync::Arc;
 use upload::upload;
 
@@ -18,6 +20,7 @@ pub(crate) async fn handle(
   const GET: &Method = &Method::GET;
   const POST: &Method = &Method::POST;
   const PUT: &Method = &Method::PUT;
+  const PATCH: &Method = &Method::PATCH;
   const DELETE: &Method = &Method::DELETE;
 
   let method = req.method();
@@ -36,8 +39,12 @@ pub(crate) async fn handle(
 
     (GET, ["services", name]) => get(&state, name).await,
     (PUT, ["services", name]) => upload(&state, Some((*name).into()), req).await,
+    (PATCH, ["services", name]) => start_stop(&state, name, req.uri().query().unwrap_or("")).await,
     (DELETE, ["services", name]) => remove(&state, name).await,
-    (_, ["services", _name]) => Err(method_not_allowed(&["GET", "PUT", "DELETE"], method)),
+    (_, ["services", _name]) => Err(method_not_allowed(
+      &["GET", "PUT", "PATCH", "DELETE"],
+      method,
+    )),
 
     (_, ["services", ..]) => Err((404, "hive path not found", json!({ "path": path })).into()),
 
@@ -65,14 +72,49 @@ async fn hello_world() -> Result<Response<Body>> {
 }
 
 async fn list(state: &MainState) -> Result<Response<Body>> {
-  let x = state.hive.list_services().await;
-  let y = x.iter().map(Service::upgrade).collect::<Vec<_>>();
-  json_response(StatusCode::OK, y)
+  let (running, stopped) = state.hive.list_services().await;
+  let running = running
+    .iter()
+    .map(RunningService::upgrade)
+    .collect::<Vec<_>>();
+  let stopped = stopped.iter().map(Deref::deref).collect::<Vec<_>>();
+  json_response(
+    StatusCode::OK,
+    json!({ "running": running, "stopped": stopped }),
+  )
 }
 
 async fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
   let service = state.hive.get_service(name).await?;
   json_response(StatusCode::OK, service.try_upgrade()?)
+}
+
+async fn start_stop(state: &MainState, name: &str, query: &str) -> Result<Response<Body>> {
+  #[derive(Deserialize)]
+  struct Query {
+    op: Operation,
+  }
+
+  #[derive(Deserialize)]
+  enum Operation {
+    #[serde(rename = "start")]
+    Start,
+    #[serde(rename = "stop")]
+    Stop,
+  }
+
+  let Query { op } = serde_qs::from_str(query)?;
+
+  match op {
+    Operation::Start => {
+      let service = state.hive.start_service(name).await?;
+      json_response(StatusCode::OK, json!({ "started": service.upgrade() }))
+    }
+    Operation::Stop => {
+      let service = state.hive.stop_service(name).await?;
+      json_response(StatusCode::OK, json!({ "stopped": &*service }))
+    }
+  }
 }
 
 async fn remove(state: &MainState, service_name: &str) -> Result<Response<Body>> {
