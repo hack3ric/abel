@@ -65,15 +65,13 @@ impl Hive {
     source: Source,
     config: Config,
   ) -> Result<RunningService> {
-    self
-      .service_pool
+    (self.service_pool)
       .create(&self.sandbox_pool, name, source, config)
       .await
   }
 
   pub async fn get_service(&self, name: &str) -> Result<RunningService> {
-    self
-      .service_pool
+    (self.service_pool)
       .get_running(name)
       .await
       .ok_or_else(|| ErrorKind::ServiceNotFound(name.into()).into())

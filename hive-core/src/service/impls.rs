@@ -24,6 +24,13 @@ impl ServiceState {
       Self::Stopped(x) => &x.name,
     }
   }
+
+  pub fn into_impl(self) -> ServiceImpl {
+    match self {
+      Self::Running(x) => Arc::try_unwrap(x).unwrap_or_else(|arc| arc.as_ref().clone()),
+      Self::Stopped(x) => x,
+    }
+  }
 }
 
 impl Hash for ServiceState {

@@ -73,9 +73,15 @@ async fn hello_world() -> Result<Response<Body>> {
 
 async fn list(state: &MainState) -> Result<Response<Body>> {
   let (running, stopped) = state.hive.list_services().await;
-  let running = running.iter().map(RunningService::upgrade).collect::<Vec<_>>();
+  let running = running
+    .iter()
+    .map(RunningService::upgrade)
+    .collect::<Vec<_>>();
   let stopped = stopped.iter().map(Deref::deref).collect::<Vec<_>>();
-  json_response(StatusCode::OK, json!({ "running": running, "stopped": stopped }))
+  json_response(
+    StatusCode::OK,
+    json!({ "running": running, "stopped": stopped }),
+  )
 }
 
 async fn get(state: &MainState, name: &str) -> Result<Response<Body>> {

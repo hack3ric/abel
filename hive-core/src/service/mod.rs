@@ -108,7 +108,7 @@ impl ServicePool {
             Ok::<_, crate::Error>(())
           })
           .await?;
-        let stopped = Arc::try_unwrap(service).unwrap_or_else(|arc| arc.as_ref().clone());
+        let stopped = ServiceState::Running(service).into_impl();
         assert!(self.services.insert(ServiceState::Stopped(stopped)));
         Ok(self.services.get(MyStr::new(name)).unwrap())
       } else {

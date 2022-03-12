@@ -166,8 +166,7 @@ async fn create_service(
 
   let result = async {
     let source = Source::new(source_path.as_ref()).await?;
-    let service = state
-      .hive
+    let service = (state.hive)
       .create_service(name, source.clone(), config)
       .await?;
 
@@ -197,7 +196,10 @@ async fn create_service(
   result
 }
 
-async fn response(service: RunningService, replaced: Option<ServiceImpl>) -> Result<Response<Body>> {
+async fn response(
+  service: RunningService,
+  replaced: Option<ServiceImpl>,
+) -> Result<Response<Body>> {
   let service = service.upgrade();
   if let Some(replaced) = replaced {
     info!(
