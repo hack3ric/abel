@@ -7,7 +7,7 @@ use super::LuaTableExt;
 use crate::lua::http::Request;
 use crate::path::PathMatcher;
 use crate::permission::PermissionSet;
-use crate::service::LiveService;
+use crate::service::RunningService;
 use crate::source::Source;
 use crate::ErrorKind::*;
 use crate::{HiveState, Result};
@@ -35,7 +35,7 @@ pub struct Sandbox {
 
 #[derive(Debug)]
 struct LoadedService {
-  service: LiveService,
+  service: RunningService,
   local_env: RegistryKey,
   internal: RegistryKey,
 }
@@ -84,7 +84,7 @@ impl Sandbox {
 
   pub async fn run(
     &self,
-    service: LiveService,
+    service: RunningService,
     path: &str,
     req: hyper::Request<Body>,
   ) -> Result<Response> {
@@ -151,7 +151,7 @@ impl Sandbox {
   pub(crate) async fn finish_create_service(
     &self,
     name: &str,
-    service: LiveService,
+    service: RunningService,
     local_env: RegistryKey,
     internal: RegistryKey,
   ) -> Result<()> {
@@ -168,7 +168,7 @@ impl Sandbox {
     Ok(())
   }
 
-  pub(crate) async fn run_start(&self, service: LiveService) -> Result<()> {
+  pub(crate) async fn run_start(&self, service: RunningService) -> Result<()> {
     let loaded = self.load_service(service).await?;
     let start_fn: Option<Function> = (self.lua)
       .registry_value::<Table>(&loaded.local_env)?
@@ -179,7 +179,7 @@ impl Sandbox {
     Ok(())
   }
 
-  pub(crate) async fn run_stop(&self, service: LiveService) -> Result<()> {
+  pub(crate) async fn run_stop(&self, service: RunningService) -> Result<()> {
     let loaded = self.load_service(service).await?;
     let stop_fn: Option<Function> = (self.lua)
       .registry_value::<Table>(&loaded.local_env)?
@@ -216,7 +216,7 @@ impl Sandbox {
     Ok((local_env_key, internal_key, internal))
   }
 
-  async fn load_service(&self, service: LiveService) -> Result<Ref<'_, LoadedService>> {
+  async fn load_service(&self, service: RunningService) -> Result<Ref<'_, LoadedService>> {
     let service_guard = service.try_upgrade()?;
     let name = service_guard.name();
     let mut self_loaded = self.loaded.borrow_mut();

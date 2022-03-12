@@ -30,8 +30,8 @@ pub enum ErrorKind {
   ServicePathNotFound { service: Box<str>, path: Box<str> },
   #[error("service '{0}' already exists")]
   ServiceExists(Box<str>),
-  #[error("service '{0}' is still live")]
-  ServiceLive(Box<str>),
+  #[error("service '{0}' is still running")]
+  ServiceRunning(Box<str>),
   #[error("service '{0}' is stopped")]
   ServiceStopped(Box<str>),
   #[error("service is dropped")]
@@ -74,7 +74,7 @@ impl From<ErrorKind> for Error {
       | ServiceNotFound(_)
       | ServicePathNotFound { .. }
       | ServiceExists(_)
-      | ServiceLive(_)
+      | ServiceRunning(_)
       | ServiceStopped(_) => None,
       _ => Some(Backtrace::new()),
     };

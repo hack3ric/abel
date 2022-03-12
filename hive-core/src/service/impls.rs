@@ -13,14 +13,14 @@ use uuid::Uuid;
 #[derive(Serialize)]
 #[serde(untagged)]
 pub enum ServiceState {
-  Live(#[serde(serialize_with = "crate::util::serialize_arc")] Arc<ServiceImpl>),
+  Running(#[serde(serialize_with = "crate::util::serialize_arc")] Arc<ServiceImpl>),
   Stopped(ServiceImpl),
 }
 
 impl ServiceState {
   pub fn name(&self) -> &str {
     match self {
-      Self::Live(x) => &x.name,
+      Self::Running(x) => &x.name,
       Self::Stopped(x) => &x.name,
     }
   }
@@ -60,8 +60,8 @@ pub struct ServiceImpl {
 }
 
 impl ServiceImpl {
-  pub(crate) fn downgrade(self: &Arc<Self>) -> LiveService {
-    LiveService {
+  pub(crate) fn downgrade(self: &Arc<Self>) -> RunningService {
+    RunningService {
       inner: Arc::downgrade(self),
     }
   }
@@ -73,19 +73,19 @@ impl ServiceImpl {
 
 /// A reference to an inner service.
 #[derive(Debug, Clone)]
-pub struct LiveService {
+pub struct RunningService {
   inner: Weak<ServiceImpl>,
 }
 
-impl LiveService {
-  pub fn try_upgrade(&self) -> Result<LiveServiceGuard<'_>> {
-    Ok(LiveServiceGuard {
+impl RunningService {
+  pub fn try_upgrade(&self) -> Result<RunningServiceGuard<'_>> {
+    Ok(RunningServiceGuard {
       inner: self.inner.upgrade().ok_or(ServiceDropped)?,
       _p: PhantomData,
     })
   }
 
-  pub fn upgrade(&self) -> LiveServiceGuard<'_> {
+  pub fn upgrade(&self) -> RunningServiceGuard<'_> {
     self.try_upgrade().unwrap()
   }
 
@@ -101,13 +101,13 @@ impl LiveService {
 /// An RAII guard of shared reference to an inner service.
 ///
 /// Used to get information of this service.
-pub struct LiveServiceGuard<'a> {
+pub struct RunningServiceGuard<'a> {
   pub(crate) inner: Arc<ServiceImpl>,
   pub(crate) _p: PhantomData<&'a ()>,
 }
 
 #[rustfmt::skip]
-impl LiveServiceGuard<'_> {
+impl RunningServiceGuard<'_> {
   pub fn name(&self) -> &str { &self.inner.name }
   pub fn pkg_name(&self) -> Option<&str> { self.inner.pkg_name.as_deref() }
   pub fn description(&self) -> Option<&str> { self.inner.description.as_deref() }
@@ -119,7 +119,7 @@ impl LiveServiceGuard<'_> {
   pub(crate) fn permissions_arc(&self) -> Arc<PermissionSet> { self.inner.permissions.clone() }
 }
 
-impl Serialize for LiveServiceGuard<'_> {
+impl Serialize for RunningServiceGuard<'_> {
   fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
     self.inner.as_ref().serialize(serializer)
   }

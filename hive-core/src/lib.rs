@@ -13,7 +13,7 @@ pub use config::Config;
 pub use error::{Error, ErrorKind, Result};
 pub use lua::http::{Request, Response};
 pub use mlua::Error as LuaError;
-pub use service::{LiveService, LiveServiceGuard, ServiceImpl};
+pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 pub use source::Source;
 
 use dashmap::setref::multiple::RefMulti;
@@ -64,17 +64,17 @@ impl Hive {
     name: String,
     source: Source,
     config: Config,
-  ) -> Result<LiveService> {
+  ) -> Result<RunningService> {
     self
       .service_pool
       .create(&self.sandbox_pool, name, source, config)
       .await
   }
 
-  pub async fn get_service(&self, name: &str) -> Result<LiveService> {
+  pub async fn get_service(&self, name: &str) -> Result<RunningService> {
     self
       .service_pool
-      .get_live(name)
+      .get_running(name)
       .await
       .ok_or_else(|| ErrorKind::ServiceNotFound(name.into()).into())
   }
@@ -92,7 +92,7 @@ impl Hive {
       .await
   }
 
-  pub async fn list_services(&self) -> (Vec<LiveService>, Vec<RefMulti<'_, ServiceState>>) {
+  pub async fn list_services(&self) -> (Vec<RunningService>, Vec<RefMulti<'_, ServiceState>>) {
     self.service_pool.list().await
   }
 
@@ -100,7 +100,7 @@ impl Hive {
     self.service_pool.stop(&self.sandbox_pool, name).await
   }
 
-  pub async fn start_service(&self, name: &str) -> Result<LiveService> {
+  pub async fn start_service(&self, name: &str) -> Result<RunningService> {
     self.service_pool.start(&self.sandbox_pool, name).await
   }
 

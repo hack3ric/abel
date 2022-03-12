@@ -32,7 +32,7 @@ impl ServicePool {
     name: String,
     source: Source,
     config: Config,
-  ) -> Result<LiveService> {
+  ) -> Result<RunningService> {
     if self.services.contains(MyStr::new(&*name)) {
       return Err(ServiceExists(name.into()).into());
     }
@@ -69,29 +69,29 @@ impl ServicePool {
       })
       .await?;
     let service = service_impl.downgrade();
-    assert!(self.services.insert(ServiceState::Live(service_impl)));
+    assert!(self.services.insert(ServiceState::Running(service_impl)));
     Ok(service)
   }
 
-  pub async fn get_live(&self, name: &str) -> Option<LiveService> {
+  pub async fn get_running(&self, name: &str) -> Option<RunningService> {
     let x = self.services.get::<MyStr>(name.into());
-    if let Some(ServiceState::Live(x)) = x.as_deref() {
+    if let Some(ServiceState::Running(x)) = x.as_deref() {
       Some(x.downgrade())
     } else {
       None
     }
   }
 
-  pub async fn list(&self) -> (Vec<LiveService>, Vec<RefMulti<'_, ServiceState>>) {
-    let mut live = Vec::new();
+  pub async fn list(&self) -> (Vec<RunningService>, Vec<RefMulti<'_, ServiceState>>) {
+    let mut running = Vec::new();
     let mut stopped = Vec::new();
     for service in self.services.iter() {
       match &*service {
-        ServiceState::Live(x) => live.push(x.downgrade()),
+        ServiceState::Running(x) => running.push(x.downgrade()),
         ServiceState::Stopped(_) => stopped.push(service),
       }
     }
-    (live, stopped)
+    (running, stopped)
   }
 
   pub async fn stop(
@@ -100,7 +100,7 @@ impl ServicePool {
     name: &str,
   ) -> Result<Ref<'_, ServiceState>> {
     if let Some(service) = self.services.remove(MyStr::new(name)) {
-      if let ServiceState::Live(service) = service {
+      if let ServiceState::Running(service) = service {
         let service2 = service.clone();
         sandbox_pool
           .scope(|sandbox| async move {
@@ -120,22 +120,22 @@ impl ServicePool {
     }
   }
 
-  pub async fn start(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<LiveService> {
+  pub async fn start(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<RunningService> {
     if let Some(service) = self.services.remove(MyStr::new(name)) {
       if let ServiceState::Stopped(service) = service {
-        let live = Arc::new(service);
-        let service = live.clone();
+        let running = Arc::new(service);
+        let service = running.clone();
         sandbox_pool
           .scope(move |sandbox| async move {
             sandbox.run_start(service.downgrade()).await?;
             Ok::<_, crate::Error>(())
           })
           .await?;
-        assert!(self.services.insert(ServiceState::Live(live.clone())));
-        Ok(live.downgrade())
+        assert!(self.services.insert(ServiceState::Running(running.clone())));
+        Ok(running.downgrade())
       } else {
         assert!(self.services.insert(service));
-        Err(ServiceLive(name.into()).into())
+        Err(ServiceRunning(name.into()).into())
       }
     } else {
       Err(ServiceNotFound(name.into()).into())
@@ -149,7 +149,7 @@ impl ServicePool {
         Ok(x)
       } else {
         assert!(self.services.insert(old_service));
-        Err(ServiceLive(name.into()).into())
+        Err(ServiceRunning(name.into()).into())
       }
     } else {
       Err(ServiceNotFound(name.into()).into())
