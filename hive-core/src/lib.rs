@@ -13,7 +13,7 @@ pub use config::Config;
 pub use error::{Error, ErrorKind, Result};
 pub use lua::http::{Request, Response};
 pub use mlua::Error as LuaError;
-pub use service::{Service, ServiceGuard};
+pub use service::{LiveService, LiveServiceGuard};
 pub use source::Source;
 
 use hyper::Body;
@@ -62,14 +62,14 @@ impl Hive {
     name: String,
     source: Source,
     config: Config,
-  ) -> Result<Service> {
+  ) -> Result<LiveService> {
     self
       .service_pool
       .create(&self.sandbox_pool, name, source, config)
       .await
   }
 
-  pub async fn get_service(&self, name: &str) -> Result<Service> {
+  pub async fn get_service(&self, name: &str) -> Result<LiveService> {
     self
       .service_pool
       .get(name)
@@ -90,11 +90,11 @@ impl Hive {
       .await
   }
 
-  pub async fn list_services(&self) -> Vec<Service> {
+  pub async fn list_services(&self) -> Vec<LiveService> {
     self.service_pool.list().await
   }
 
-  pub async fn remove_service(&self, name: &str) -> Result<ServiceGuard<'_>> {
+  pub async fn remove_service(&self, name: &str) -> Result<LiveServiceGuard<'_>> {
     self.service_pool.remove(&self.sandbox_pool, name).await
   }
 }

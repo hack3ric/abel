@@ -49,8 +49,8 @@ impl Borrow<MyStr> for Arc<ServiceImpl> {
 }
 
 impl ServiceImpl {
-  fn downgrade(self: &Arc<Self>) -> Service {
-    Service {
+  fn downgrade(self: &Arc<Self>) -> LiveService {
+    LiveService {
       inner: Arc::downgrade(self),
     }
   }
@@ -58,19 +58,19 @@ impl ServiceImpl {
 
 /// A reference to an inner service.
 #[derive(Debug, Clone)]
-pub struct Service {
+pub struct LiveService {
   inner: Weak<ServiceImpl>,
 }
 
-impl Service {
-  pub fn try_upgrade(&self) -> Result<ServiceGuard<'_>> {
-    Ok(ServiceGuard {
+impl LiveService {
+  pub fn try_upgrade(&self) -> Result<LiveServiceGuard<'_>> {
+    Ok(LiveServiceGuard {
       inner: self.inner.upgrade().ok_or(ServiceDropped)?,
       _p: PhantomData,
     })
   }
 
-  pub fn upgrade(&self) -> ServiceGuard<'_> {
+  pub fn upgrade(&self) -> LiveServiceGuard<'_> {
     self.try_upgrade().unwrap()
   }
 
@@ -86,13 +86,13 @@ impl Service {
 /// An RAII guard of shared reference to an inner service.
 ///
 /// Used to get information of this service.
-pub struct ServiceGuard<'a> {
+pub struct LiveServiceGuard<'a> {
   inner: Arc<ServiceImpl>,
   _p: PhantomData<&'a ()>,
 }
 
 #[rustfmt::skip]
-impl ServiceGuard<'_> {
+impl LiveServiceGuard<'_> {
   pub fn name(&self) -> &str { &self.inner.name }
   pub fn pkg_name(&self) -> Option<&str> { self.inner.pkg_name.as_deref() }
   pub fn description(&self) -> Option<&str> { self.inner.description.as_deref() }
@@ -104,7 +104,7 @@ impl ServiceGuard<'_> {
   pub(crate) fn permissions_arc(&self) -> Arc<PermissionSet> { self.inner.permissions.clone() }
 }
 
-impl Serialize for ServiceGuard<'_> {
+impl Serialize for LiveServiceGuard<'_> {
   fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
     self.inner.as_ref().serialize(serializer)
   }
@@ -128,7 +128,7 @@ impl ServicePool {
     name: String,
     source: Source,
     config: Config,
-  ) -> Result<Service> {
+  ) -> Result<LiveService> {
     if self.services.contains(MyStr::new(&*name)) {
       return Err(ServiceExists(name.into()).into());
     }
@@ -169,19 +169,19 @@ impl ServicePool {
     Ok(service)
   }
 
-  pub async fn get(&self, name: &str) -> Option<Service> {
+  pub async fn get(&self, name: &str) -> Option<LiveService> {
     self
       .services
       .get::<MyStr>(name.into())
       .map(|x| x.downgrade())
   }
 
-  pub async fn list(&self) -> Vec<Service> {
+  pub async fn list(&self) -> Vec<LiveService> {
     self.services.iter().map(|x| x.downgrade()).collect()
   }
 
   // TODO: gracefully
-  pub async fn remove(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<ServiceGuard<'_>> {
+  pub async fn remove(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<LiveServiceGuard<'_>> {
     if let Some(old_service_impl) = self.services.remove(MyStr::new(&*name)) {
       let old_service_impl_clone = old_service_impl.clone();
       sandbox_pool
@@ -190,7 +190,7 @@ impl ServicePool {
           Ok::<_, crate::Error>(())
         })
         .await?;
-      Ok(ServiceGuard {
+      Ok(LiveServiceGuard {
         inner: old_service_impl,
         _p: PhantomData,
       })

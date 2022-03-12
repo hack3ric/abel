@@ -3,7 +3,7 @@ mod upload;
 use crate::error::method_not_allowed;
 use crate::util::json_response;
 use crate::{MainState, Result};
-use hive_core::Service;
+use hive_core::LiveService;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use log::error;
 use serde_json::json;
@@ -66,7 +66,7 @@ async fn hello_world() -> Result<Response<Body>> {
 
 async fn list(state: &MainState) -> Result<Response<Body>> {
   let x = state.hive.list_services().await;
-  let y = x.iter().map(Service::upgrade).collect::<Vec<_>>();
+  let y = x.iter().map(LiveService::upgrade).collect::<Vec<_>>();
   json_response(StatusCode::OK, y)
 }
 
