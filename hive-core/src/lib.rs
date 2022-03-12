@@ -16,9 +16,11 @@ pub use mlua::Error as LuaError;
 pub use service::{LiveService, LiveServiceGuard, ServiceImpl};
 pub use source::Source;
 
+use dashmap::setref::multiple::RefMulti;
+use dashmap::setref::one::Ref;
 use hyper::Body;
 use lua::Sandbox;
-use service::ServicePool;
+use service::{ServicePool, ServiceState};
 use std::path::PathBuf;
 use std::sync::Arc;
 use task::Pool;
@@ -90,15 +92,15 @@ impl Hive {
       .await
   }
 
-  pub async fn list_services(&self) -> Vec<LiveService> {
+  pub async fn list_services(&self) -> (Vec<LiveService>, Vec<RefMulti<'_, ServiceState>>) {
     self.service_pool.list().await
   }
 
-  pub async fn stop_service(&self, name: &str) -> Result<()> {
+  pub async fn stop_service(&self, name: &str) -> Result<Ref<'_, ServiceState>> {
     self.service_pool.stop(&self.sandbox_pool, name).await
   }
 
-  pub async fn start_service(&self, name: &str) -> Result<()> {
+  pub async fn start_service(&self, name: &str) -> Result<LiveService> {
     self.service_pool.start(&self.sandbox_pool, name).await
   }
 

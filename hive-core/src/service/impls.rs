@@ -1,18 +1,19 @@
-use serde::Serialize;
 use crate::path::PathMatcher;
-use crate::Source;
-use std::sync::{Arc, Weak};
 use crate::permission::PermissionSet;
-use uuid::Uuid;
-use std::hash::{Hash, Hasher};
-use std::borrow::Borrow;
 use crate::util::MyStr;
 use crate::ErrorKind::ServiceDropped;
-use crate::Result;
+use crate::{Result, Source};
+use serde::Serialize;
+use std::borrow::Borrow;
+use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
+use std::sync::{Arc, Weak};
+use uuid::Uuid;
 
-pub(crate) enum ServiceState {
-  Live(Arc<ServiceImpl>),
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum ServiceState {
+  Live(#[serde(serialize_with = "crate::util::serialize_arc")] Arc<ServiceImpl>),
   Stopped(ServiceImpl),
 }
 

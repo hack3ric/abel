@@ -9,6 +9,7 @@ use log::error;
 use serde::Deserialize;
 use serde_json::json;
 use std::convert::Infallible;
+use std::ops::Deref;
 use std::sync::Arc;
 use upload::upload;
 
@@ -71,9 +72,10 @@ async fn hello_world() -> Result<Response<Body>> {
 }
 
 async fn list(state: &MainState) -> Result<Response<Body>> {
-  let x = state.hive.list_services().await;
-  let y = x.iter().map(LiveService::upgrade).collect::<Vec<_>>();
-  json_response(StatusCode::OK, y)
+  let (live, stopped) = state.hive.list_services().await;
+  let live = live.iter().map(LiveService::upgrade).collect::<Vec<_>>();
+  let stopped = stopped.iter().map(Deref::deref).collect::<Vec<_>>();
+  json_response(StatusCode::OK, json!({ "live": live, "stopped": stopped }))
 }
 
 async fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
@@ -99,12 +101,12 @@ async fn start_stop(state: &MainState, name: &str, query: &str) -> Result<Respon
 
   match op {
     Operation::Start => {
-      state.hive.start_service(name).await?;
-      json_response(StatusCode::OK, json!("Started"))
+      let service = state.hive.start_service(name).await?;
+      json_response(StatusCode::OK, json!({ "started": service.upgrade() }))
     }
     Operation::Stop => {
-      state.hive.stop_service(name).await?;
-      json_response(StatusCode::OK, json!("Stopped"))
+      let service = state.hive.stop_service(name).await?;
+      json_response(StatusCode::OK, json!({ "stopped": &*service }))
     }
   }
 }

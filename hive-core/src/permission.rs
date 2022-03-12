@@ -67,7 +67,9 @@ impl Permission {
   }
 
   pub fn env(name: impl Into<String>) -> Self {
-    Self(PermissionInner::Env { name: name.into().into() })
+    Self(PermissionInner::Env {
+      name: name.into().into(),
+    })
   }
 
   pub fn is_subset(&self, other: &Self) -> bool {

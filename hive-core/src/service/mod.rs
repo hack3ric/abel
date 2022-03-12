@@ -1,18 +1,18 @@
 mod impls;
 
-pub use impls::*;
 use crate::error::Result;
-use crate::lua::Sandbox;
+use crate::lua::{remove_service_local_storage, Sandbox};
 use crate::source::Source;
 use crate::task::Pool;
 use crate::util::MyStr;
-use crate::Config;
 use crate::ErrorKind::*;
+use crate::{Config, HiveState};
+use dashmap::setref::multiple::RefMulti;
+use dashmap::setref::one::Ref;
 use dashmap::DashSet;
+pub use impls::*;
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::HiveState;
-use crate::lua::remove_service_local_storage;
 
 pub struct ServicePool {
   services: DashSet<ServiceState>,
@@ -74,9 +74,7 @@ impl ServicePool {
   }
 
   pub async fn get_live(&self, name: &str) -> Option<LiveService> {
-    let x = self
-      .services
-      .get::<MyStr>(name.into());
+    let x = self.services.get::<MyStr>(name.into());
     if let Some(ServiceState::Live(x)) = x.as_deref() {
       Some(x.downgrade())
     } else {
@@ -84,12 +82,23 @@ impl ServicePool {
     }
   }
 
-  pub async fn list(&self) -> Vec<LiveService> {
-    // self.services.iter().map(|x| x.downgrade()).collect()
-    todo!()
+  pub async fn list(&self) -> (Vec<LiveService>, Vec<RefMulti<'_, ServiceState>>) {
+    let mut live = Vec::new();
+    let mut stopped = Vec::new();
+    for service in self.services.iter() {
+      match &*service {
+        ServiceState::Live(x) => live.push(x.downgrade()),
+        ServiceState::Stopped(_) => stopped.push(service),
+      }
+    }
+    (live, stopped)
   }
 
-  pub async fn stop(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<()> {
+  pub async fn stop(
+    &self,
+    sandbox_pool: &Pool<Sandbox>,
+    name: &str,
+  ) -> Result<Ref<'_, ServiceState>> {
     if let Some(service) = self.services.remove(MyStr::new(name)) {
       if let ServiceState::Live(service) = service {
         let service2 = service.clone();
@@ -101,7 +110,7 @@ impl ServicePool {
           .await?;
         let stopped = Arc::try_unwrap(service).unwrap_or_else(|arc| arc.as_ref().clone());
         assert!(self.services.insert(ServiceState::Stopped(stopped)));
-        Ok(())
+        Ok(self.services.get(MyStr::new(name)).unwrap())
       } else {
         assert!(self.services.insert(service));
         Err(ServiceStopped(name.into()).into())
@@ -111,7 +120,7 @@ impl ServicePool {
     }
   }
 
-  pub async fn start(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<()> {
+  pub async fn start(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<LiveService> {
     if let Some(service) = self.services.remove(MyStr::new(name)) {
       if let ServiceState::Stopped(service) = service {
         let live = Arc::new(service);
@@ -122,8 +131,8 @@ impl ServicePool {
             Ok::<_, crate::Error>(())
           })
           .await?;
-        assert!(self.services.insert(ServiceState::Live(live)));
-        Ok(())
+        assert!(self.services.insert(ServiceState::Live(live.clone())));
+        Ok(live.downgrade())
       } else {
         assert!(self.services.insert(service));
         Err(ServiceLive(name.into()).into())
