@@ -20,6 +20,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build
-      run: cargo build --verbose --features hive-core/mlua-vendored
+      run: cargo build --verbose --features mlua/vendored
     - name: Run tests
-      run: cargo test --verbose --features hive-core/mlua-vendored
+      run: cargo test --verbose --features mlua/vendored
