@@ -5,6 +5,12 @@ use std::sync::Arc;
 #[derive(Hash, PartialEq, Eq)]
 pub struct MyStr(str);
 
+impl MyStr {
+  pub fn new(x: &str) -> &Self {
+    <&Self>::from(x)
+  }
+}
+
 impl<'a> From<&'a str> for &'a MyStr {
   fn from(x: &str) -> &MyStr {
     unsafe { &*(x as *const str as *const MyStr) }

@@ -129,7 +129,7 @@ impl ServicePool {
     source: Source,
     config: Config,
   ) -> Result<Service> {
-    if self.services.contains(<&MyStr>::from(&*name)) {
+    if self.services.contains(MyStr::new(&*name)) {
       return Err(ServiceExists(name.into()).into());
     }
 
@@ -182,7 +182,7 @@ impl ServicePool {
 
   // TODO: gracefully
   pub async fn remove(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<ServiceGuard<'_>> {
-    if let Some(old_service_impl) = self.services.remove(<&MyStr>::from(&*name)) {
+    if let Some(old_service_impl) = self.services.remove(MyStr::new(&*name)) {
       let old_service_impl_clone = old_service_impl.clone();
       sandbox_pool
         .scope(move |sandbox| async move {
