@@ -6,6 +6,7 @@ use crate::{MainState, Result};
 use hive_core::LiveService;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use log::error;
+use serde::Deserialize;
 use serde_json::json;
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -18,6 +19,7 @@ pub(crate) async fn handle(
   const GET: &Method = &Method::GET;
   const POST: &Method = &Method::POST;
   const PUT: &Method = &Method::PUT;
+  const PATCH: &Method = &Method::PATCH;
   const DELETE: &Method = &Method::DELETE;
 
   let method = req.method();
@@ -36,8 +38,12 @@ pub(crate) async fn handle(
 
     (GET, ["services", name]) => get(&state, name).await,
     (PUT, ["services", name]) => upload(&state, Some((*name).into()), req).await,
+    (PATCH, ["services", name]) => start_stop(&state, name, req.uri().query().unwrap_or("")).await,
     (DELETE, ["services", name]) => remove(&state, name).await,
-    (_, ["services", _name]) => Err(method_not_allowed(&["GET", "PUT", "DELETE"], method)),
+    (_, ["services", _name]) => Err(method_not_allowed(
+      &["GET", "PUT", "PATCH", "DELETE"],
+      method,
+    )),
 
     (_, ["services", ..]) => Err((404, "hive path not found", json!({ "path": path })).into()),
 
@@ -73,6 +79,34 @@ async fn list(state: &MainState) -> Result<Response<Body>> {
 async fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
   let service = state.hive.get_service(name).await?;
   json_response(StatusCode::OK, service.try_upgrade()?)
+}
+
+async fn start_stop(state: &MainState, name: &str, query: &str) -> Result<Response<Body>> {
+  #[derive(Deserialize)]
+  struct Query {
+    op: Operation,
+  }
+
+  #[derive(Deserialize)]
+  enum Operation {
+    #[serde(rename = "start")]
+    Start,
+    #[serde(rename = "stop")]
+    Stop,
+  }
+
+  let Query { op } = serde_qs::from_str(query)?;
+
+  match op {
+    Operation::Start => {
+      state.hive.start_service(name).await?;
+      json_response(StatusCode::OK, json!("Started"))
+    }
+    Operation::Stop => {
+      state.hive.stop_service(name).await?;
+      json_response(StatusCode::OK, json!("Stopped"))
+    }
+  }
 }
 
 async fn remove(state: &MainState, service_name: &str) -> Result<Response<Body>> {

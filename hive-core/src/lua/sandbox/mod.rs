@@ -2,7 +2,6 @@ mod global_env;
 mod local_env;
 
 use super::context::remove_service_contexts;
-use super::fs::remove_service_local_storage;
 use super::http::Response;
 use super::LuaTableExt;
 use crate::lua::http::Request;
@@ -169,7 +168,7 @@ impl Sandbox {
     Ok(())
   }
 
-  async fn run_start(&self, service: LiveService) -> Result<()> {
+  pub(crate) async fn run_start(&self, service: LiveService) -> Result<()> {
     let loaded = self.load_service(service).await?;
     let start_fn: Option<Function> = (self.lua)
       .registry_value::<Table>(&loaded.local_env)?
@@ -180,7 +179,7 @@ impl Sandbox {
     Ok(())
   }
 
-  pub(crate) async fn run_stop(&self, service: LiveService, destroy: bool) -> Result<()> {
+  pub(crate) async fn run_stop(&self, service: LiveService) -> Result<()> {
     let loaded = self.load_service(service).await?;
     let stop_fn: Option<Function> = (self.lua)
       .registry_value::<Table>(&loaded.local_env)?
@@ -192,9 +191,9 @@ impl Sandbox {
     let service = loaded.service.try_upgrade()?;
     let service_name = service.name();
     remove_service_contexts(service_name);
-    if destroy {
-      remove_service_local_storage(&self.state, service_name).await?;
-    }
+    // if destroy {
+    //   remove_service_local_storage(&self.state, service_name).await?;
+    // }
     Ok(())
   }
 

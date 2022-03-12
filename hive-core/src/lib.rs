@@ -13,7 +13,7 @@ pub use config::Config;
 pub use error::{Error, ErrorKind, Result};
 pub use lua::http::{Request, Response};
 pub use mlua::Error as LuaError;
-pub use service::{LiveService, LiveServiceGuard};
+pub use service::{LiveService, LiveServiceGuard, ServiceImpl};
 pub use source::Source;
 
 use hyper::Body;
@@ -72,7 +72,7 @@ impl Hive {
   pub async fn get_service(&self, name: &str) -> Result<LiveService> {
     self
       .service_pool
-      .get(name)
+      .get_live(name)
       .await
       .ok_or_else(|| ErrorKind::ServiceNotFound(name.into()).into())
   }
@@ -94,7 +94,15 @@ impl Hive {
     self.service_pool.list().await
   }
 
-  pub async fn remove_service(&self, name: &str) -> Result<LiveServiceGuard<'_>> {
-    self.service_pool.remove(&self.sandbox_pool, name).await
+  pub async fn stop_service(&self, name: &str) -> Result<()> {
+    self.service_pool.stop(&self.sandbox_pool, name).await
+  }
+
+  pub async fn start_service(&self, name: &str) -> Result<()> {
+    self.service_pool.start(&self.sandbox_pool, name).await
+  }
+
+  pub async fn remove_service(&self, name: &str) -> Result<ServiceImpl> {
+    self.service_pool.remove(&self.state, name).await
   }
 }

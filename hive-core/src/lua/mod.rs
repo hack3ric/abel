@@ -9,6 +9,7 @@ mod sandbox;
 mod env;
 
 pub use sandbox::Sandbox;
+pub use fs::remove_service_local_storage;
 
 use crate::Result;
 use mlua::{ExternalError, FromLua, Table};
