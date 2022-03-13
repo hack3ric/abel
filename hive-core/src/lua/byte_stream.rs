@@ -2,6 +2,7 @@ use crate::Result;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
 use hyper::body::Bytes;
+use hyper::Body;
 use mlua::{AnyUserData, ExternalResult, LuaSerdeExt, UserData, UserDataMethods};
 use tokio::io::AsyncRead;
 use tokio_util::io::ReaderStream;
@@ -22,8 +23,8 @@ impl ByteStream {
   }
 }
 
-impl From<hyper::Body> for ByteStream {
-  fn from(body: hyper::Body) -> Self {
+impl From<Body> for ByteStream {
+  fn from(body: Body) -> Self {
     Self(body.map_err(crate::Error::from).boxed())
   }
 }

@@ -12,7 +12,7 @@ use crate::source::Source;
 use crate::ErrorKind::*;
 use crate::{HiveState, Result};
 use global_env::modify_global_env;
-use hyper::Body;
+use hyper::{Body, Request};
 use local_env::create_local_env;
 use mlua::{
   ExternalResult, FromLuaMulti, Function, Lua, LuaSerdeExt, MultiValue, RegistryKey, Table,
@@ -86,7 +86,7 @@ impl Sandbox {
     &self,
     service: RunningService,
     path: &str,
-    req: hyper::Request<Body>,
+    req: Request<Body>,
   ) -> Result<LuaResponse> {
     let guard = service.try_upgrade()?;
     let (params, matcher) = guard

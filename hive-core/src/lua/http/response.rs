@@ -1,6 +1,7 @@
 use super::body::LuaBody;
 use hyper::header::HeaderName;
 use hyper::http::{HeaderMap, HeaderValue, StatusCode};
+use hyper::{Body, Response};
 use mlua::{
   ExternalError, ExternalResult, FromLua, Function, Lua, Table, UserData, UserDataFields,
 };
@@ -13,7 +14,7 @@ pub struct LuaResponse {
 }
 
 impl LuaResponse {
-  pub(crate) fn from_hyper(resp: hyper::Response<hyper::Body>) -> Self {
+  pub(crate) fn from_hyper(resp: Response<Body>) -> Self {
     let (parts, body) = resp.into_parts();
     Self {
       status: parts.status,
@@ -64,9 +65,9 @@ impl<'lua> FromLua<'lua> for LuaResponse {
   }
 }
 
-impl From<LuaResponse> for hyper::Response<hyper::Body> {
+impl From<LuaResponse> for Response<Body> {
   fn from(x: LuaResponse) -> Self {
-    let mut builder = hyper::Response::builder().status(x.status);
+    let mut builder = Response::builder().status(x.status);
     *builder.headers_mut().unwrap() = x.headers;
     builder.body(x.body.unwrap().into()).unwrap()
   }

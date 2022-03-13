@@ -2,7 +2,7 @@ use crate::lua::byte_stream::ByteStream;
 use crate::lua::context::Table;
 use crate::LuaResponse;
 use hyper::header::HeaderValue;
-use hyper::{HeaderMap, StatusCode};
+use hyper::{Body, HeaderMap, StatusCode};
 use mlua::{ExternalError, FromLua, Lua, LuaSerdeExt, ToLua};
 
 pub enum LuaBody {
@@ -32,19 +32,19 @@ impl LuaBody {
   }
 }
 
-impl From<hyper::Body> for LuaBody {
-  fn from(body: hyper::Body) -> Self {
+impl From<Body> for LuaBody {
+  fn from(body: Body) -> Self {
     Self::ByteStream(body.into())
   }
 }
 
-impl From<LuaBody> for hyper::Body {
+impl From<LuaBody> for Body {
   fn from(body: LuaBody) -> Self {
     match body {
-      LuaBody::Empty => hyper::Body::empty(),
+      LuaBody::Empty => Body::empty(),
       LuaBody::Json(x) => x.to_string().into(),
       LuaBody::Bytes(x) => x.into(),
-      LuaBody::ByteStream(x) => hyper::Body::wrap_stream(x.0),
+      LuaBody::ByteStream(x) => Body::wrap_stream(x.0),
     }
   }
 }

@@ -3,7 +3,7 @@ use super::uri::LuaUri;
 use crate::path::Params;
 use hyper::header::{HeaderName, HeaderValue};
 use hyper::http::request::Parts;
-use hyper::{HeaderMap, Method};
+use hyper::{Body, HeaderMap, Method, Request};
 use mlua::{ExternalError, ExternalResult, FromLua, Lua, String as LuaString, Table, UserData};
 
 pub struct LuaRequest {
@@ -18,7 +18,7 @@ pub struct LuaRequest {
 
 impl LuaRequest {
   #[rustfmt::skip]
-  pub fn new(req: hyper::Request<hyper::Body>, params: Params) -> Self {
+  pub fn new(req: Request<Body>, params: Params) -> Self {
     let (Parts { method, uri, headers, .. }, body) = req.into_parts();
     let params = Some(params);
     Self { method, uri, headers, body: Some(body.into()), params }
@@ -142,9 +142,9 @@ impl<'lua> FromLua<'lua> for LuaRequest {
   }
 }
 
-impl From<LuaRequest> for hyper::Request<hyper::Body> {
+impl From<LuaRequest> for Request<Body> {
   fn from(x: LuaRequest) -> Self {
-    let mut builder = hyper::Request::builder().method(x.method).uri(x.uri);
+    let mut builder = Request::builder().method(x.method).uri(x.uri);
     *builder.headers_mut().unwrap() = x.headers;
     builder.body(x.body.unwrap().into()).unwrap()
   }

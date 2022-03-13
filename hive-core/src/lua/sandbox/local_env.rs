@@ -10,10 +10,10 @@ use crate::{HiveState, Result, Source};
 use mlua::{Function, Lua, Table};
 use std::sync::Arc;
 
-pub(super) async fn create_local_env<'a>(
+pub(super) async fn create_local_env<'a, 'b>(
   lua: &'a Lua,
   state: &HiveState,
-  service_name: &str,
+  service_name: &'b str,
   source: Source,
   permissions: Arc<PermissionSet>,
 ) -> Result<(Table<'a>, Table<'a>)> {

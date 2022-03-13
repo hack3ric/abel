@@ -18,7 +18,7 @@ pub use source::Source;
 
 use dashmap::setref::multiple::RefMulti;
 use dashmap::setref::one::Ref;
-use hyper::Body;
+use hyper::{Body, Request};
 use lua::Sandbox;
 use service::{ServicePool, ServiceState};
 use std::path::PathBuf;
@@ -81,7 +81,7 @@ impl Hive {
     &self,
     name: &str,
     path: String,
-    req: hyper::Request<Body>,
+    req: Request<Body>,
   ) -> Result<LuaResponse> {
     let service = self.get_service(name).await?;
     self
