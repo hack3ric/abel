@@ -67,7 +67,6 @@ impl Error {
   pub fn into_response(self, authed: bool) -> Response<Body> {
     let use_backtrace = option_env!("RUST_BACKTRACE").is_some();
     let body = if self.status.is_server_error() {
-      // TODO: include UUID
       if authed {
         json!({
           "error": self.error,
@@ -76,6 +75,7 @@ impl Error {
             .then(|| self.backtrace().map(|x| format!("{:?}", x))),
         })
       } else {
+        // TODO: include UUID
         json!({
           "error": "internal server error",
           "detail": {
@@ -139,15 +139,17 @@ impl From<hive_core::ErrorKind> for Error {
   fn from(error: hive_core::ErrorKind) -> Self {
     use hive_core::ErrorKind::*;
     match error {
+      // -- Service --
       InvalidServiceName(name) => (400, "invalid service name", json!({ "name": name })).into(),
       ServiceNotFound(name) => (404, "service not found", json!({ "name": name })).into(),
-      ServicePathNotFound { service, path } => (
+      ServicePathNotFound { service, path } => From::from((
         404,
         "path not found in service",
         json!({ "service": service, "path": path }),
-      )
-        .into(),
+      )),
       ServiceExists(name) => (409, "service already exists", json!({ "name": name })).into(),
+
+      // -- Vendor --
       Lua(error) => {
         let msg = match error {
           LuaError::CallbackError { traceback, cause } => match cause.as_ref() {
@@ -158,11 +160,15 @@ impl From<hive_core::ErrorKind> for Error {
         };
         (500, "Lua error", msg).into()
       }
+
+      // -- Custom --
       LuaCustom {
         status,
         error,
         detail,
       } => (status, error, detail).into(),
+
+      // -- Other --
       kind => (500, "hive core error", kind.to_string()).into(),
     }
   }
