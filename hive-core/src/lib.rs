@@ -11,7 +11,7 @@ mod util;
 
 pub use config::Config;
 pub use error::{Error, ErrorKind, Result};
-pub use lua::http::{Request, Response};
+pub use lua::http::{LuaRequest, LuaResponse};
 pub use mlua::Error as LuaError;
 pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 pub use source::Source;
@@ -82,7 +82,7 @@ impl Hive {
     name: &str,
     path: String,
     req: hyper::Request<Body>,
-  ) -> Result<Response> {
+  ) -> Result<LuaResponse> {
     let service = self.get_service(name).await?;
     self
       .sandbox_pool

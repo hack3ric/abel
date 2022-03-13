@@ -3,8 +3,8 @@ mod request;
 mod response;
 mod uri;
 
-pub use request::Request;
-pub use response::Response;
+pub use request::LuaRequest;
+pub use response::LuaResponse;
 
 use self::uri::create_fn_create_uri;
 use crate::permission::{Permission, PermissionSet};
@@ -34,7 +34,7 @@ pub fn create_preload_http(lua: &Lua, permissions: Arc<PermissionSet>) -> mlua::
 }
 
 fn create_fn_request(lua: &Lua, permissions: Arc<PermissionSet>) -> mlua::Result<Function> {
-  lua.create_async_function(move |_lua, req: Request| {
+  lua.create_async_function(move |_lua, req: LuaRequest| {
     let permissions = permissions.clone();
     async move {
       if let Some(auth) = req.uri.authority() {
@@ -56,7 +56,7 @@ fn create_fn_request(lua: &Lua, permissions: Arc<PermissionSet>) -> mlua::Result
       }
 
       let resp = CLIENT.request(req.into()).await.to_lua_err()?;
-      let resp = Response::from_hyper(resp);
+      let resp = LuaResponse::from_hyper(resp);
       Ok(resp)
     }
   })

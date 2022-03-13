@@ -1,20 +1,20 @@
 use crate::lua::byte_stream::ByteStream;
 use crate::lua::context::Table;
-use crate::Response;
+use crate::LuaResponse;
 use hyper::header::HeaderValue;
 use hyper::{HeaderMap, StatusCode};
 use mlua::{ExternalError, FromLua, Lua, LuaSerdeExt, ToLua};
 
-pub enum Body {
+pub enum LuaBody {
   Empty,
   Json(serde_json::Value),
   Bytes(Vec<u8>),
   ByteStream(ByteStream),
 }
 
-impl Body {
+impl LuaBody {
   // pub fn from_hyper(body: hyper::Body)
-  pub fn into_default_response(self) -> Response {
+  pub fn into_default_response(self) -> LuaResponse {
     let (status, headers) = match &self {
       Self::Empty => (StatusCode::NO_CONTENT, Default::default()),
       Self::Json(_) => {
@@ -24,7 +24,7 @@ impl Body {
       }
       _ => Default::default(),
     };
-    Response {
+    LuaResponse {
       status,
       headers,
       body: Some(self),
@@ -32,24 +32,24 @@ impl Body {
   }
 }
 
-impl From<hyper::Body> for Body {
+impl From<hyper::Body> for LuaBody {
   fn from(body: hyper::Body) -> Self {
     Self::ByteStream(body.into())
   }
 }
 
-impl From<Body> for hyper::Body {
-  fn from(body: Body) -> Self {
+impl From<LuaBody> for hyper::Body {
+  fn from(body: LuaBody) -> Self {
     match body {
-      Body::Empty => hyper::Body::empty(),
-      Body::Json(x) => x.to_string().into(),
-      Body::Bytes(x) => x.into(),
-      Body::ByteStream(x) => hyper::Body::wrap_stream(x.0),
+      LuaBody::Empty => hyper::Body::empty(),
+      LuaBody::Json(x) => x.to_string().into(),
+      LuaBody::Bytes(x) => x.into(),
+      LuaBody::ByteStream(x) => hyper::Body::wrap_stream(x.0),
     }
   }
 }
 
-impl<'lua> FromLua<'lua> for Body {
+impl<'lua> FromLua<'lua> for LuaBody {
   fn from_lua(lua_value: mlua::Value<'lua>, lua: &'lua Lua) -> mlua::Result<Self> {
     let result = match lua_value {
       mlua::Value::Nil => Self::Empty,
@@ -70,7 +70,7 @@ impl<'lua> FromLua<'lua> for Body {
   }
 }
 
-impl<'lua> ToLua<'lua> for Body {
+impl<'lua> ToLua<'lua> for LuaBody {
   fn to_lua(self, lua: &'lua Lua) -> mlua::Result<mlua::Value<'lua>> {
     match self {
       Self::Empty => Ok(mlua::Value::Nil),

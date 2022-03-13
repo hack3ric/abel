@@ -1,22 +1,22 @@
-use super::body::Body;
-use super::uri::Uri;
+use super::body::LuaBody;
+use super::uri::LuaUri;
 use crate::path::Params;
 use hyper::header::{HeaderName, HeaderValue};
 use hyper::http::request::Parts;
 use hyper::{HeaderMap, Method};
 use mlua::{ExternalError, ExternalResult, FromLua, Lua, String as LuaString, Table, UserData};
 
-pub struct Request {
+pub struct LuaRequest {
   pub(crate) method: Method,
   /// Must be absolute
   pub(crate) uri: hyper::Uri,
   pub(crate) headers: HeaderMap,
-  pub(crate) body: Option<Body>,
+  pub(crate) body: Option<LuaBody>,
   /// Only used in Hive core
   params: Option<Params>,
 }
 
-impl Request {
+impl LuaRequest {
   #[rustfmt::skip]
   pub fn new(req: hyper::Request<hyper::Body>, params: Params) -> Self {
     let (Parts { method, uri, headers, .. }, body) = req.into_parts();
@@ -25,19 +25,19 @@ impl Request {
   }
 }
 
-impl Default for Request {
+impl Default for LuaRequest {
   fn default() -> Self {
     Self {
       method: Method::GET,
       uri: hyper::Uri::default(),
       headers: HeaderMap::new(),
-      body: Some(Body::Empty),
+      body: Some(LuaBody::Empty),
       params: None,
     }
   }
 }
 
-impl UserData for Request {
+impl UserData for LuaRequest {
   fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(fields: &mut F) {
     fields.add_field_function_get("params", |lua, this| {
       this
@@ -60,7 +60,7 @@ impl UserData for Request {
     });
 
     fields.add_field_method_get("method", |lua, this| lua.pack(this.method.as_str()));
-    fields.add_field_method_get("uri", |_lua, this| Ok(Uri(this.uri.clone())));
+    fields.add_field_method_get("uri", |_lua, this| Ok(LuaUri(this.uri.clone())));
 
     fields.add_field_function_get("body", |lua, this| {
       let mut this_ = this.borrow_mut::<Self>()?;
@@ -78,7 +78,7 @@ impl UserData for Request {
   }
 }
 
-impl<'lua> FromLua<'lua> for Request {
+impl<'lua> FromLua<'lua> for LuaRequest {
   fn from_lua(lua_value: mlua::Value<'lua>, _lua: &'lua Lua) -> mlua::Result<Self> {
     match lua_value {
       mlua::Value::String(uri) => Ok(Self {
@@ -132,7 +132,7 @@ impl<'lua> FromLua<'lua> for Request {
       mlua::Value::UserData(x) => {
         let mut u = x.take::<Self>()?;
         if u.body.is_none() {
-          let t = x.get_named_user_value::<_, Body>("body")?;
+          let t = x.get_named_user_value::<_, LuaBody>("body")?;
           u.body = Some(t);
         }
         Ok(u)
@@ -142,8 +142,8 @@ impl<'lua> FromLua<'lua> for Request {
   }
 }
 
-impl From<Request> for hyper::Request<hyper::Body> {
-  fn from(x: Request) -> Self {
+impl From<LuaRequest> for hyper::Request<hyper::Body> {
+  fn from(x: LuaRequest) -> Self {
     let mut builder = hyper::Request::builder().method(x.method).uri(x.uri);
     *builder.headers_mut().unwrap() = x.headers;
     builder.body(x.body.unwrap().into()).unwrap()

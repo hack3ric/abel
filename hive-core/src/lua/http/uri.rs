@@ -4,9 +4,9 @@ use mlua::{
 use std::collections::HashMap;
 
 #[derive(Debug)]
-pub struct Uri(pub(crate) hyper::Uri);
+pub struct LuaUri(pub(crate) hyper::Uri);
 
-impl UserData for Uri {
+impl UserData for LuaUri {
   fn add_fields<'lua, F: mlua::UserDataFields<'lua, Self>>(fields: &mut F) {
     fields.add_field_method_get("scheme", |lua, this| lua.pack(this.0.scheme_str()));
     fields.add_field_method_get("host", |lua, this| lua.pack(this.0.host()));
@@ -38,7 +38,7 @@ impl UserData for Uri {
   }
 }
 
-impl<'lua> FromLua<'lua> for Uri {
+impl<'lua> FromLua<'lua> for LuaUri {
   fn from_lua(lua_value: mlua::Value<'lua>, _lua: &'lua Lua) -> mlua::Result<Self> {
     match lua_value {
       mlua::Value::String(s) => Ok(Self(hyper::Uri::try_from(s.as_bytes()).to_lua_err()?)),
@@ -53,5 +53,5 @@ impl<'lua> FromLua<'lua> for Uri {
 
 pub fn create_fn_create_uri(lua: &Lua) -> mlua::Result<Function> {
   lua
-    .create_function(|_lua, s: LuaString| Ok(Uri(hyper::Uri::try_from(s.as_bytes()).to_lua_err()?)))
+    .create_function(|_lua, s: LuaString| Ok(LuaUri(hyper::Uri::try_from(s.as_bytes()).to_lua_err()?)))
 }

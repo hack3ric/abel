@@ -1,4 +1,4 @@
-use super::body::Body;
+use super::body::LuaBody;
 use hyper::header::HeaderName;
 use hyper::http::{HeaderMap, HeaderValue, StatusCode};
 use mlua::{
@@ -6,13 +6,13 @@ use mlua::{
 };
 
 #[derive(Default)]
-pub struct Response {
+pub struct LuaResponse {
   pub status: StatusCode,
   pub headers: HeaderMap,
-  pub body: Option<Body>,
+  pub body: Option<LuaBody>,
 }
 
-impl Response {
+impl LuaResponse {
   pub(crate) fn from_hyper(resp: hyper::Response<hyper::Body>) -> Self {
     let (parts, body) = resp.into_parts();
     Self {
@@ -23,7 +23,7 @@ impl Response {
   }
 }
 
-impl UserData for Response {
+impl UserData for LuaResponse {
   fn add_fields<'lua, F: UserDataFields<'lua, Self>>(fields: &mut F) {
     fields.add_field_method_get("status", |_lua, this| Ok(this.status.as_u16()));
     fields.add_field_function_get("body", |lua, this| {
@@ -41,20 +41,20 @@ impl UserData for Response {
   }
 }
 
-impl<'lua> FromLua<'lua> for Response {
+impl<'lua> FromLua<'lua> for LuaResponse {
   fn from_lua(value: mlua::Value, lua: &Lua) -> mlua::Result<Self> {
     use mlua::Value::*;
     match value {
-      x @ Table(_) | x @ Nil | x @ String(_) => Ok(lua.unpack::<Body>(x)?.into_default_response()),
+      x @ Table(_) | x @ Nil | x @ String(_) => Ok(lua.unpack::<LuaBody>(x)?.into_default_response()),
       UserData(x) => {
         if let Ok(mut u) = x.take::<Self>() {
           if u.body.is_none() {
-            let t = x.get_named_user_value::<_, Body>("body")?;
+            let t = x.get_named_user_value::<_, LuaBody>("body")?;
             u.body = Some(t);
           }
           Ok(u)
         } else {
-          Ok(lua.unpack::<Body>(UserData(x))?.into_default_response())
+          Ok(lua.unpack::<LuaBody>(UserData(x))?.into_default_response())
         }
       }
       _ => Err("cannot convert to response".to_lua_err()),
@@ -62,8 +62,8 @@ impl<'lua> FromLua<'lua> for Response {
   }
 }
 
-impl From<Response> for hyper::Response<hyper::Body> {
-  fn from(x: Response) -> Self {
+impl From<LuaResponse> for hyper::Response<hyper::Body> {
+  fn from(x: LuaResponse) -> Self {
     let mut builder = hyper::Response::builder().status(x.status);
     *builder.headers_mut().unwrap() = x.headers;
     builder.body(x.body.unwrap().into()).unwrap()
@@ -72,7 +72,7 @@ impl From<Response> for hyper::Response<hyper::Body> {
 
 pub fn create_fn_create_response(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|_lua, params: Table| {
-    let body = params.raw_get::<_, Body>("body")?;
+    let body = params.raw_get::<_, LuaBody>("body")?;
     let mut response = body.into_default_response();
 
     let status = params.raw_get::<_, Option<u16>>("status")?;

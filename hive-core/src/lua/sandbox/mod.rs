@@ -2,9 +2,9 @@ mod global_env;
 mod local_env;
 
 use super::context::remove_service_contexts;
-use super::http::Response;
+use super::http::LuaResponse;
 use super::LuaTableExt;
-use crate::lua::http::Request;
+use crate::lua::http::LuaRequest;
 use crate::path::PathMatcher;
 use crate::permission::PermissionSet;
 use crate::service::RunningService;
@@ -87,7 +87,7 @@ impl Sandbox {
     service: RunningService,
     path: &str,
     req: hyper::Request<Body>,
-  ) -> Result<Response> {
+  ) -> Result<LuaResponse> {
     let guard = service.try_upgrade()?;
     let (params, matcher) = guard
       .paths()
@@ -114,7 +114,7 @@ impl Sandbox {
       let path = f.raw_get::<u8, String>(1)?;
       if path == matcher.as_str() {
         let handler = f.raw_get::<u8, Function>(2)?;
-        let req = Request::new(req, params);
+        let req = LuaRequest::new(req, params);
         let resp = self.pcall(handler, req).await?;
         return Ok(resp);
       }
