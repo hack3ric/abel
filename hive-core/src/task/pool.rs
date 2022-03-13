@@ -41,8 +41,6 @@ impl Pool<Sandbox> {
     let (tx, rx) = oneshot::channel();
     let task = Arc::new(Mutex::new(Some((wrapped_task_fn, tx))));
 
-    // TODO: if the thread isn't running (panicked), create a new `Executor` and
-    // replace it
     for (i, e) in self.executors.iter().enumerate() {
       let rl = e.read().await;
       if rl.is_panicked() {

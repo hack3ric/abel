@@ -248,6 +248,7 @@ impl Sandbox {
   }
 
   pub(crate) async fn clean_loaded(&self) -> u32 {
+    self.lua.expire_registry_values();
     let mut x = self.loaded.borrow_mut();
     let mut count = 0;
     x.retain(|_, v| {
