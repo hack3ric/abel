@@ -130,7 +130,7 @@ impl Sandbox {
     permissions: Arc<PermissionSet>,
   ) -> Result<(Vec<PathMatcher>, RegistryKey, RegistryKey)> {
     if !NAME_CHECK_REGEX.is_match(name) {
-      return Err(InvalidServiceName(name.into()).into());
+      return Err(InvalidServiceName { name: name.into() }.into());
     }
 
     let (local_env, internal_key, internal) = self.run_source(name, source, permissions).await?;

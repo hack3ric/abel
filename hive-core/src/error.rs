@@ -1,7 +1,10 @@
 use crate::permission::Permission;
 use backtrace::Backtrace;
-use hyper::StatusCode;
+use hyper::{Body, Response, StatusCode};
+use serde::Serialize;
+use serde_json::json;
 use std::fmt::{self, Debug, Formatter};
+use strum::EnumProperty;
 use thiserror::Error;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -19,43 +22,72 @@ impl Debug for Error {
   }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, EnumProperty, Serialize)]
+#[serde(untagged)]
 #[non_exhaustive]
 pub enum ErrorKind {
   // -- Service --
-  #[error("invalid service name: {0}")]
-  InvalidServiceName(Box<str>),
-  #[error("service '{0}' not found")]
-  ServiceNotFound(Box<str>),
+  #[error("invalid service name: {name}")]
+  #[strum(props(status = "400", msg = "invalid service name"))]
+  InvalidServiceName { name: Box<str> },
+
+  #[error("service '{name}' not found")]
+  #[strum(props(status = "404", msg = "service not found"))]
+  ServiceNotFound { name: Box<str> },
+
   #[error("path not found in service '{service}': {path}")]
+  #[strum(props(status = "404", msg = "path not found"))]
   ServicePathNotFound { service: Box<str>, path: Box<str> },
-  #[error("service '{0}' already exists")]
-  ServiceExists(Box<str>),
-  #[error("service '{0}' is still running")]
-  ServiceRunning(Box<str>),
-  #[error("service '{0}' is stopped")]
-  ServiceStopped(Box<str>),
+
+  #[error("service '{name}' already exists")]
+  #[strum(props(status = "409", msg = "service already exists"))]
+  ServiceExists { name: Box<str> },
+
+  #[error("service '{name}' is still running")]
+  #[strum(props(status = "409", msg = "service is running"))]
+  ServiceRunning { name: Box<str> },
+
+  #[error("service '{name}' is stopped")]
+  #[strum(props(status = "409", msg = "service is stopped"))]
+  ServiceStopped { name: Box<str> },
+
   #[error("service is dropped")]
+  #[strum(props(status = "500", msg = "service is dropped"))]
   ServiceDropped,
 
   // -- Permission --
-  #[error("permission '{0}' not granted")]
-  PermissionNotGranted(Permission<'static>),
-  #[error("invalid permission '{s}': {reason}")]
-  InvalidPermission { s: Box<str>, reason: Box<str> },
+  #[error("permission '{permission}' not granted")]
+  #[strum(props(status = "500", msg = "permission not granted"))]
+  PermissionNotGranted { permission: Permission<'static> },
+
+  #[error("invalid permission '{string}': {reason}")]
+  #[strum(props(status = "500", msg = "invalid permission"))]
+  InvalidPermission { string: Box<str>, reason: Box<str> },
 
   // -- Vendor --
   #[error(transparent)]
+  #[serde(skip)]
+  #[strum(props(status = "500", msg = "Lua error"))]
   Lua(#[from] mlua::Error),
+
   #[error(transparent)]
+  #[serde(skip)]
+  #[strum(props(status = "500", msg = "I/O error"))]
   Io(#[from] tokio::io::Error),
+
   #[error(transparent)]
+  #[serde(skip)]
+  #[strum(props(status = "500", msg = "regex error"))]
   Regex(#[from] regex::Error),
+
   #[error(transparent)]
+  #[serde(skip)]
+  #[strum(props(status = "500", msg = "hyper error"))]
   Hyper(#[from] hyper::Error),
 
   // -- Custom --
   #[error("{error} ({detail:?})")]
+  #[serde(skip)]
   LuaCustom {
     status: StatusCode,
     error: String,
@@ -77,12 +109,13 @@ impl From<ErrorKind> for Error {
   fn from(kind: ErrorKind) -> Self {
     use ErrorKind::*;
     let backtrace = match kind {
-      InvalidServiceName(_)
-      | ServiceNotFound(_)
+      InvalidServiceName { .. }
+      | ServiceNotFound { .. }
       | ServicePathNotFound { .. }
-      | ServiceExists(_)
-      | ServiceRunning(_)
-      | ServiceStopped(_) => None,
+      | ServiceExists { .. }
+      | ServiceRunning { .. }
+      | ServiceStopped { .. }
+      | LuaCustom { .. } => None,
       _ => Some(Backtrace::new()),
     };
     Self { kind, backtrace }
@@ -114,4 +147,41 @@ simple_impl_from_errors! {
   tokio::io::Error,
   regex::Error,
   hyper::Error,
+}
+
+impl From<Error> for Response<Body> {
+  fn from(x: Error) -> Self {
+    let (status, body) = if let ErrorKind::LuaCustom {
+      status,
+      error,
+      detail,
+    } = x.kind
+    {
+      let body = json!({ "error": error, "detail": detail });
+      (status, body)
+    } else {
+      let status = x.kind.get_str("prop").unwrap().parse().unwrap();
+      let error = x.kind.get_str("msg").unwrap();
+      let detail = serde_json::to_value(&x.kind).unwrap();
+      let body = if let Some(x) = x.backtrace {
+        json!({
+          "error": error,
+          "detail": detail,
+          "backtrace": format!("{x:?}"),
+        })
+      } else {
+        json!({
+          "error": error,
+          "detail": detail,
+        })
+      };
+      (status, body)
+    };
+
+    Response::builder()
+      .status(status)
+      .header("content-type", "application/json")
+      .body(body.to_string().into())
+      .unwrap()
+  }
 }

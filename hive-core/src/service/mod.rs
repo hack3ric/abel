@@ -34,7 +34,7 @@ impl ServicePool {
     config: Config,
   ) -> Result<RunningService> {
     if self.services.contains(MyStr::new(&*name)) {
-      return Err(ServiceExists(name.into()).into());
+      return Err(ServiceExists{ name: name.into() }.into());
     }
 
     let service_impl = sandbox_pool
@@ -113,10 +113,10 @@ impl ServicePool {
         Ok(self.services.get(MyStr::new(name)).unwrap())
       } else {
         assert!(self.services.insert(service));
-        Err(ServiceStopped(name.into()).into())
+        Err(ServiceStopped { name: name.into() }.into())
       }
     } else {
-      Err(ServiceNotFound(name.into()).into())
+      Err(ServiceNotFound { name: name.into() }.into())
     }
   }
 
@@ -135,10 +135,10 @@ impl ServicePool {
         Ok(running.downgrade())
       } else {
         assert!(self.services.insert(service));
-        Err(ServiceRunning(name.into()).into())
+        Err(ServiceRunning { name: name.into() }.into())
       }
     } else {
-      Err(ServiceNotFound(name.into()).into())
+      Err(ServiceNotFound { name: name.into() }.into())
     }
   }
 
@@ -149,10 +149,10 @@ impl ServicePool {
         Ok(x)
       } else {
         assert!(self.services.insert(old_service));
-        Err(ServiceRunning(name.into()).into())
+        Err(ServiceRunning { name: name.into() }.into())
       }
     } else {
-      Err(ServiceNotFound(name.into()).into())
+      Err(ServiceNotFound { name: name.into() }.into())
     }
   }
 }

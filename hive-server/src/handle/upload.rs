@@ -146,7 +146,7 @@ async fn get_name_config(
   };
 
   if !name_provided && state.hive.get_service(&name).await.is_ok() {
-    return Err(ServiceExists(name.into()).into());
+    return Err(ServiceExists { name: name.into() }.into());
   }
 
   Ok((name, config))
@@ -160,7 +160,7 @@ async fn create_service(
 ) -> Result<(RunningService, Option<ServiceImpl>)> {
   let replaced = match state.hive.remove_service(&name).await {
     Ok(replaced) => Some(replaced),
-    Err(error) if matches!(error.kind(), ServiceNotFound(_)) => None,
+    Err(error) if matches!(error.kind(), ServiceNotFound { .. }) => None,
     Err(error) => return Err(error.into()),
   };
 

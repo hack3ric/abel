@@ -140,14 +140,14 @@ impl From<hive_core::ErrorKind> for Error {
     use hive_core::ErrorKind::*;
     match error {
       // -- Service --
-      InvalidServiceName(name) => (400, "invalid service name", json!({ "name": name })).into(),
-      ServiceNotFound(name) => (404, "service not found", json!({ "name": name })).into(),
+      InvalidServiceName { name } => (400, "invalid service name", json!({ "name": name })).into(),
+      ServiceNotFound { name } => (404, "service not found", json!({ "name": name })).into(),
       ServicePathNotFound { service, path } => From::from((
         404,
         "path not found in service",
         json!({ "service": service, "path": path }),
       )),
-      ServiceExists(name) => (409, "service already exists", json!({ "name": name })).into(),
+      ServiceExists { name } => (409, "service already exists", json!({ "name": name })).into(),
 
       // -- Vendor --
       Lua(error) => {

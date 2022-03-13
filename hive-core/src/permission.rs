@@ -65,7 +65,7 @@ impl<'a> Permission<'a> {
 
   pub fn parse(s: &'a str) -> Result<Self> {
     let result = Self::_parse(s).map_err(|error| ErrorKind::InvalidPermission {
-      s: s.into(),
+      string: s.into(),
       reason: error.into_owned().into_boxed_str(),
     })?;
     Ok(result)
@@ -189,7 +189,12 @@ impl PermissionSet {
     if self.check_ok(p) {
       Ok(())
     } else {
-      Err(ErrorKind::PermissionNotGranted(p.clone().into_owned()).into())
+      Err(
+        ErrorKind::PermissionNotGranted {
+          permission: p.clone().into_owned(),
+        }
+        .into(),
+      )
     }
   }
 }

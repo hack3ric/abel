@@ -74,7 +74,7 @@ impl Hive {
     (self.service_pool)
       .get_running(name)
       .await
-      .ok_or_else(|| ErrorKind::ServiceNotFound(name.into()).into())
+      .ok_or_else(|| ErrorKind::ServiceNotFound { name: name.into() }.into())
   }
 
   pub async fn run_service(
