@@ -52,6 +52,7 @@ impl<'lua> FromLua<'lua> for LuaUri {
 }
 
 pub fn create_fn_create_uri(lua: &Lua) -> mlua::Result<Function> {
-  lua
-    .create_function(|_lua, s: LuaString| Ok(LuaUri(hyper::Uri::try_from(s.as_bytes()).to_lua_err()?)))
+  lua.create_function(|_lua, s: LuaString| {
+    Ok(LuaUri(hyper::Uri::try_from(s.as_bytes()).to_lua_err()?))
+  })
 }

@@ -45,7 +45,9 @@ impl<'lua> FromLua<'lua> for LuaResponse {
   fn from_lua(value: mlua::Value, lua: &Lua) -> mlua::Result<Self> {
     use mlua::Value::*;
     match value {
-      x @ Table(_) | x @ Nil | x @ String(_) => Ok(lua.unpack::<LuaBody>(x)?.into_default_response()),
+      x @ Table(_) | x @ Nil | x @ String(_) => {
+        Ok(lua.unpack::<LuaBody>(x)?.into_default_response())
+      }
       UserData(x) => {
         if let Ok(mut u) = x.take::<Self>() {
           if u.body.is_none() {
