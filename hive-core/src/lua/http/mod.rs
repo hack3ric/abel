@@ -40,14 +40,17 @@ fn create_fn_request(lua: &Lua, permissions: Arc<PermissionSet>) -> mlua::Result
       if let Some(auth) = req.uri.authority() {
         let host = auth.host();
         let port = (auth.port())
-          .and_then(|x| NonZeroU16::new(x.as_u16()))
-          .or_else(|| {
-            req.uri.scheme().map(|x| match x.as_str() {
-              "https" => nonzero!(443u16),
-              _ => nonzero!(80u16),
-            })
-          });
-        permissions.check(&Permission::net(host, port))?;
+          .map(|x| NonZeroU16::new(x.as_u16()).ok_or("port is zero"))
+          .unwrap_or_else(|| {
+            (req.uri.scheme())
+              .map(|x| match x.as_str() {
+                "https" => nonzero!(443u16),
+                _ => nonzero!(80u16),
+              })
+              .ok_or("no URI scheme specified")
+          })
+          .to_lua_err()?;
+        permissions.check(&Permission::Net(host.into(), port))?;
       } else {
         return Err("absolute-form URI required".to_lua_err());
       }

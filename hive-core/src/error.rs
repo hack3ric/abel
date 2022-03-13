@@ -22,6 +22,7 @@ impl Debug for Error {
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ErrorKind {
+  // -- Service --
   #[error("invalid service name: {0}")]
   InvalidServiceName(Box<str>),
   #[error("service '{0}' not found")]
@@ -36,9 +37,14 @@ pub enum ErrorKind {
   ServiceStopped(Box<str>),
   #[error("service is dropped")]
   ServiceDropped,
-  #[error("permission '{0}' not granted")]
-  PermissionNotGranted(Permission),
 
+  // -- Permission --
+  #[error("permission '{0}' not granted")]
+  PermissionNotGranted(Permission<'static>),
+  #[error("invalid permission '{s}': {reason}")]
+  InvalidPermission { s: Box<str>, reason: Box<str> },
+
+  // -- Vendor --
   #[error(transparent)]
   Lua(#[from] mlua::Error),
   #[error(transparent)]
@@ -48,6 +54,7 @@ pub enum ErrorKind {
   #[error(transparent)]
   Hyper(#[from] hyper::Error),
 
+  // -- Custom --
   #[error("{error} ({detail:?})")]
   LuaCustom {
     status: StatusCode,

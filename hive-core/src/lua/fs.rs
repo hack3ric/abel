@@ -247,12 +247,14 @@ fn create_fn_fs_open(
         }
         "external" => {
           let path = normalize_path(path);
+          let read = Permission::Read(Cow::Borrowed(&path));
+          let write = Permission::Write(Cow::Borrowed(&path));
           match mode {
-            Read => permissions.check(&Permission::read_unchecked(&path))?,
-            Write | Append => permissions.check(&Permission::read_unchecked(&path))?,
+            Read => permissions.check(&read)?,
+            Write | Append => permissions.check(&write)?,
             ReadWrite | ReadWriteNew | ReadAppend => {
-              permissions.check(&Permission::read_unchecked(&path))?;
-              permissions.check(&Permission::write_unchecked(&path))?;
+              permissions.check(&read)?;
+              permissions.check(&write)?;
             }
           }
           mode.to_open_options().open(path).await?
@@ -319,7 +321,7 @@ fn create_fn_fs_mkdir(
       let path: Cow<Path> = match scheme {
         "local" => local_storage_path.join(normalize_path_str(path)).into(),
         "external" => {
-          permissions.check(&Permission::write(&path))?;
+          permissions.check(&Permission::Write(Cow::Borrowed(Path::new(path))))?;
           Path::new(path).into()
         }
         "source" => return Err("cannot modify service source".to_lua_err()),
@@ -350,8 +352,9 @@ fn create_fn_fs_remove(
       let path: Cow<Path> = match scheme {
         "local" => local_storage_path.join(normalize_path_str(path)).into(),
         "external" => {
-          permissions.check(&Permission::write(&path))?;
-          Path::new(path).into()
+          let path: Cow<_> = Path::new(path).into();
+          permissions.check(&Permission::Write(path.clone()))?;
+          path
         }
         "source" => return Err("cannot modify service source".to_lua_err()),
         _ => return scheme_not_supported(scheme),

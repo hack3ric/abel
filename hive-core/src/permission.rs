@@ -1,219 +1,164 @@
 use crate::path::normalize_path;
 use crate::{ErrorKind, Result};
-use mlua::{ExternalError, ExternalResult, FromLua, Lua, String as LuaString, ToLua};
+use mlua::{ExternalResult, FromLua, Lua, String as LuaString, ToLua};
+use nonzero_ext::nonzero;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::borrow::Cow;
 use std::collections::HashSet;
-use std::fmt::{Display, Write};
-use std::mem::discriminant;
+use std::fmt::{Display, Formatter, Write};
 use std::num::{NonZeroU16, ParseIntError};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-/// A permission flag.
-// TODO: better grammar in `hive.json` (human-friendly serde)
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Permission(pub(crate) PermissionInner);
-
-/// Inner of the `Permission` type, for pattern matching.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-#[serde(tag = "type")]
-pub enum PermissionInner {
-  /// Reading a file.
-  #[serde(rename = "read")]
-  Read { path: PathBuf },
-
-  /// Writing a file.
-  #[serde(rename = "write")]
-  Write { path: PathBuf },
-
-  /// Connecting to specified host.
-  #[serde(rename = "net")]
-  Net { host: Host },
-
-  #[serde(rename = "env")]
-  Env { name: Box<str> },
+pub enum Permission<'a> {
+  Read(Cow<'a, Path>),
+  Write(Cow<'a, Path>),
+  Net(Cow<'a, str>, NonZeroU16),
+  Env(Cow<'a, str>),
 }
 
-impl Permission {
-  pub fn read(path: impl AsRef<Path>) -> Self {
-    Self::read_unchecked(normalize_path(path))
-  }
-
-  pub fn read_unchecked(path: impl Into<PathBuf>) -> Self {
-    Self(PermissionInner::Read { path: path.into() })
-  }
-
-  pub fn write(path: impl AsRef<Path>) -> Self {
-    Self::write_unchecked(normalize_path(path))
-  }
-
-  pub fn write_unchecked(path: impl Into<PathBuf>) -> Self {
-    Self(PermissionInner::Write { path: path.into() })
-  }
-
-  pub fn net_parse(host: impl Into<String>) -> Result<Self, ParseIntError> {
-    Ok(Self(PermissionInner::Net {
-      host: Host::new(host.into())?,
-    }))
-  }
-
-  pub fn net(host: impl Into<String>, port: Option<NonZeroU16>) -> Self {
-    Self(PermissionInner::Net {
-      host: Host {
-        host: host.into(),
-        port,
-      },
-    })
-  }
-
-  pub fn env(name: impl Into<String>) -> Self {
-    Self(PermissionInner::Env {
-      name: name.into().into(),
-    })
+impl<'a> Permission<'a> {
+  pub fn name(&self) -> &'static str {
+    use Permission::*;
+    match self {
+      Read(_) => "read",
+      Write(_) => "write",
+      Net(_, _) => "net",
+      Env(_) => "env",
+    }
   }
 
   pub fn is_subset(&self, other: &Self) -> bool {
-    use PermissionInner::*;
-    match (&self.0, &other.0) {
-      (Read { path: p1 }, Read { path: p2 }) | (Write { path: p1 }, Write { path: p2 }) => {
-        p1.starts_with(p2)
-      }
-      (Net { host: h1 }, Net { host: h2 }) => match (&h2.port, &h1.port) {
-        _ if h1.host != h2.host => false,
-        (None, _) => true,
-        (Some(p1), Some(p2)) => p1 == p2,
-        (Some(_), None) => false,
-      },
-      (Env { name: n1 }, Env { name: n2 }) => n1 == n2,
-      _ => false,
+    use Permission::*;
+    match (self, other) {
+      (Read(p1), Read(p2)) | (Write(p1), Write(p2)) => p1.starts_with(p2),
+      _ => self == other,
     }
   }
 
   pub fn is_superset(&self, other: &Self) -> bool {
-    discriminant(&self.0) == discriminant(&other.0) && (!self.is_subset(other) || self == other)
-  }
-
-  pub fn inner(&self) -> &PermissionInner {
-    &self.0
-  }
-
-  pub fn name(&self) -> &'static str {
-    use PermissionInner::*;
-    match self.0 {
-      Read { .. } => "read",
-      Write { .. } => "write",
-      Net { .. } => "net",
-      Env { .. } => "env",
+    use Permission::*;
+    match (self, other) {
+      (Read(p1), Read(p2)) | (Write(p1), Write(p2)) => p2.starts_with(p1),
+      _ => self == other,
     }
   }
-}
 
-impl Display for Permission {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    use PermissionInner::*;
-    f.write_str(self.name())?;
-    f.write_char(':')?;
-    match &self.0 {
-      Read { path } | Write { path } => f.write_str(&path.to_string_lossy()),
-      Net { host } => <Host as Display>::fmt(host, f),
-      Env { name } => f.write_str(name),
+  pub fn into_owned(self) -> Permission<'static> {
+    use Permission::*;
+    match self {
+      Read(x) => Read(Cow::Owned(x.into_owned())),
+      Write(x) => Write(Cow::Owned(x.into_owned())),
+      Net(x, p) => Net(Cow::Owned(x.into_owned()), p),
+      Env(x) => Env(Cow::Owned(x.into_owned())),
     }
   }
-}
 
-impl<'lua> FromLua<'lua> for Permission {
-  fn from_lua(lua_value: mlua::Value<'lua>, _lua: &'lua Lua) -> mlua::Result<Self> {
-    if let mlua::Value::Table(table) = lua_value {
-      let name: LuaString = table.raw_get("type")?;
-      match name.as_bytes() {
-        x @ b"read" | x @ b"write" => {
-          let path: LuaString = table.raw_get("path")?;
-          let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
-          let path = Path::new(path);
-          if x == b"read" {
-            Ok(Self::read(path))
-          } else {
-            Ok(Self::write(path))
-          }
-        }
-        b"net" => {
-          let host: String = table.raw_get("host")?;
-          Self::net_parse(host).to_lua_err()
-        }
-        _ => Err("invalid permission type".to_lua_err()),
-      }
-    } else {
-      Err("failed to parse `Permission`: expected table".to_lua_err())
+  pub fn normalize(&mut self) {
+    use Permission::*;
+    match self {
+      Read(x) | Write(x) => *x = Cow::Owned(normalize_path(&x)),
+      _ => {}
     }
   }
-}
 
-impl<'lua> ToLua<'lua> for Permission {
-  fn to_lua(self, lua: &'lua Lua) -> mlua::Result<mlua::Value<'lua>> {
-    use PermissionInner::*;
-    let table = match self.0 {
-      Read { path } => {
-        lua.create_table_from([("type", "read"), ("path", &path.to_string_lossy())])?
+  pub fn parse(s: &'a str) -> Result<Self> {
+    let result = Self::_parse(s).map_err(|error| ErrorKind::InvalidPermission {
+      s: s.into(),
+      reason: error.into_owned().into_boxed_str(),
+    })?;
+    Ok(result)
+  }
+
+  fn _parse(s: &'a str) -> Result<Self, Cow<'static, str>> {
+    use Permission::*;
+
+    let (scheme, content) = s.split_once("::").ok_or("permission scheme not given")?;
+    let result = match scheme {
+      "read" => Read(Path::new(content).into()),
+      "write" => Write(Path::new(content).into()),
+      "net" => {
+        let (host, port) = content
+          .rsplit_once(':')
+          .map(|(x, p)| Ok::<_, ParseIntError>((x, p.parse::<NonZeroU16>()?)))
+          .transpose()
+          .map_err(|e| format!("failed parsing port: {e}"))?
+          .unwrap_or((content, nonzero!(443u16)));
+        Net(host.into(), port)
       }
-      Write { path } => {
-        lua.create_table_from([("type", "write"), ("path", &path.to_string_lossy())])?
-      }
-      Net { host } => lua.create_table_from([("type", "net"), ("host", &host.to_string())])?,
-      Env { name } => lua.create_table_from([("type", "env"), ("name", &name)])?,
+      "env" => Env(content.into()),
+      _ => return Err(format!("unknown permission scheme: {s}").into()),
     };
-    Ok(mlua::Value::Table(table))
+
+    Ok(result)
   }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Host {
-  host: String,
-  port: Option<NonZeroU16>,
-}
-
-impl Host {
-  pub fn new(mut host: String) -> Result<Host, ParseIntError> {
-    let port = host
-      .rfind(':')
-      .map(|pos| host.split_off(pos)[1..].parse::<NonZeroU16>())
-      .transpose()?;
-    Ok(Host { host, port })
+impl<'lua> FromLua<'lua> for Permission<'static> {
+  fn from_lua(lua_value: mlua::Value<'lua>, lua: &'lua Lua) -> mlua::Result<Self> {
+    let s = lua.unpack::<LuaString>(lua_value)?;
+    let s = std::str::from_utf8(s.as_bytes()).to_lua_err()?;
+    Permission::_parse(s)
+      .map(Permission::into_owned)
+      .to_lua_err()
   }
 }
 
-impl Display for Host {
-  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-    f.write_str(&self.host)?;
-    if let Some(port) = self.port {
-      f.write_char(':')?;
-      f.write_str(&port.to_string())?;
+impl<'lua, 'a> ToLua<'lua> for Permission<'a> {
+  fn to_lua(self, lua: &'lua Lua) -> mlua::Result<mlua::Value<'lua>> {
+    lua.pack(self.to_string())
+  }
+}
+
+impl<'a> Display for Permission<'a> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    use Permission::*;
+    f.write_str(self.name())?;
+    f.write_str("::")?;
+    match self {
+      Read(x) | Write(x) => {
+        // XXX: assuming it's all UTF-8
+        f.write_str(&x.to_string_lossy())?;
+      }
+      Net(x, p) => {
+        f.write_str(x)?;
+        if u16::from(*p) != 443 {
+          f.write_char(':')?;
+          f.write_str(&p.to_string())?;
+        }
+      }
+      Env(x) => f.write_str(x)?,
     }
     Ok(())
   }
 }
 
-impl Serialize for Host {
-  fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-    self.to_string().serialize(serializer)
+impl<'a> Serialize for Permission<'a> {
+  fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+    self.to_string().serialize(ser)
   }
 }
 
-impl<'de> Deserialize<'de> for Host {
-  fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-    let host = String::deserialize(deserializer)?;
-    Self::new(host).map_err(serde::de::Error::custom)
+impl<'de: 'a, 'a> Deserialize<'de> for Permission<'a> {
+  fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+    Self::_parse(<&str>::deserialize(de)?).map_err(serde::de::Error::custom)
   }
 }
 
 #[derive(Debug, Serialize, Default)]
-pub struct PermissionSet(HashSet<Permission>);
+pub struct PermissionSet(HashSet<Permission<'static>>);
 
 impl PermissionSet {
   pub fn new() -> Self {
     Default::default()
   }
 
-  pub fn insert(&mut self, p: Permission) {
+  pub fn insert(&mut self, p: Permission<'_>) {
+    self.insert_owned(p.into_owned())
+  }
+
+  pub fn insert_owned(&mut self, p: Permission<'static>) {
     // 1. remove all subsets
     // 2. if there is a superset, don't insert
     // 3. if not, insert
@@ -244,21 +189,19 @@ impl PermissionSet {
     if self.check_ok(p) {
       Ok(())
     } else {
-      Err(ErrorKind::PermissionNotGranted(p.clone()).into())
+      Err(ErrorKind::PermissionNotGranted(p.clone().into_owned()).into())
     }
   }
 }
 
 impl<'de> Deserialize<'de> for PermissionSet {
-  // This still has a lot of optimizations to do. Maybe deserialize it into
-  // `HashSet` and de-duplicate it in place?
-  fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-    let vec = Vec::deserialize(deserializer)?;
-    let mut result = Self(HashSet::new());
-    for i in vec.into_iter() {
-      result.insert(i);
+  fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+    let v = Vec::<Permission>::deserialize(de)?;
+    let mut s = Self::new();
+    for i in v.into_iter() {
+      s.insert(i);
     }
-    Ok(result)
+    Ok(s)
   }
 }
 
@@ -267,10 +210,16 @@ mod tests {
   use super::*;
   use test_case::test_case;
 
-  #[test_case(Permission::read("/foo/bar/baz"), Permission::read("/foo/bar") => (true, false); "subpath")]
-  #[test_case(Permission::read("/foo/bar"), Permission::read("/foo/bar/baz") => (false, true); "super path")]
-  #[test_case(Permission::read("/foo/bar"), Permission::read("/foo/bar") => (true, true); "same path")]
-  #[test_case(Permission::read("/foo/bar"), Permission::write("/foo/bar") => (false, false); "different type")]
+  fn p(s: &str) -> Permission {
+    Permission::parse(s).unwrap()
+  }
+
+  #[test_case(p("read::/foo/bar/baz"), p("read::/foo/bar") => (true, false); "subpath")]
+  #[test_case(p("read::/foo/bar"), p("read::/foo/bar/baz") => (false, true); "super path")]
+  #[test_case(p("read::/foo/bar"), p("read::/foo/bar") => (true, true); "same path")]
+  #[test_case(p("read::/foo/bar"), p("write::/foo/bar") => (false, false); "different type")]
+  #[test_case(p("net::httpbin.org"), p("net::httpbin.org:443") => (true, true); "defaults to 443")]
+  #[test_case(p("net::httpbin.org:80"), p("net::httpbin.org") => (false, false); "not allowing raw HTTP by default")]
   fn test_subset_superset(a: Permission, b: Permission) -> (bool, bool) {
     (a.is_subset(&b), a.is_superset(&b))
   }

@@ -1,6 +1,6 @@
 {
   "name": "request",
   "permissions": [
-    { "type": "net", "host": "httpbin.org:443" }
+    "net::httpbin.org"
   ]
 }
