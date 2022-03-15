@@ -34,7 +34,7 @@ impl ServicePool {
     config: Config,
   ) -> Result<RunningService> {
     if self.services.contains(MyStr::new(&*name)) {
-      return Err(ServiceExists{ name: name.into() }.into());
+      return Err(ServiceExists { name: name.into() }.into());
     }
 
     let service_impl = sandbox_pool

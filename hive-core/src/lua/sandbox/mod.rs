@@ -70,7 +70,7 @@ impl Sandbox {
               .raw_get::<_, u16>("status")?
               .try_into()
               .to_lua_err()?,
-            error: custom_error.raw_get("error")?,
+            msg: custom_error.raw_get("msg")?,
             detail: (self.lua).from_value(custom_error.raw_get::<_, mlua::Value>("detail")?)?,
           }
           .into(),

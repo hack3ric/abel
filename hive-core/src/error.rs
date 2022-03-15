@@ -1,7 +1,7 @@
 use crate::permission::Permission;
 use backtrace::Backtrace;
-use hyper::{Body, Response, StatusCode};
-use serde::Serialize;
+use hyper::StatusCode;
+use serde::{Serialize, Serializer};
 use serde_json::json;
 use std::fmt::{self, Debug, Formatter};
 use strum::EnumProperty;
@@ -16,9 +16,47 @@ pub struct Error {
   backtrace: Option<Backtrace>,
 }
 
+impl Error {
+  pub fn kind(&self) -> &ErrorKind {
+    &self.kind
+  }
+
+  pub fn into_parts(self) -> (ErrorKind, Option<Backtrace>) {
+    (self.kind, self.backtrace)
+  }
+}
+
 impl Debug for Error {
   fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
     Debug::fmt(&self.kind, f)
+  }
+}
+
+impl<E: Into<ErrorKind>> From<E> for Error {
+  fn from(x: E) -> Self {
+    use ErrorKind::*;
+    let kind = x.into();
+    let backtrace = match kind {
+      InvalidServiceName { .. }
+      | ServiceNotFound { .. }
+      | ServicePathNotFound { .. }
+      | ServiceExists { .. }
+      | ServiceRunning { .. }
+      | ServiceStopped { .. }
+      | LuaCustom { .. } => None,
+      _ => Some(Backtrace::new()),
+    };
+    Self { kind, backtrace }
+  }
+}
+
+impl From<Error> for mlua::Error {
+  fn from(x: Error) -> Self {
+    if let ErrorKind::Lua(x) = x.kind {
+      x
+    } else {
+      mlua::Error::external(x)
+    }
   }
 }
 
@@ -66,122 +104,74 @@ pub enum ErrorKind {
 
   // -- Vendor --
   #[error(transparent)]
-  #[serde(skip)]
   #[strum(props(status = "500", msg = "Lua error"))]
-  Lua(#[from] mlua::Error),
+  Lua(
+    #[from]
+    #[serde(serialize_with = "serialize_error")]
+    mlua::Error,
+  ),
 
   #[error(transparent)]
-  #[serde(skip)]
   #[strum(props(status = "500", msg = "I/O error"))]
-  Io(#[from] tokio::io::Error),
+  Io(
+    #[from]
+    #[serde(serialize_with = "serialize_error")]
+    tokio::io::Error,
+  ),
 
   #[error(transparent)]
-  #[serde(skip)]
   #[strum(props(status = "500", msg = "regex error"))]
-  Regex(#[from] regex::Error),
+  Regex(
+    #[from]
+    #[serde(serialize_with = "serialize_error")]
+    regex::Error,
+  ),
 
   #[error(transparent)]
-  #[serde(skip)]
   #[strum(props(status = "500", msg = "hyper error"))]
-  Hyper(#[from] hyper::Error),
+  Hyper(
+    #[from]
+    #[serde(serialize_with = "serialize_error")]
+    hyper::Error,
+  ),
 
   // -- Custom --
-  #[error("{error} ({detail:?})")]
+  #[error("{msg} ({detail:?})")]
   #[serde(skip)]
   LuaCustom {
     status: StatusCode,
-    error: String,
+    msg: String,
     detail: serde_json::Value,
   },
 }
 
-impl Error {
-  pub fn kind(&self) -> &ErrorKind {
-    &self.kind
-  }
-
-  pub fn into_parts(self) -> (ErrorKind, Option<Backtrace>) {
-    (self.kind, self.backtrace)
-  }
+fn serialize_error<E, S>(error: E, ser: S) -> Result<S::Ok, S::Error>
+where
+  E: std::error::Error,
+  S: Serializer,
+{
+  json!({ "msg": error.to_string() }).serialize(ser)
 }
 
-impl From<ErrorKind> for Error {
-  fn from(kind: ErrorKind) -> Self {
-    use ErrorKind::*;
-    let backtrace = match kind {
-      InvalidServiceName { .. }
-      | ServiceNotFound { .. }
-      | ServicePathNotFound { .. }
-      | ServiceExists { .. }
-      | ServiceRunning { .. }
-      | ServiceStopped { .. }
-      | LuaCustom { .. } => None,
-      _ => Some(Backtrace::new()),
-    };
-    Self { kind, backtrace }
-  }
-}
-
-impl From<Error> for mlua::Error {
-  fn from(x: Error) -> Self {
-    if let ErrorKind::Lua(x) = x.kind {
-      x
-    } else {
-      mlua::Error::external(x)
+impl ErrorKind {
+  pub fn status(&self) -> StatusCode {
+    match self {
+      Self::LuaCustom { status, .. } => *status,
+      _ => self.get_str("status").unwrap().parse().unwrap(),
     }
   }
-}
 
-macro_rules! simple_impl_from_errors {
-  ($($error:ty),+$(,)?) => {$(
-    impl From<$error> for Error {
-      fn from(error: $error) -> Self {
-        ErrorKind::from(error).into()
-      }
+  pub fn msg(&self) -> &str {
+    match self {
+      Self::LuaCustom { msg, .. } => msg,
+      _ => self.get_str("msg").unwrap(),
     }
-  )+};
-}
+  }
 
-simple_impl_from_errors! {
-  mlua::Error,
-  tokio::io::Error,
-  regex::Error,
-  hyper::Error,
-}
-
-impl From<Error> for Response<Body> {
-  fn from(x: Error) -> Self {
-    let (status, body) = if let ErrorKind::LuaCustom {
-      status,
-      error,
-      detail,
-    } = x.kind
-    {
-      let body = json!({ "error": error, "detail": detail });
-      (status, body)
-    } else {
-      let status = x.kind.get_str("prop").unwrap().parse().unwrap();
-      let error = x.kind.get_str("msg").unwrap();
-      let detail = serde_json::to_value(&x.kind).unwrap();
-      let body = if let Some(x) = x.backtrace {
-        json!({
-          "error": error,
-          "detail": detail,
-          "backtrace": format!("{x:?}"),
-        })
-      } else {
-        json!({
-          "error": error,
-          "detail": detail,
-        })
-      };
-      (status, body)
-    };
-
-    Response::builder()
-      .status(status)
-      .header("content-type", "application/json")
-      .body(body.to_string().into())
-      .unwrap()
+  pub fn detail(&self) -> serde_json::Value {
+    match self {
+      Self::LuaCustom { detail, .. } => detail.clone(),
+      _ => serde_json::to_value(self).unwrap(),
+    }
   }
 }

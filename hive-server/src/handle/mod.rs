@@ -63,7 +63,8 @@ pub(crate) async fn handle(
 
   Ok(result.unwrap_or_else(|error| {
     error!("{}", error);
-    error.into_response(true)
+    // TODO: Filter error response based on authentication
+    error.into()
   }))
 }
 
