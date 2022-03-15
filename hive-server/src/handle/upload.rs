@@ -2,7 +2,7 @@ use crate::util::{asyncify, json_response};
 use crate::{MainState, Result};
 use futures::TryStreamExt;
 use hive_asar::Archive;
-use hive_core::ErrorKind::{ServiceExists, ServiceNotFound};
+use hive_core::ErrorKind::ServiceExists;
 use hive_core::{Config, RunningService, ServiceImpl, Source};
 use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 use log::info;
@@ -158,42 +158,43 @@ async fn create_service(
   config: Config,
   source_path: impl AsRef<Path>,
 ) -> Result<(RunningService, Option<ServiceImpl>)> {
-  let replaced = match state.hive.remove_service(&name).await {
-    Ok(replaced) => Some(replaced),
-    Err(error) if matches!(error.kind(), ServiceNotFound { .. }) => None,
-    Err(error) => return Err(error.into()),
-  };
+  // let replaced = match state.hive.remove_service(&name).await {
+  //   Ok(replaced) => Some(replaced),
+  //   Err(error) if matches!(error.kind(), ServiceNotFound { .. }) => None,
+  //   Err(error) => return Err(error.into()),
+  // };
 
-  let result = async {
-    let source = Source::new(source_path.as_ref()).await?;
-    let service = (state.hive)
-      .create_service(name, source.clone(), config)
-      .await?;
+  // let result = async {
+  let source = Source::new(source_path.as_ref()).await?;
+  let (service, replaced) = (state.hive)
+    .create_service(name, source.clone(), config)
+    .await?;
 
-    let x = service.upgrade();
-    let name = x.name();
+  let x = service.upgrade();
+  let name = x.name();
 
-    let service_path = state.config_path.join("services").join(&name);
-    if service_path.exists() {
-      fs::remove_dir_all(&service_path).await?;
-    }
-    source.rename_base(service_path).await?;
-    Ok::<_, crate::Error>(service)
+  let service_path = state.config_path.join("services").join(&name);
+  if service_path.exists() {
+    fs::remove_dir_all(&service_path).await?;
   }
-  .await;
+  source.rename_base(service_path).await?;
+  // Ok::<_, crate::Error>(service)
+  // }
+  // .await;
 
-  let result = match result {
-    Ok(service) => Ok((service, replaced)),
-    Err(mut error) => {
-      error.add_detail(
-        "replaced_service".to_string(),
-        serde_json::to_value(replaced)?,
-      );
-      let _ = fs::remove_dir_all(source_path).await;
-      Err(error)
-    }
-  };
-  result
+  // let result = match result {
+  //   Ok(service) => Ok((service, replaced)),
+  //   Err(mut error) => {
+  //     error.add_detail(
+  //       "replaced_service".to_string(),
+  //       serde_json::to_value(replaced)?,
+  //     );
+  //     let _ = fs::remove_dir_all(source_path).await;
+  //     Err(error)
+  //   }
+  // };
+  // result
+  Ok((service, replaced))
 }
 
 async fn response(

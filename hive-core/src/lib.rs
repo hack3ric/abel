@@ -64,9 +64,9 @@ impl Hive {
     name: String,
     source: Source,
     config: Config,
-  ) -> Result<RunningService> {
+  ) -> Result<(RunningService, Option<ServiceImpl>)> {
     (self.service_pool)
-      .create(&self.sandbox_pool, name, source, config)
+      .create(&self.sandbox_pool, name, source, config, true)
       .await
   }
 
@@ -84,8 +84,7 @@ impl Hive {
     req: Request<Body>,
   ) -> Result<LuaResponse> {
     let service = self.get_service(name).await?;
-    self
-      .sandbox_pool
+    (self.sandbox_pool)
       .scope(move |sandbox| async move { sandbox.run(service, &path, req).await })
       .await
   }

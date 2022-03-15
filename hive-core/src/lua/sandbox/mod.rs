@@ -50,7 +50,6 @@ impl Sandbox {
 }
 
 impl Sandbox {
-  // TODO: also put it in Lua global
   async fn pcall<'a, T, R>(&'a self, f: Function<'a>, v: T) -> Result<R>
   where
     T: ToLuaMulti<'a>,
@@ -154,11 +153,14 @@ impl Sandbox {
     service: RunningService,
     local_env: RegistryKey,
     internal: RegistryKey,
+    hot_update: bool,
   ) -> Result<()> {
     if service.is_dropped() {
       return Err(ServiceDropped.into());
     }
-    self.run_start(service.clone()).await?;
+    if !hot_update {
+      self.run_start(service.clone()).await?;
+    }
     let loaded = LoadedService {
       service,
       local_env,

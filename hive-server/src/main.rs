@@ -88,7 +88,7 @@ async fn run() -> anyhow::Result<()> {
       }
       .await;
       match result {
-        Ok(service) => {
+        Ok((service, _)) => {
           let service = service.upgrade();
           info!("Loaded service '{}' ({})", service.name(), service.uuid())
         }

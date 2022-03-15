@@ -26,17 +26,66 @@ impl ServicePool {
   }
 
   /// Creates a new service from source.
+  // pub async fn create(
+  //   &self,
+  //   sandbox_pool: &Pool<Sandbox>,
+  //   name: String,
+  //   source: Source,
+  //   config: Config,
+  // ) -> Result<RunningService> {
+  //   if self.services.contains(MyStr::new(&name)) {
+  //     return Err(ServiceExists { name: name.into() }.into());
+  //   }
+
+  //   let service_impl = sandbox_pool
+  //     .scope(move |sandbox| async move {
+  //       let Config {
+  //         pkg_name,
+  //         description,
+  //         permissions,
+  //       } = config;
+  //       let permissions = Arc::new(permissions);
+  //       let (paths, local_env, internal) = sandbox
+  //         .pre_create_service(&name, source.clone(), permissions.clone())
+  //         .await?;
+  //       let service_impl = Arc::new(ServiceImpl {
+  //         name: name.into_boxed_str(),
+  //         pkg_name,
+  //         description,
+  //         paths,
+  //         source,
+  //         permissions,
+  //         uuid: Uuid::new_v4(),
+  //       });
+  //       sandbox
+  //         .finish_create_service(
+  //           &service_impl.name,
+  //           service_impl.downgrade(),
+  //           local_env,
+  //           internal,
+  //           false,
+  //         )
+  //         .await?;
+  //       Ok::<_, crate::Error>(service_impl)
+  //     })
+  //     .await?;
+  //   let service = service_impl.downgrade();
+  //   assert!(self.services.insert(ServiceState::Running(service_impl)));
+  //   Ok(service)
+  // }
+
+  /// Updates an existing service from source.
   pub async fn create(
     &self,
     sandbox_pool: &Pool<Sandbox>,
     name: String,
     source: Source,
     config: Config,
-  ) -> Result<RunningService> {
-    if self.services.contains(MyStr::new(&*name)) {
-      return Err(ServiceExists { name: name.into() }.into());
-    }
+    hot_update: bool,
+  ) -> Result<(RunningService, Option<ServiceImpl>)> {
+    let hot_update = self.services.contains(MyStr::new(&name)) && hot_update;
 
+    let name2 = name.clone();
     let service_impl = sandbox_pool
       .scope(move |sandbox| async move {
         let Config {
@@ -46,10 +95,10 @@ impl ServicePool {
         } = config;
         let permissions = Arc::new(permissions);
         let (paths, local_env, internal) = sandbox
-          .pre_create_service(&name, source.clone(), permissions.clone())
+          .pre_create_service(&name2, source.clone(), permissions.clone())
           .await?;
         let service_impl = Arc::new(ServiceImpl {
-          name: name.into_boxed_str(),
+          name: name2.into_boxed_str(),
           pkg_name,
           description,
           paths,
@@ -63,14 +112,31 @@ impl ServicePool {
             service_impl.downgrade(),
             local_env,
             internal,
+            hot_update,
           )
           .await?;
         Ok::<_, crate::Error>(service_impl)
       })
       .await?;
     let service = service_impl.downgrade();
+    if !hot_update
+      && self
+        .services
+        .get(MyStr::new(&name))
+        .map(|x| matches!(&*x, ServiceState::Running(_)))
+        .unwrap_or(false)
+    {
+      match self.stop(sandbox_pool, &name).await {
+        Ok(_) => {}
+        Err(x) if matches!(x.kind(), ServiceStopped { .. } | ServiceNotFound { .. }) => {}
+        Err(error) => return Err(error),
+      }
+    }
+    let replaced = (self.services)
+      .remove(MyStr::new(&name))
+      .map(ServiceState::into_impl);
     assert!(self.services.insert(ServiceState::Running(service_impl)));
-    Ok(service)
+    Ok((service, replaced))
   }
 
   pub async fn get_running(&self, name: &str) -> Option<RunningService> {
