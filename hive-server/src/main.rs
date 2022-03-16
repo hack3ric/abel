@@ -102,12 +102,17 @@ async fn run() -> anyhow::Result<()> {
     async move { Ok::<_, Infallible>(service_fn(move |req| handle(state.clone(), req))) }
   });
 
-  let server = Server::bind(&opt.addr).serve(make_svc);
+  let server = Server::bind(&opt.addr)
+    .serve(make_svc)
+    .with_graceful_shutdown(shutdown_signal());
 
   info!("Hive is listening to {}", opt.addr);
   if let Err(error) = server.await {
     error!("fatal server error: {}", error);
   }
+
+  // TODO: stop all services
+
   Ok(())
 }
 
@@ -118,4 +123,26 @@ fn main() -> anyhow::Result<()> {
     .build()
     .unwrap()
     .block_on(run())
+}
+
+#[cfg(unix)]
+async fn shutdown_signal() {
+  use tokio::signal::unix::{signal, SignalKind};
+  use tokio::select;
+
+  let mut sigint = signal(SignalKind::interrupt()).unwrap();
+  let mut sigterm = signal(SignalKind::terminate()).unwrap();
+
+  let signal = select! {
+    _ = sigint.recv() => "SIGINT",
+    _ = sigterm.recv() => "SIGTERM",
+  };
+
+  info!("{signal} received; gracefully shutting down");
+}
+
+#[cfg(windows)]
+async fn shutdown_signal() {
+  tokio::signal::ctrl_c().await.unwrap();
+  info!("gracefully shutting down");
 }
