@@ -170,6 +170,10 @@ impl Sandbox {
     Ok(())
   }
 
+  pub(crate) fn remove_registry(&self, key: RegistryKey) -> mlua::Result<()> {
+    self.lua.remove_registry_value(key)
+  }
+
   pub(crate) async fn run_start(&self, service: RunningService) -> Result<()> {
     let loaded = self.load_service(service).await?;
     let start_fn: Option<Function> = (self.lua)

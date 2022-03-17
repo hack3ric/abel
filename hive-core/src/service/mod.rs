@@ -1,12 +1,11 @@
 mod impls;
 
-use crate::error::Result;
 use crate::lua::{remove_service_local_storage, Sandbox};
 use crate::source::Source;
 use crate::task::Pool;
 use crate::util::MyStr;
 use crate::ErrorKind::*;
-use crate::{Config, HiveState};
+use crate::{Config, HiveState, Result};
 use dashmap::setref::multiple::RefMulti;
 use dashmap::setref::one::Ref;
 use dashmap::DashSet;
@@ -25,56 +24,7 @@ impl ServicePool {
     }
   }
 
-  /// Creates a new service from source.
-  // pub async fn create(
-  //   &self,
-  //   sandbox_pool: &Pool<Sandbox>,
-  //   name: String,
-  //   source: Source,
-  //   config: Config,
-  // ) -> Result<RunningService> {
-  //   if self.services.contains(MyStr::new(&name)) {
-  //     return Err(ServiceExists { name: name.into() }.into());
-  //   }
-
-  //   let service_impl = sandbox_pool
-  //     .scope(move |sandbox| async move {
-  //       let Config {
-  //         pkg_name,
-  //         description,
-  //         permissions,
-  //       } = config;
-  //       let permissions = Arc::new(permissions);
-  //       let (paths, local_env, internal) = sandbox
-  //         .pre_create_service(&name, source.clone(), permissions.clone())
-  //         .await?;
-  //       let service_impl = Arc::new(ServiceImpl {
-  //         name: name.into_boxed_str(),
-  //         pkg_name,
-  //         description,
-  //         paths,
-  //         source,
-  //         permissions,
-  //         uuid: Uuid::new_v4(),
-  //       });
-  //       sandbox
-  //         .finish_create_service(
-  //           &service_impl.name,
-  //           service_impl.downgrade(),
-  //           local_env,
-  //           internal,
-  //           false,
-  //         )
-  //         .await?;
-  //       Ok::<_, crate::Error>(service_impl)
-  //     })
-  //     .await?;
-  //   let service = service_impl.downgrade();
-  //   assert!(self.services.insert(ServiceState::Running(service_impl)));
-  //   Ok(service)
-  // }
-
-  /// Updates an existing service from source.
+  /// Creates a new service, or updates an existing service from source.
   pub async fn create(
     &self,
     sandbox_pool: &Pool<Sandbox>,
@@ -137,6 +87,50 @@ impl ServicePool {
       .map(ServiceState::into_impl);
     assert!(self.services.insert(ServiceState::Running(service_impl)));
     Ok((service, replaced))
+  }
+
+  pub async fn load(
+    &self,
+    sandbox_pool: &Pool<Sandbox>,
+    name: String,
+    uuid: Uuid,
+    source: Source,
+    config: Config,
+  ) -> Result<Ref<'_, ServiceState>> {
+    if self.services.contains(MyStr::new(&name)) {
+      return Err(ServiceExists { name: name.into() }.into());
+    }
+
+    let name2 = name.clone();
+    let service_impl = sandbox_pool
+      .scope(move |sandbox| async move {
+        let Config {
+          pkg_name,
+          description,
+          permissions,
+        } = config;
+        let permissions = Arc::new(permissions);
+        let (paths, local_env, internal) = sandbox
+          .pre_create_service(&name2, source.clone(), permissions.clone())
+          .await?;
+        sandbox.remove_registry(local_env)?;
+        sandbox.remove_registry(internal)?;
+        let service_impl = ServiceImpl {
+          name: name2.into_boxed_str(),
+          pkg_name,
+          description,
+          paths,
+          source,
+          permissions,
+          uuid,
+        };
+        Ok::<_, crate::Error>(service_impl)
+      })
+      .await?;
+
+    let service_state = ServiceState::Stopped(service_impl);
+    assert!(self.services.insert(service_state));
+    Ok(self.services.get(MyStr::new(&name)).unwrap())
   }
 
   pub async fn get_running(&self, name: &str) -> Option<RunningService> {

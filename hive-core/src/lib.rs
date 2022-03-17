@@ -24,6 +24,7 @@ use service::{ServicePool, ServiceState};
 use std::path::PathBuf;
 use std::sync::Arc;
 use task::Pool;
+use uuid::Uuid;
 
 pub struct Hive {
   sandbox_pool: Pool<Sandbox>,
@@ -70,7 +71,19 @@ impl Hive {
       .await
   }
 
-  pub async fn get_service(&self, name: &str) -> Result<RunningService> {
+  pub async fn load_service(
+    &self,
+    name: String,
+    uuid: Uuid,
+    source: Source,
+    config: Config,
+  ) -> Result<Ref<'_, ServiceState>> {
+    (self.service_pool)
+      .load(&self.sandbox_pool, name, uuid, source, config)
+      .await
+  }
+
+  pub async fn get_running_service(&self, name: &str) -> Result<RunningService> {
     (self.service_pool)
       .get_running(name)
       .await
@@ -83,7 +96,7 @@ impl Hive {
     path: String,
     req: Request<Body>,
   ) -> Result<LuaResponse> {
-    let service = self.get_service(name).await?;
+    let service = self.get_running_service(name).await?;
     (self.sandbox_pool)
       .scope(move |sandbox| async move { sandbox.run(service, &path, req).await })
       .await

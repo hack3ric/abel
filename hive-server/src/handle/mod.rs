@@ -1,6 +1,7 @@
 mod upload;
 
 use crate::error::method_not_allowed;
+use crate::metadata::modify_metadata;
 use crate::util::json_response;
 use crate::{MainState, Result};
 use hive_core::RunningService;
@@ -86,7 +87,8 @@ async fn list(state: &MainState) -> Result<Response<Body>> {
 }
 
 async fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
-  let service = state.hive.get_service(name).await?;
+  // TODO: also get stopped service
+  let service = state.hive.get_running_service(name).await?;
   json_response(StatusCode::OK, service.try_upgrade()?)
 }
 
@@ -105,14 +107,21 @@ async fn start_stop(state: &MainState, name: &str, query: &str) -> Result<Respon
   }
 
   let Query { op } = serde_qs::from_str(query)?;
+  let metadata_path = state
+    .config_path
+    .join("services")
+    .join(name)
+    .join("metadata.json");
 
   match op {
     Operation::Start => {
       let service = state.hive.start_service(name).await?;
+      modify_metadata(&metadata_path, |m| m.started = true).await?;
       json_response(StatusCode::OK, json!({ "started": service.upgrade() }))
     }
     Operation::Stop => {
       let service = state.hive.stop_service(name).await?;
+      modify_metadata(&metadata_path, |m| m.started = false).await?;
       json_response(StatusCode::OK, json!({ "stopped": &*service }))
     }
   }

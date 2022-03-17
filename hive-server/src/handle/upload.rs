@@ -1,3 +1,4 @@
+use crate::metadata::Metadata;
 use crate::util::{asyncify, json_response};
 use crate::{MainState, Result};
 use futures::TryStreamExt;
@@ -145,7 +146,7 @@ async fn get_name_config(
     (name, Default::default())
   };
 
-  if !name_provided && state.hive.get_service(&name).await.is_ok() {
+  if !name_provided && state.hive.get_running_service(&name).await.is_ok() {
     return Err(ServiceExists { name: name.into() }.into());
   }
 
@@ -158,42 +159,31 @@ async fn create_service(
   config: Config,
   source_path: impl AsRef<Path>,
 ) -> Result<(RunningService, Option<ServiceImpl>)> {
-  // let replaced = match state.hive.remove_service(&name).await {
-  //   Ok(replaced) => Some(replaced),
-  //   Err(error) if matches!(error.kind(), ServiceNotFound { .. }) => None,
-  //   Err(error) => return Err(error.into()),
-  // };
-
-  // let result = async {
   let source = Source::new(source_path.as_ref()).await?;
   let (service, replaced) = (state.hive)
     .create_service(name, source.clone(), config)
     .await?;
 
-  let x = service.upgrade();
-  let name = x.name();
+  let guard = service.upgrade();
+  let name = guard.name();
 
   let service_path = state.config_path.join("services").join(&name);
   if service_path.exists() {
     fs::remove_dir_all(&service_path).await?;
   }
-  source.rename_base(service_path).await?;
-  // Ok::<_, crate::Error>(service)
-  // }
-  // .await;
+  fs::create_dir(&service_path).await?;
+  source.rename_base(service_path.join("src")).await?;
 
-  // let result = match result {
-  //   Ok(service) => Ok((service, replaced)),
-  //   Err(mut error) => {
-  //     error.add_detail(
-  //       "replaced_service".to_string(),
-  //       serde_json::to_value(replaced)?,
-  //     );
-  //     let _ = fs::remove_dir_all(source_path).await;
-  //     Err(error)
-  //   }
-  // };
-  // result
+  let metadata = Metadata {
+    uuid: guard.uuid(),
+    started: true,
+  };
+  fs::write(
+    service_path.join("metadata.json"),
+    serde_json::to_string(&metadata)?,
+  )
+  .await?;
+
   Ok((service, replaced))
 }
 

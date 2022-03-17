@@ -1,9 +1,11 @@
 mod error;
 mod handle;
+mod metadata;
 #[macro_use]
 mod util;
 
 use crate::handle::handle;
+use crate::metadata::Metadata;
 use error::Error;
 use hive_core::{Hive, HiveOptions, Source};
 use hyper::service::{make_service_fn, service_fn};
@@ -75,24 +77,35 @@ async fn run() -> anyhow::Result<()> {
     if service_folder.file_type().await?.is_dir() {
       let name = service_folder.file_name().to_string_lossy().into_owned();
       let result = async {
-        let source = Source::new(service_folder.path()).await?;
+        let metadata_bytes = fs::read(service_folder.path().join("metadata.json")).await?;
+        let metadata: Metadata = serde_json::from_slice(&metadata_bytes)?;
+
+        let source = Source::new(service_folder.path().join("src")).await?;
         let mut config = source.get("hive.json").await?;
         let mut bytes = Vec::with_capacity(config.metadata().await?.len() as _);
         config.read_to_end(&mut bytes).await?;
         let config = serde_json::from_slice(&bytes)?;
 
-        let service = (state.hive)
-          .create_service(name.clone(), source, config)
-          .await?;
-        Ok::<_, crate::Error>(service)
-      }
-      .await;
-      match result {
-        Ok((service, _)) => {
+        if metadata.started {
+          let (service, _) = (state.hive)
+            .create_service(name.clone(), source, config)
+            .await?;
           let service = service.upgrade();
           info!("Loaded service '{}' ({})", service.name(), service.uuid())
+        } else {
+          let service = (state.hive)
+            .load_service(name.clone(), metadata.uuid, source, config)
+            .await?;
+          info!("Loaded service '{}' ({})", service.name(), service.uuid())
         }
-        Err(error) => warn!("Error preloading service '{name}': {error}"),
+        Ok::<_, crate::Error>(())
+      }
+      .await;
+      if let Err(error) = result {
+        warn!(
+          "Error preloading service '{name}': {error}; maybe check {:?}?",
+          service_folder.path()
+        )
       }
     }
   }
@@ -127,8 +140,8 @@ fn main() -> anyhow::Result<()> {
 
 #[cfg(unix)]
 async fn shutdown_signal() {
-  use tokio::signal::unix::{signal, SignalKind};
   use tokio::select;
+  use tokio::signal::unix::{signal, SignalKind};
 
   let mut sigint = signal(SignalKind::interrupt()).unwrap();
   let mut sigterm = signal(SignalKind::terminate()).unwrap();
