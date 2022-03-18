@@ -6,22 +6,19 @@ use crate::task::Pool;
 use crate::util::MyStr;
 use crate::ErrorKind::*;
 use crate::{Config, HiveState, Result};
-use dashmap::setref::multiple::RefMulti;
-use dashmap::setref::one::Ref;
 use dashmap::DashSet;
 pub use impls::*;
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[derive(Default)]
 pub struct ServicePool {
   services: DashSet<ServiceState>,
 }
 
 impl ServicePool {
   pub fn new() -> Self {
-    Self {
-      services: DashSet::new(),
-    }
+    Default::default()
   }
 
   /// Creates a new service, or updates an existing service from source.
@@ -96,7 +93,7 @@ impl ServicePool {
     uuid: Uuid,
     source: Source,
     config: Config,
-  ) -> Result<Ref<'_, ServiceState>> {
+  ) -> Result<StoppedService<'_>> {
     if self.services.contains(MyStr::new(&name)) {
       return Err(ServiceExists { name: name.into() }.into());
     }
@@ -130,10 +127,18 @@ impl ServicePool {
 
     let service_state = ServiceState::Stopped(service_impl);
     assert!(self.services.insert(service_state));
-    Ok(self.services.get(MyStr::new(&name)).unwrap())
+    let service = self.services.get(MyStr::new(&name)).unwrap();
+    Ok(StoppedService::from_ref(service))
   }
 
-  pub async fn get_running(&self, name: &str) -> Option<RunningService> {
+  pub fn get(&self, name: &str) -> Option<Service<'_>> {
+    self.services.get(MyStr::new(name)).map(|x| match x.key() {
+      ServiceState::Running(x) => Service::Running(x.downgrade()),
+      ServiceState::Stopped(_) => Service::Stopped(StoppedService::from_ref(x)),
+    })
+  }
+
+  pub fn get_running(&self, name: &str) -> Option<RunningService> {
     let x = self.services.get::<MyStr>(name.into());
     if let Some(ServiceState::Running(x)) = x.as_deref() {
       Some(x.downgrade())
@@ -142,23 +147,14 @@ impl ServicePool {
     }
   }
 
-  pub async fn list(&self) -> (Vec<RunningService>, Vec<RefMulti<'_, ServiceState>>) {
-    let mut running = Vec::new();
-    let mut stopped = Vec::new();
-    for service in self.services.iter() {
-      match &*service {
-        ServiceState::Running(x) => running.push(x.downgrade()),
-        ServiceState::Stopped(_) => stopped.push(service),
-      }
-    }
-    (running, stopped)
+  pub fn list(&self) -> impl Iterator<Item = Service<'_>> {
+    self.services.iter().map(|x| match x.key() {
+      ServiceState::Running(x) => Service::Running(x.downgrade()),
+      ServiceState::Stopped(_) => Service::Stopped(StoppedService::from_ref_multi(x)),
+    })
   }
 
-  pub async fn stop(
-    &self,
-    sandbox_pool: &Pool<Sandbox>,
-    name: &str,
-  ) -> Result<Ref<'_, ServiceState>> {
+  pub async fn stop(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<StoppedService<'_>> {
     if let Some(service) = self.services.remove(MyStr::new(name)) {
       if let ServiceState::Running(service) = service {
         let service2 = service.clone();
@@ -170,7 +166,8 @@ impl ServicePool {
           .await?;
         let stopped = ServiceState::Running(service).into_impl();
         assert!(self.services.insert(ServiceState::Stopped(stopped)));
-        Ok(self.services.get(MyStr::new(name)).unwrap())
+        let service = self.services.get(MyStr::new(name)).unwrap();
+        Ok(StoppedService::from_ref(service))
       } else {
         assert!(self.services.insert(service));
         Err(ServiceStopped { name: name.into() }.into())

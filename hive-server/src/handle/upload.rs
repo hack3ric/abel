@@ -146,7 +146,7 @@ async fn get_name_config(
     (name, Default::default())
   };
 
-  if !name_provided && state.hive.get_running_service(&name).await.is_ok() {
+  if !name_provided && state.hive.get_running_service(&name).is_ok() {
     return Err(ServiceExists { name: name.into() }.into());
   }
 

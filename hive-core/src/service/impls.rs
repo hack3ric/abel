@@ -3,10 +3,13 @@ use crate::permission::PermissionSet;
 use crate::util::MyStr;
 use crate::ErrorKind::ServiceDropped;
 use crate::{Result, Source};
+use dashmap::setref::multiple::RefMulti;
+use dashmap::setref::one::Ref;
 use serde::Serialize;
 use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
+use std::ops::Deref;
 use std::sync::{Arc, Weak};
 use uuid::Uuid;
 
@@ -79,10 +82,24 @@ impl ServiceImpl {
       inner: Arc::downgrade(self),
     }
   }
+}
 
-  pub fn uuid(&self) -> &Uuid {
-    &self.uuid
-  }
+#[rustfmt::skip]
+impl ServiceImpl {
+  pub fn name(&self) -> &str { &self.name }
+  pub fn pkg_name(&self) -> Option<&str> { self.pkg_name.as_deref() }
+  pub fn description(&self) -> Option<&str> { self.description.as_deref() }
+  pub fn paths(&self) -> &[PathMatcher] { &self.paths }
+  pub fn source(&self) -> &Source { &self.source }
+  pub fn permissions(&self) -> &PermissionSet { &self.permissions }
+  pub fn uuid(&self) -> Uuid { self.uuid }
+
+  pub(crate) fn permissions_arc(&self) -> Arc<PermissionSet> { self.permissions.clone() }
+}
+
+pub enum Service<'a> {
+  Running(RunningService),
+  Stopped(StoppedService<'a>),
 }
 
 /// A reference to an inner service.
@@ -120,21 +137,58 @@ pub struct RunningServiceGuard<'a> {
   pub(crate) _p: PhantomData<&'a ()>,
 }
 
-#[rustfmt::skip]
-impl RunningServiceGuard<'_> {
-  pub fn name(&self) -> &str { &self.inner.name }
-  pub fn pkg_name(&self) -> Option<&str> { self.inner.pkg_name.as_deref() }
-  pub fn description(&self) -> Option<&str> { self.inner.description.as_deref() }
-  pub fn paths(&self) -> &[PathMatcher] { &self.inner.paths }
-  pub fn source(&self) -> &Source { &self.inner.source }
-  pub fn permissions(&self) -> &PermissionSet { &self.inner.permissions }
-  pub fn uuid(&self) -> Uuid { self.inner.uuid }
+impl Deref for RunningServiceGuard<'_> {
+  type Target = ServiceImpl;
 
-  pub(crate) fn permissions_arc(&self) -> Arc<PermissionSet> { self.inner.permissions.clone() }
+  fn deref(&self) -> &ServiceImpl {
+    &self.inner
+  }
 }
 
 impl Serialize for RunningServiceGuard<'_> {
   fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
     self.inner.as_ref().serialize(serializer)
+  }
+}
+
+pub struct StoppedService<'a>(StoppedServiceInner<'a>);
+
+enum StoppedServiceInner<'a> {
+  Ref(Ref<'a, ServiceState>),
+  RefMulti(RefMulti<'a, ServiceState>),
+}
+
+impl<'a> StoppedService<'a> {
+  pub(crate) fn from_ref(x: Ref<'a, ServiceState>) -> Self {
+    assert!(matches!(x.key(), ServiceState::Stopped(_)));
+    Self(StoppedServiceInner::Ref(x))
+  }
+
+  pub(crate) fn from_ref_multi(x: RefMulti<'a, ServiceState>) -> Self {
+    assert!(matches!(x.key(), ServiceState::Stopped(_)));
+    Self(StoppedServiceInner::RefMulti(x))
+  }
+}
+
+impl Deref for StoppedService<'_> {
+  type Target = ServiceImpl;
+
+  fn deref(&self) -> &ServiceImpl {
+    match &self.0 {
+      StoppedServiceInner::Ref(x) => {
+        if let ServiceState::Stopped(x) = x.key() {
+          x
+        } else {
+          unreachable!()
+        }
+      }
+      StoppedServiceInner::RefMulti(x) => {
+        if let ServiceState::Stopped(x) = x.key() {
+          x
+        } else {
+          unreachable!()
+        }
+      }
+    }
   }
 }

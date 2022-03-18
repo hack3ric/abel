@@ -4,13 +4,13 @@ use crate::error::method_not_allowed;
 use crate::metadata::modify_metadata;
 use crate::util::json_response;
 use crate::{MainState, Result};
-use hive_core::RunningService;
+use hive_core::service::Service;
+use hive_core::{RunningServiceGuard, ServiceImpl};
 use hyper::{Body, Method, Request, Response, StatusCode};
 use log::error;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::convert::Infallible;
-use std::ops::Deref;
 use std::sync::Arc;
 use upload::upload;
 
@@ -34,11 +34,11 @@ pub(crate) async fn handle(
   let result = match (method, &*segments) {
     (GET, []) => hello_world().await,
 
-    (GET, ["services"]) => list(&state).await,
+    (GET, ["services"]) => list(&state),
     (POST, ["services"]) => upload(&state, None, req).await,
     (_, ["services"]) => Err(method_not_allowed(&["GET", "POST"], method)),
 
-    (GET, ["services", name]) => get(&state, name).await,
+    (GET, ["services", name]) => get(&state, name),
     (PUT, ["services", name]) => upload(&state, Some((*name).into()), req).await,
     (PATCH, ["services", name]) => start_stop(&state, name, req.uri().query().unwrap_or("")).await,
     (DELETE, ["services", name]) => remove(&state, name).await,
@@ -73,22 +73,30 @@ async fn hello_world() -> Result<Response<Body>> {
   json_response(StatusCode::OK, json!({ "msg": "Hello, world!" }))
 }
 
-async fn list(state: &MainState) -> Result<Response<Body>> {
-  let (running, stopped) = state.hive.list_services().await;
-  let running = running
-    .iter()
-    .map(RunningService::upgrade)
+fn list(state: &MainState) -> Result<Response<Body>> {
+  #[derive(Serialize)]
+  #[serde(tag = "status")]
+  #[allow(non_camel_case_types)]
+  enum ServiceSerde<'a> {
+    running { service: RunningServiceGuard<'a> },
+    stopped { service: &'a ServiceImpl },
+  }
+
+  let services = state.hive.list_services().collect::<Vec<_>>();
+  let services = (services.iter())
+    .map(|x| match x {
+      Service::Running(x) => ServiceSerde::running {
+        service: x.upgrade(),
+      },
+      Service::Stopped(x) => ServiceSerde::stopped { service: x },
+    })
     .collect::<Vec<_>>();
-  let stopped = stopped.iter().map(Deref::deref).collect::<Vec<_>>();
-  json_response(
-    StatusCode::OK,
-    json!({ "running": running, "stopped": stopped }),
-  )
+  json_response(StatusCode::OK, services)
 }
 
-async fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
+fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
   // TODO: also get stopped service
-  let service = state.hive.get_running_service(name).await?;
+  let service = state.hive.get_running_service(name)?;
   json_response(StatusCode::OK, service.try_upgrade()?)
 }
 

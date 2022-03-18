@@ -1,10 +1,10 @@
 pub mod permission;
+pub mod service;
 
 mod config;
 mod error;
 mod lua;
 mod path;
-mod service;
 mod source;
 mod task;
 mod util;
@@ -16,11 +16,9 @@ pub use mlua::Error as LuaError;
 pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 pub use source::Source;
 
-use dashmap::setref::multiple::RefMulti;
-use dashmap::setref::one::Ref;
 use hyper::{Body, Request};
 use lua::Sandbox;
-use service::{ServicePool, ServiceState};
+use service::{Service, ServicePool, StoppedService};
 use std::path::PathBuf;
 use std::sync::Arc;
 use task::Pool;
@@ -29,7 +27,6 @@ use uuid::Uuid;
 pub struct Hive {
   sandbox_pool: Pool<Sandbox>,
   service_pool: ServicePool,
-  #[allow(unused)]
   state: Arc<HiveState>,
 }
 
@@ -77,16 +74,15 @@ impl Hive {
     uuid: Uuid,
     source: Source,
     config: Config,
-  ) -> Result<Ref<'_, ServiceState>> {
+  ) -> Result<StoppedService<'_>> {
     (self.service_pool)
       .load(&self.sandbox_pool, name, uuid, source, config)
       .await
   }
 
-  pub async fn get_running_service(&self, name: &str) -> Result<RunningService> {
+  pub fn get_running_service(&self, name: &str) -> Result<RunningService> {
     (self.service_pool)
       .get_running(name)
-      .await
       .ok_or_else(|| ErrorKind::ServiceNotFound { name: name.into() }.into())
   }
 
@@ -96,17 +92,17 @@ impl Hive {
     path: String,
     req: Request<Body>,
   ) -> Result<LuaResponse> {
-    let service = self.get_running_service(name).await?;
+    let service = self.get_running_service(name)?;
     (self.sandbox_pool)
       .scope(move |sandbox| async move { sandbox.run(service, &path, req).await })
       .await
   }
 
-  pub async fn list_services(&self) -> (Vec<RunningService>, Vec<RefMulti<'_, ServiceState>>) {
-    self.service_pool.list().await
+  pub fn list_services(&self) -> impl Iterator<Item = Service<'_>> {
+    self.service_pool.list()
   }
 
-  pub async fn stop_service(&self, name: &str) -> Result<Ref<'_, ServiceState>> {
+  pub async fn stop_service(&self, name: &str) -> Result<StoppedService<'_>> {
     self.service_pool.stop(&self.sandbox_pool, name).await
   }
 
