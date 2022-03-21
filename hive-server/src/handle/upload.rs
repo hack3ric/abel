@@ -24,7 +24,6 @@ pub(crate) async fn upload(
   let mut multipart = parse_multipart(&parts.headers, body)?;
 
   let source_field = multipart.next_field().await?.ok_or((
-    400,
     "no source uploaded",
     "specify either `single` or `multi` field in multipart",
   ))?;
@@ -35,7 +34,6 @@ pub(crate) async fn upload(
     Some("multi") => read_multi(tmp.path(), source_field).await?,
     _ => {
       return Err(From::from((
-        400,
         "unknown field name",
         "first field is neither named `single` nor `multi`",
       )))
@@ -82,7 +80,6 @@ async fn read_single<'a>(
     // FIXME: use `Option::contains` when it stablizes
     if config_field.name().map(|x| x != "config").unwrap_or(true) {
       return Err(From::from((
-        400,
         "unknown field name",
         "second field is not named `config`",
       )));
@@ -132,14 +129,12 @@ async fn get_name_config(
         })
       })
       .ok_or((
-        400,
         "no service name provided",
         "neither service name in path nor config's `pkg_name` field is specified",
       ))?;
     (name, config)
   } else {
     let name = name.ok_or((
-      400,
       "no service name provided",
       "missing config; service name not specified in path",
     ))?;

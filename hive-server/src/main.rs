@@ -19,6 +19,7 @@ use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::io::AsyncReadExt;
 use tokio::{fs, io};
+use uuid::Uuid;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -34,6 +35,7 @@ struct Opt {
 pub(crate) struct MainState {
   hive: Hive,
   config_path: PathBuf,
+  auth_token: Option<Uuid>,
 }
 
 static HALF_NUM_CPUS: Lazy<usize> = Lazy::new(|| 1.max(num_cpus::get() / 2));
@@ -70,6 +72,8 @@ async fn run() -> anyhow::Result<()> {
       local_storage_path,
     })?,
     config_path: config_path.clone(),
+    // auth_token: Some(Uuid::new_v4()),
+    auth_token: None,
   });
 
   let mut services = fs::read_dir(config_path.join("services")).await?;

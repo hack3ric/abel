@@ -1,8 +1,9 @@
 mod upload;
 
 use crate::error::method_not_allowed;
+use crate::error::ErrorKind::Unauthorized;
 use crate::metadata::modify_metadata;
-use crate::util::json_response;
+use crate::util::{authenticate, json_response};
 use crate::{MainState, Result};
 use hive_core::service::Service;
 use hive_core::{RunningServiceGuard, ServiceImpl};
@@ -31,23 +32,28 @@ pub(crate) async fn handle(
     .filter(|x| !x.is_empty())
     .collect::<Box<_>>();
 
+  let auth = authenticate(&state, &req);
+
   let result = match (method, &*segments) {
     (GET, []) => hello_world().await,
 
-    (GET, ["services"]) => list(&state),
-    (POST, ["services"]) => upload(&state, None, req).await,
-    (_, ["services"]) => Err(method_not_allowed(&["GET", "POST"], method)),
+    (_, ["services", ..]) => match (method, &segments[1..]) {
+      _ if !auth => Err(Unauthorized.into()),
+      (GET, []) => list(&state),
+      (POST, []) => upload(&state, None, req).await,
+      (_, []) => Err(method_not_allowed(&["GET", "POST"], method)),
 
-    (GET, ["services", name]) => get(&state, name),
-    (PUT, ["services", name]) => upload(&state, Some((*name).into()), req).await,
-    (PATCH, ["services", name]) => start_stop(&state, name, req.uri().query().unwrap_or("")).await,
-    (DELETE, ["services", name]) => remove(&state, name).await,
-    (_, ["services", _name]) => Err(method_not_allowed(
-      &["GET", "PUT", "PATCH", "DELETE"],
-      method,
-    )),
+      (GET, [name]) => get(&state, name),
+      (PUT, [name]) => upload(&state, Some((*name).into()), req).await,
+      (PATCH, [name]) => start_stop(&state, name, req.uri().query().unwrap_or("")).await,
+      (DELETE, [name]) => remove(&state, name).await,
+      (_, [_name]) => Err(method_not_allowed(
+        &["GET", "PUT", "PATCH", "DELETE"],
+        method,
+      )),
 
-    (_, ["services", ..]) => Err((404, "hive path not found", json!({ "path": path })).into()),
+      (_, [..]) => Err((404, "hive path not found", json!({ "path": path })).into()),
+    },
 
     // TODO: solve self-referencing issue
     (_, [service_name, ..]) => {

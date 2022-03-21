@@ -6,6 +6,7 @@ use std::borrow::Cow;
 use std::fmt::{self, Display, Formatter};
 use strum::EnumProperty;
 
+#[derive(Debug, thiserror::Error)]
 pub struct Error {
   kind: ErrorKind,
   detail: Option<serde_json::Map<String, serde_json::Value>>,
@@ -162,6 +163,10 @@ impl From<Error> for Response<Body> {
 #[serde(untagged)]
 #[non_exhaustive]
 pub enum ErrorKind {
+  #[error("unauthorized")]
+  #[strum(props(status = "401", msg = "unauthorized"))]
+  Unauthorized,
+
   // Errors when reading multipart body are *mostly* client-side, so they all
   // currently use 400 Bad Request for simplicity.
   //
@@ -227,3 +232,37 @@ pub fn method_not_allowed(expected: &[&'static str], got: &Method) -> Error {
     json!({ "expected": expected, "got": got.as_str() }),
   ))
 }
+
+// #[derive(Debug)]
+// pub struct ErrorAuthWrapper {
+//   error: Error,
+//   uuid: Option<Uuid>,
+// }
+
+// impl ErrorAuthWrapper {
+//   pub fn new(auth: bool, error: impl Into<Error>) -> Self {
+//     let uuid = if auth { Some(Uuid::new_v4()) } else { None };
+//     Self {
+//       error: error.into(),
+//       uuid,
+//     }
+//   }
+// }
+
+// impl Display for ErrorAuthWrapper {
+//   fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//     write!(f, "{}", self.error)?;
+//     if let Some(uuid) = &self.uuid {
+//       f.write_str(" (uuid: ")?;
+//       write!(f, "{uuid}")?;
+//       f.write_char(')')?;
+//     }
+//     Ok(())
+//   }
+// }
+
+// impl From<ErrorAuthWrapper> for Response<Body> {
+//   fn from(x: ErrorAuthWrapper) -> Self {
+
+//   }
+// }
