@@ -156,7 +156,7 @@ async fn create_service(
 ) -> Result<(RunningService, Option<ServiceImpl>)> {
   let source = Source::new(source_path.as_ref()).await?;
   let (service, replaced) = (state.hive)
-    .create_service(name, source.clone(), config)
+    .create_service(name, None, source.clone(), config)
     .await?;
 
   let guard = service.upgrade();

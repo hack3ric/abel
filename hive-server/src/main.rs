@@ -72,9 +72,15 @@ async fn run() -> anyhow::Result<()> {
       local_storage_path,
     })?,
     config_path: config_path.clone(),
-    // auth_token: Some(Uuid::new_v4()),
-    auth_token: None,
+    auth_token: Some(Uuid::new_v4()),
+    // auth_token: None,
   });
+
+  if let Some(auth_token) = &state.auth_token {
+    info!("Authentication token: {auth_token}");
+  } else {
+    warn!("No authentication token set. Don't do this in production environment!");
+  }
 
   let mut services = fs::read_dir(config_path.join("services")).await?;
   while let Some(service_folder) = services.next_entry().await? {
@@ -92,7 +98,7 @@ async fn run() -> anyhow::Result<()> {
 
         if metadata.started {
           let (service, _) = (state.hive)
-            .create_service(name.clone(), source, config)
+            .create_service(name.clone(), Some(metadata.uuid), source, config)
             .await?;
           let service = service.upgrade();
           info!("Loaded service '{}' ({})", service.name(), service.uuid())
@@ -124,6 +130,7 @@ async fn run() -> anyhow::Result<()> {
     .with_graceful_shutdown(shutdown_signal());
 
   info!("Hive is listening to {}", opt.addr);
+
   if let Err(error) = server.await {
     error!("fatal server error: {}", error);
   }

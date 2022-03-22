@@ -1,6 +1,4 @@
-use crate::error::ErrorKind::Unauthorized;
 use crate::{MainState, Result};
-use futures::Future;
 use hyper::{Body, Request, Response, StatusCode};
 use serde::Serialize;
 use tokio::io;
@@ -42,12 +40,4 @@ pub(crate) fn authenticate(state: &MainState, req: &Request<Body>) -> bool {
     true
   };
   result
-}
-
-pub(crate) fn authenticate_ok(result: bool) -> Result<()> {
-  if result {
-    Ok(())
-  } else {
-    Err(Unauthorized.into())
-  }
 }

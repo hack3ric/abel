@@ -1,7 +1,7 @@
 mod upload;
 
-use crate::error::method_not_allowed;
 use crate::error::ErrorKind::Unauthorized;
+use crate::error::{method_not_allowed, ErrorAuthWrapper};
 use crate::metadata::modify_metadata;
 use crate::util::{authenticate, json_response};
 use crate::{MainState, Result};
@@ -69,8 +69,8 @@ pub(crate) async fn handle(
   };
 
   Ok(result.unwrap_or_else(|error| {
+    let error = ErrorAuthWrapper::new(auth, error);
     error!("{}", error);
-    // TODO: Filter error response based on authentication
     error.into()
   }))
 }

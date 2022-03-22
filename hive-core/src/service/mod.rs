@@ -26,6 +26,7 @@ impl ServicePool {
     &self,
     sandbox_pool: &Pool<Sandbox>,
     name: String,
+    uuid: Option<Uuid>,
     source: Source,
     config: Config,
     hot_update: bool,
@@ -51,7 +52,7 @@ impl ServicePool {
           paths,
           source,
           permissions,
-          uuid: Uuid::new_v4(),
+          uuid: uuid.unwrap_or_else(Uuid::new_v4),
         });
         sandbox
           .finish_create_service(
@@ -99,6 +100,7 @@ impl ServicePool {
     }
 
     let name2 = name.clone();
+    dbg!(uuid);
     let service_impl = sandbox_pool
       .scope(move |sandbox| async move {
         let Config {

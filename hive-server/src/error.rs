@@ -1,10 +1,12 @@
+use crate::util::json_response_raw;
 use backtrace::Backtrace;
 use hyper::{Body, Method, Response, StatusCode};
 use serde::{Serialize, Serializer};
 use serde_json::json;
 use std::borrow::Cow;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display, Formatter, Write};
 use strum::EnumProperty;
+use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
 pub struct Error {
@@ -149,13 +151,8 @@ impl From<Error> for Response<Body> {
     if let Some(bt) = backtrace {
       body.insert("backtrace".to_string(), format!("{bt:?}").into());
     }
-    let body = serde_json::Value::Object(body);
 
-    Response::builder()
-      .status(status)
-      .header("content-type", "application/json")
-      .body(body.to_string().into())
-      .unwrap()
+    json_response_raw(status, body)
   }
 }
 
@@ -225,6 +222,16 @@ where
   json!({ "msg": error.to_string() }).serialize(ser)
 }
 
+impl ErrorKind {
+  pub fn status(&self) -> StatusCode {
+    match self {
+      ErrorKind::Hive(error) => error.kind().status(),
+      ErrorKind::Custom { status, .. } => *status,
+      _ => self.get_str("status").unwrap().parse().unwrap(),
+    }
+  }
+}
+
 pub fn method_not_allowed(expected: &[&'static str], got: &Method) -> Error {
   From::from((
     405,
@@ -233,36 +240,53 @@ pub fn method_not_allowed(expected: &[&'static str], got: &Method) -> Error {
   ))
 }
 
-// #[derive(Debug)]
-// pub struct ErrorAuthWrapper {
-//   error: Error,
-//   uuid: Option<Uuid>,
-// }
+#[derive(Debug, thiserror::Error)]
+pub struct ErrorAuthWrapper {
+  inner: Error,
+  uuid: Option<Uuid>,
+}
 
-// impl ErrorAuthWrapper {
-//   pub fn new(auth: bool, error: impl Into<Error>) -> Self {
-//     let uuid = if auth { Some(Uuid::new_v4()) } else { None };
-//     Self {
-//       error: error.into(),
-//       uuid,
-//     }
-//   }
-// }
+impl ErrorAuthWrapper {
+  pub fn new(auth: bool, error: impl Into<Error>) -> Self {
+    // let uuid = if auth { Some(Uuid::new_v4()) } else { None };
+    let inner = error.into();
+    let uuid = if !auth && inner.kind.status().is_server_error() {
+      Some(Uuid::new_v4())
+    } else {
+      None
+    };
+    Self { inner, uuid }
+  }
+}
 
-// impl Display for ErrorAuthWrapper {
-//   fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-//     write!(f, "{}", self.error)?;
-//     if let Some(uuid) = &self.uuid {
-//       f.write_str(" (uuid: ")?;
-//       write!(f, "{uuid}")?;
-//       f.write_char(')')?;
-//     }
-//     Ok(())
-//   }
-// }
+impl Display for ErrorAuthWrapper {
+  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    write!(f, "{}", self.inner)?;
+    if let Some(uuid) = &self.uuid {
+      f.write_str(" (uuid: ")?;
+      write!(f, "{uuid}")?;
+      f.write_char(')')?;
+    }
+    Ok(())
+  }
+}
 
-// impl From<ErrorAuthWrapper> for Response<Body> {
-//   fn from(x: ErrorAuthWrapper) -> Self {
-
-//   }
-// }
+impl From<ErrorAuthWrapper> for Response<Body> {
+  fn from(error: ErrorAuthWrapper) -> Self {
+    let status = error.inner.kind.status();
+    if let Some(uuid) = error.uuid {
+      json_response_raw(
+        status,
+        json!({
+          "error": "internal error",
+          "detail": {
+            "msg": "contact system administrator for help",
+            "uuid": uuid
+          }
+        }),
+      )
+    } else {
+      error.inner.into()
+    }
+  }
+}

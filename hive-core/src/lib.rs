@@ -60,11 +60,12 @@ impl Hive {
   pub async fn create_service(
     &self,
     name: String,
+    uuid: Option<Uuid>,
     source: Source,
     config: Config,
   ) -> Result<(RunningService, Option<ServiceImpl>)> {
     (self.service_pool)
-      .create(&self.sandbox_pool, name, source, config, true)
+      .create(&self.sandbox_pool, name, uuid, source, config, true)
       .await
   }
 
