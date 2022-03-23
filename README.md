@@ -23,23 +23,23 @@ end)
 ```
 
 Run Hive:
-```sh
+```console
 $ cargo run
 ```
 
 In another shell, upload the source code and run the service:
-```sh
+```console
 $ curl localhost:3000/services/hello -X PUT -F source=@hello.lua | jq
-# {
-#   "new_service": {
-#     "name": "hello"
-#     ...
-#   }
-# }
+{
+  "new_service": {
+    "name": "hello"
+    ...
+  }
+}
 $ curl localhost:3000/hello/world | jq
-# {
-#   "greeting": "Hello, world!"
-# }
+{
+  "greeting": "Hello, world!"
+}
 ```
 
 
