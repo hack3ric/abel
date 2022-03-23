@@ -34,18 +34,19 @@ impl Debug for Error {
 
 impl<E: Into<ErrorKind>> From<E> for Error {
   fn from(x: E) -> Self {
-    use ErrorKind::*;
+    // use ErrorKind::*;
     let kind = x.into();
-    let backtrace = match kind {
-      InvalidServiceName { .. }
-      | ServiceNotFound { .. }
-      | ServicePathNotFound { .. }
-      | ServiceExists { .. }
-      | ServiceRunning { .. }
-      | ServiceStopped { .. }
-      | LuaCustom { .. } => None,
-      _ => Some(Backtrace::new()),
-    };
+    // let backtrace = match kind {
+    //   InvalidServiceName { .. }
+    //   | ServiceNotFound { .. }
+    //   | ServicePathNotFound { .. }
+    //   | ServiceExists { .. }
+    //   | ServiceRunning { .. }
+    //   | ServiceStopped { .. }
+    //   | LuaCustom { .. } => None,
+    //   _ => Some(Backtrace::new()),
+    // };
+    let backtrace = None;
     Self { kind, backtrace }
   }
 }
