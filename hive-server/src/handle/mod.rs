@@ -8,7 +8,7 @@ use crate::{MainState, Result};
 use hive_core::service::Service;
 use hive_core::{RunningServiceGuard, ServiceImpl};
 use hyper::{Body, Method, Request, Response, StatusCode};
-use log::error;
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::convert::Infallible;
@@ -151,5 +151,6 @@ async fn start_stop(state: &MainState, name: &str, query: &str) -> Result<Respon
 async fn remove(state: &MainState, service_name: &str) -> Result<Response<Body>> {
   let removed = state.hive.remove_service(service_name).await?;
   tokio::fs::remove_dir_all(state.config_path.join("services").join(service_name)).await?;
+  info!("Removed service '{}' ({})", removed.name(), removed.uuid());
   json_response(StatusCode::OK, json!({ "removed_service": removed }))
 }

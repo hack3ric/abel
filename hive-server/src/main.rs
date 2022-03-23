@@ -122,8 +122,9 @@ async fn run() -> anyhow::Result<()> {
     }
   }
 
+  let state2 = state.clone();
   let make_svc = make_service_fn(move |_conn| {
-    let state = state.clone();
+    let state = state2.clone();
     async move { Ok::<_, Infallible>(service_fn(move |req| handle(state.clone(), req))) }
   });
 
@@ -137,7 +138,7 @@ async fn run() -> anyhow::Result<()> {
     error!("fatal server error: {}", error);
   }
 
-  // TODO: stop all services
+  state.hive.stop_all_services().await;
 
   Ok(())
 }

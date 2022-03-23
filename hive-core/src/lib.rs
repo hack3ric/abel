@@ -113,6 +113,10 @@ impl Hive {
     self.service_pool.stop(&self.sandbox_pool, name).await
   }
 
+  pub async fn stop_all_services(&self) {
+    self.service_pool.stop_all(&self.sandbox_pool).await
+  }
+
   pub async fn start_service(&self, name: &str) -> Result<RunningService> {
     self.service_pool.start(&self.sandbox_pool, name).await
   }

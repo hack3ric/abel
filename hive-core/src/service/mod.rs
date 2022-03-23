@@ -7,6 +7,7 @@ use crate::ErrorKind::*;
 use crate::{Config, HiveState, Result};
 use dashmap::DashMap;
 pub use impls::*;
+use log::warn;
 use replace_with::{replace_with_or_abort, replace_with_or_abort_and_return};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -180,6 +181,28 @@ impl ServicePool {
       }
     } else {
       Err(ServiceNotFound { name: name.into() }.into())
+    }
+  }
+
+  pub async fn stop_all(&self, sandbox_pool: &Pool<Sandbox>) {
+    for mut service in self.services.iter_mut() {
+      let state = service.value_mut();
+      if let ServiceState::Running(service2) = state {
+        let x = service2.downgrade();
+        let result = sandbox_pool
+          .scope(|sandbox| async move {
+            sandbox.run_stop(x).await?;
+            Ok::<_, crate::Error>(())
+          })
+          .await;
+        replace_with_or_abort(state, |x| ServiceState::Stopped(x.into_impl()));
+        if let Err(error) = result {
+          warn!(
+            "Lua error when stopping service '{}': {error}",
+            service.key()
+          )
+        }
+      }
     }
   }
 
