@@ -1,13 +1,10 @@
 use crate::path::PathMatcher;
 use crate::permission::PermissionSet;
-use crate::util::MyStr;
 use crate::ErrorKind::ServiceDropped;
 use crate::{Result, Source};
-use dashmap::setref::multiple::RefMulti;
-use dashmap::setref::one::Ref;
+use dashmap::mapref::multiple::RefMulti;
+use dashmap::mapref::one::Ref;
 use serde::Serialize;
-use std::borrow::Borrow;
-use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
@@ -40,26 +37,6 @@ impl ServiceState {
       Self::Running(x) => Arc::try_unwrap(x).unwrap_or_else(|arc| arc.as_ref().clone()),
       Self::Stopped(x) => x,
     }
-  }
-}
-
-impl Hash for ServiceState {
-  fn hash<H: Hasher>(&self, state: &mut H) {
-    self.name().hash(state);
-  }
-}
-
-impl PartialEq for ServiceState {
-  fn eq(&self, other: &Self) -> bool {
-    self.name() == other.name()
-  }
-}
-
-impl Eq for ServiceState {}
-
-impl Borrow<MyStr> for ServiceState {
-  fn borrow(&self) -> &MyStr {
-    self.name().into()
   }
 }
 
@@ -154,18 +131,18 @@ impl Serialize for RunningServiceGuard<'_> {
 pub struct StoppedService<'a>(StoppedServiceInner<'a>);
 
 enum StoppedServiceInner<'a> {
-  Ref(Ref<'a, ServiceState>),
-  RefMulti(RefMulti<'a, ServiceState>),
+  Ref(Ref<'a, Box<str>, ServiceState>),
+  RefMulti(RefMulti<'a, Box<str>, ServiceState>),
 }
 
 impl<'a> StoppedService<'a> {
-  pub(crate) fn from_ref(x: Ref<'a, ServiceState>) -> Self {
-    assert!(matches!(x.key(), ServiceState::Stopped(_)));
+  pub(crate) fn from_ref(x: Ref<'a, Box<str>, ServiceState>) -> Self {
+    assert!(matches!(x.value(), ServiceState::Stopped(_)));
     Self(StoppedServiceInner::Ref(x))
   }
 
-  pub(crate) fn from_ref_multi(x: RefMulti<'a, ServiceState>) -> Self {
-    assert!(matches!(x.key(), ServiceState::Stopped(_)));
+  pub(crate) fn from_ref_multi(x: RefMulti<'a, Box<str>, ServiceState>) -> Self {
+    assert!(matches!(x.value(), ServiceState::Stopped(_)));
     Self(StoppedServiceInner::RefMulti(x))
   }
 }
@@ -176,14 +153,14 @@ impl Deref for StoppedService<'_> {
   fn deref(&self) -> &ServiceImpl {
     match &self.0 {
       StoppedServiceInner::Ref(x) => {
-        if let ServiceState::Stopped(x) = x.key() {
+        if let ServiceState::Stopped(x) = x.value() {
           x
         } else {
           unreachable!()
         }
       }
       StoppedServiceInner::RefMulti(x) => {
-        if let ServiceState::Stopped(x) = x.key() {
+        if let ServiceState::Stopped(x) = x.value() {
           x
         } else {
           unreachable!()

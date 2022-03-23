@@ -75,35 +75,40 @@ pub(crate) async fn handle(
   }))
 }
 
+#[derive(Serialize)]
+#[serde(tag = "status")]
+#[allow(non_camel_case_types)]
+enum ServiceSerde<'a> {
+  running { service: RunningServiceGuard<'a> },
+  stopped { service: &'a ServiceImpl },
+}
+
+impl<'a> ServiceSerde<'a> {
+  fn from_service(service: &'a Service<'a>) -> Self {
+    match service {
+      Service::Running(x) => ServiceSerde::running {
+        service: x.upgrade(),
+      },
+      Service::Stopped(x) => ServiceSerde::stopped { service: x },
+    }
+  }
+}
+
 async fn hello_world() -> Result<Response<Body>> {
   json_response(StatusCode::OK, json!({ "msg": "Hello, world!" }))
 }
 
 fn list(state: &MainState) -> Result<Response<Body>> {
-  #[derive(Serialize)]
-  #[serde(tag = "status")]
-  #[allow(non_camel_case_types)]
-  enum ServiceSerde<'a> {
-    running { service: RunningServiceGuard<'a> },
-    stopped { service: &'a ServiceImpl },
-  }
-
   let services = state.hive.list_services().collect::<Vec<_>>();
   let services = (services.iter())
-    .map(|x| match x {
-      Service::Running(x) => ServiceSerde::running {
-        service: x.upgrade(),
-      },
-      Service::Stopped(x) => ServiceSerde::stopped { service: x },
-    })
+    .map(ServiceSerde::from_service)
     .collect::<Vec<_>>();
   json_response(StatusCode::OK, services)
 }
 
 fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
-  // TODO: also get stopped service
-  let service = state.hive.get_running_service(name)?;
-  json_response(StatusCode::OK, service.try_upgrade()?)
+  let service = state.hive.get_service(name)?;
+  json_response(StatusCode::OK, ServiceSerde::from_service(&service))
 }
 
 async fn start_stop(state: &MainState, name: &str, query: &str) -> Result<Response<Body>> {
@@ -134,9 +139,11 @@ async fn start_stop(state: &MainState, name: &str, query: &str) -> Result<Respon
       json_response(StatusCode::OK, json!({ "started": service.upgrade() }))
     }
     Operation::Stop => {
-      let service = state.hive.stop_service(name).await?;
+      let result = state.hive.stop_service(name).await;
       modify_metadata(&metadata_path, |m| m.started = false).await?;
-      json_response(StatusCode::OK, json!({ "stopped": &*service }))
+      result
+        .map_err(From::from)
+        .and_then(|x| json_response(StatusCode::OK, json!({ "stopped": &*x })))
     }
   }
 }

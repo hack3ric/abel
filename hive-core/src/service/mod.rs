@@ -3,17 +3,18 @@ mod impls;
 use crate::lua::{remove_service_local_storage, Sandbox};
 use crate::source::Source;
 use crate::task::Pool;
-use crate::util::MyStr;
 use crate::ErrorKind::*;
 use crate::{Config, HiveState, Result};
-use dashmap::DashSet;
+use dashmap::DashMap;
 pub use impls::*;
+use replace_with::{replace_with_or_abort, replace_with_or_abort_and_return};
 use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Default)]
 pub struct ServicePool {
-  services: DashSet<ServiceState>,
+  // services: DashSet<ServiceState>,
+  services: DashMap<Box<str>, ServiceState>,
 }
 
 impl ServicePool {
@@ -31,7 +32,7 @@ impl ServicePool {
     config: Config,
     hot_update: bool,
   ) -> Result<(RunningService, Option<ServiceImpl>)> {
-    let hot_update = self.services.contains(MyStr::new(&name)) && hot_update;
+    let hot_update = self.services.contains_key(&*name) && hot_update;
 
     let name2 = name.clone();
     let service_impl = sandbox_pool
@@ -70,7 +71,7 @@ impl ServicePool {
     if !hot_update
       && self
         .services
-        .get(MyStr::new(&name))
+        .get(&*name)
         .map(|x| matches!(&*x, ServiceState::Running(_)))
         .unwrap_or(false)
     {
@@ -81,9 +82,12 @@ impl ServicePool {
       }
     }
     let replaced = (self.services)
-      .remove(MyStr::new(&name))
-      .map(ServiceState::into_impl);
-    assert!(self.services.insert(ServiceState::Running(service_impl)));
+      .remove(&*name)
+      .map(|(_name, service)| service.into_impl());
+    assert!(self
+      .services
+      .insert(name.into(), ServiceState::Running(service_impl))
+      .is_none());
     Ok((service, replaced))
   }
 
@@ -95,12 +99,11 @@ impl ServicePool {
     source: Source,
     config: Config,
   ) -> Result<StoppedService<'_>> {
-    if self.services.contains(MyStr::new(&name)) {
+    if self.services.contains_key(&*name) {
       return Err(ServiceExists { name: name.into() }.into());
     }
 
     let name2 = name.clone();
-    dbg!(uuid);
     let service_impl = sandbox_pool
       .scope(move |sandbox| async move {
         let Config {
@@ -128,20 +131,23 @@ impl ServicePool {
       .await?;
 
     let service_state = ServiceState::Stopped(service_impl);
-    assert!(self.services.insert(service_state));
-    let service = self.services.get(MyStr::new(&name)).unwrap();
+    assert!(self
+      .services
+      .insert(name.clone().into(), service_state)
+      .is_none());
+    let service = self.services.get(&*name).unwrap();
     Ok(StoppedService::from_ref(service))
   }
 
   pub fn get(&self, name: &str) -> Option<Service<'_>> {
-    self.services.get(MyStr::new(name)).map(|x| match x.key() {
+    self.services.get(name).map(|x| match x.value() {
       ServiceState::Running(x) => Service::Running(x.downgrade()),
       ServiceState::Stopped(_) => Service::Stopped(StoppedService::from_ref(x)),
     })
   }
 
   pub fn get_running(&self, name: &str) -> Option<RunningService> {
-    let x = self.services.get::<MyStr>(name.into());
+    let x = self.services.get(name);
     if let Some(ServiceState::Running(x)) = x.as_deref() {
       Some(x.downgrade())
     } else {
@@ -150,28 +156,26 @@ impl ServicePool {
   }
 
   pub fn list(&self) -> impl Iterator<Item = Service<'_>> {
-    self.services.iter().map(|x| match x.key() {
+    self.services.iter().map(|x| match x.value() {
       ServiceState::Running(x) => Service::Running(x.downgrade()),
       ServiceState::Stopped(_) => Service::Stopped(StoppedService::from_ref_multi(x)),
     })
   }
 
   pub async fn stop(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<StoppedService<'_>> {
-    if let Some(service) = self.services.remove(MyStr::new(name)) {
-      if let ServiceState::Running(service) = service {
-        let service2 = service.clone();
-        sandbox_pool
+    if let Some(mut service) = self.services.get_mut(name) {
+      let state = service.value_mut();
+      if let ServiceState::Running(service2) = state {
+        let x = service2.downgrade();
+        let result = sandbox_pool
           .scope(|sandbox| async move {
-            sandbox.run_stop(service2.downgrade()).await?;
+            sandbox.run_stop(x).await?;
             Ok::<_, crate::Error>(())
           })
-          .await?;
-        let stopped = ServiceState::Running(service).into_impl();
-        assert!(self.services.insert(ServiceState::Stopped(stopped)));
-        let service = self.services.get(MyStr::new(name)).unwrap();
-        Ok(StoppedService::from_ref(service))
+          .await;
+        replace_with_or_abort(state, |x| ServiceState::Stopped(x.into_impl()));
+        result.map(|_| StoppedService::from_ref(service.downgrade()))
       } else {
-        assert!(self.services.insert(service));
         Err(ServiceStopped { name: name.into() }.into())
       }
     } else {
@@ -180,20 +184,31 @@ impl ServicePool {
   }
 
   pub async fn start(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<RunningService> {
-    if let Some(service) = self.services.remove(MyStr::new(name)) {
-      if let ServiceState::Stopped(service) = service {
-        let running = Arc::new(service);
-        let service = running.clone();
-        sandbox_pool
+    if let Some(mut service) = self.services.get_mut(name) {
+      if let state @ ServiceState::Stopped(_) = service.value_mut() {
+        let running = replace_with_or_abort_and_return(state, |x| {
+          if let ServiceState::Stopped(s) = x {
+            let s = Arc::new(s);
+            (s.downgrade(), ServiceState::Running(s))
+          } else {
+            unreachable!()
+          }
+        });
+        let running2 = running.clone();
+        let result = sandbox_pool
           .scope(move |sandbox| async move {
-            sandbox.run_start(service.downgrade()).await?;
+            sandbox.run_start(running2).await?;
             Ok::<_, crate::Error>(())
           })
-          .await?;
-        assert!(self.services.insert(ServiceState::Running(running.clone())));
-        Ok(running.downgrade())
+          .await;
+        match result {
+          Ok(_) => Ok(running),
+          Err(error) => {
+            replace_with_or_abort(state, |x| ServiceState::Stopped(x.into_impl()));
+            Err(error)
+          }
+        }
       } else {
-        assert!(self.services.insert(service));
         Err(ServiceRunning { name: name.into() }.into())
       }
     } else {
@@ -202,12 +217,12 @@ impl ServicePool {
   }
 
   pub async fn remove(&self, state: &HiveState, name: &str) -> Result<ServiceImpl> {
-    if let Some(old_service) = self.services.remove(MyStr::new(name)) {
+    if let Some((name2, old_service)) = self.services.remove(name) {
       if let ServiceState::Stopped(x) = old_service {
         remove_service_local_storage(state, name).await?;
         Ok(x)
       } else {
-        assert!(self.services.insert(old_service));
+        assert!(self.services.insert(name2, old_service).is_none());
         Err(ServiceRunning { name: name.into() }.into())
       }
     } else {

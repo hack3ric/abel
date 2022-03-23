@@ -81,6 +81,12 @@ impl Hive {
       .await
   }
 
+  pub fn get_service(&self, name: &str) -> Result<Service<'_>> {
+    (self.service_pool)
+      .get(name)
+      .ok_or_else(|| ErrorKind::ServiceNotFound { name: name.into() }.into())
+  }
+
   pub fn get_running_service(&self, name: &str) -> Result<RunningService> {
     (self.service_pool)
       .get_running(name)

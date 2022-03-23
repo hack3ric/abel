@@ -72,8 +72,8 @@ async fn run() -> anyhow::Result<()> {
       local_storage_path,
     })?,
     config_path: config_path.clone(),
-    auth_token: Some(Uuid::new_v4()),
-    // auth_token: None,
+    // auth_token: Some(Uuid::new_v4()),
+    auth_token: None,
   });
 
   if let Some(auth_token) = &state.auth_token {
@@ -97,6 +97,8 @@ async fn run() -> anyhow::Result<()> {
         let config = serde_json::from_slice(&bytes)?;
 
         if metadata.started {
+          // TODO: if failed to create service, load it instead
+          // Don't forget to change `metadata.json` too
           let (service, _) = (state.hive)
             .create_service(name.clone(), Some(metadata.uuid), source, config)
             .await?;
