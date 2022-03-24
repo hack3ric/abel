@@ -1,16 +1,18 @@
 use super::BadArgument;
 use dashmap::DashMap;
-use mlua::{AnyUserData, ExternalError, ExternalResult, FromLua, Function, Lua, ToLua, UserData};
+use mlua::{
+  AnyUserData, ExternalError, ExternalResult, FromLua, Function, Lua, MultiValue, ToLua, UserData,
+};
 use once_cell::sync::Lazy;
 use parking_lot::lock_api::ArcRwLockWriteGuard;
 use parking_lot::{MappedRwLockReadGuard, RawRwLock, RwLock, RwLockReadGuard};
 use serde::ser::SerializeSeq;
 use serde::{Serialize, Serializer};
+use smallvec::SmallVec;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use smallvec::SmallVec;
 
 type ContextStore = Arc<DashMap<Box<str>, Table>>;
 
@@ -58,6 +60,7 @@ impl Table {
     self.0.write().set(key, value)
   }
 
+  #[allow(unused)]
   fn shallow_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<mlua::Table<'lua>> {
     self.0.read().shallow_dump(lua)
   }
@@ -95,9 +98,28 @@ impl UserData for Table {
     methods.add_meta_method("__len", |_lua, this, ()| Ok(len(&this.0.read())));
 
     methods.add_meta_method("__pairs", |lua, this, ()| {
-      let next: mlua::Value = lua.globals().raw_get("next")?;
-      let table = this.shallow_dump(lua)?;
-      Ok((next, table, mlua::Value::Nil))
+      let rl = this.0.read();
+      let keys = rl
+        .0
+        .keys()
+        .map(|i| Key(Value::Integer(*i)))
+        .chain(rl.1.keys().cloned())
+        .map(|x| (x, true));
+      let keys = lua.create_table_from(keys)?;
+      let iter = lua.create_function(
+        |lua, (table, keys, prev_key): (Table, mlua::Table, mlua::Value)| {
+          let next: Function = lua.globals().raw_get("next")?;
+          let key: Option<Key> = next.call((keys, prev_key))?;
+          if let Some(key) = key {
+            lua.pack_multi((key.clone(), lua.pack(&*table.get(key))?))
+          } else {
+            Ok(MultiValue::new())
+          }
+        },
+      )?;
+      drop(rl);
+      let iter = iter.bind(this.clone())?;
+      Ok((iter, keys))
     });
   }
 }
@@ -155,6 +177,7 @@ impl UserData for TableScope {
 
     methods.add_meta_method("__len", |_lua, this, ()| Ok(len(&this.0)));
 
+    // TODO: replace shallow dump with new implementation used in `Table`?
     methods.add_meta_method("__pairs", |lua, this, ()| {
       let next: mlua::Value = lua.globals().raw_get("next")?;
       let table = this.shallow_dump(lua)?;
@@ -339,7 +362,7 @@ pub fn create_fn_table_insert_shared_3(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn len(x: &TableRepr) -> i64 {
-  x.0.iter().last().map(|x| (*x.0).max(0)).unwrap_or(0)
+  x.0.iter().last().map(|x| 0.max(*x.0)).unwrap_or(0)
 }
 
 #[derive(Clone, Serialize)]
