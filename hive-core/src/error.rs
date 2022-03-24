@@ -1,8 +1,10 @@
 use crate::permission::Permission;
+use crate::service::ServiceName;
 use backtrace::Backtrace;
 use hyper::StatusCode;
 use serde::{Serialize, Serializer};
 use serde_json::json;
+use smallstr::SmallString;
 use std::fmt::{self, Debug, Formatter};
 use strum::EnumProperty;
 use thiserror::Error;
@@ -68,27 +70,30 @@ pub enum ErrorKind {
   // -- Service --
   #[error("invalid service name: {name}")]
   #[strum(props(status = "400", msg = "invalid service name"))]
-  InvalidServiceName { name: Box<str> },
+  InvalidServiceName { name: ServiceName },
 
   #[error("service '{name}' not found")]
   #[strum(props(status = "404", msg = "service not found"))]
-  ServiceNotFound { name: Box<str> },
+  ServiceNotFound { name: ServiceName },
 
   #[error("path not found in service '{service}': {path}")]
   #[strum(props(status = "404", msg = "path not found"))]
-  ServicePathNotFound { service: Box<str>, path: Box<str> },
+  ServicePathNotFound {
+    service: ServiceName,
+    path: Box<str>,
+  },
 
   #[error("service '{name}' already exists")]
   #[strum(props(status = "409", msg = "service already exists"))]
-  ServiceExists { name: Box<str> },
+  ServiceExists { name: ServiceName },
 
   #[error("service '{name}' is still running")]
   #[strum(props(status = "409", msg = "service is running"))]
-  ServiceRunning { name: Box<str> },
+  ServiceRunning { name: ServiceName },
 
   #[error("service '{name}' is stopped")]
   #[strum(props(status = "409", msg = "service is stopped"))]
-  ServiceStopped { name: Box<str> },
+  ServiceStopped { name: ServiceName },
 
   #[error("service is dropped")]
   #[strum(props(status = "500", msg = "service is dropped"))]
@@ -101,7 +106,10 @@ pub enum ErrorKind {
 
   #[error("invalid permission '{string}': {reason}")]
   #[strum(props(status = "500", msg = "invalid permission"))]
-  InvalidPermission { string: Box<str>, reason: Box<str> },
+  InvalidPermission {
+    string: SmallString<[u8; 8]>,
+    reason: SmallString<[u8; 32]>,
+  },
 
   // -- Vendor --
   #[error(transparent)]
@@ -141,7 +149,7 @@ pub enum ErrorKind {
   #[serde(skip)]
   LuaCustom {
     status: StatusCode,
-    msg: String,
+    msg: SmallString<[u8; 32]>,
     detail: serde_json::Value,
   },
 }

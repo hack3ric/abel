@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
+use smallvec::SmallVec;
 
 type ContextStore = Arc<DashMap<Box<str>, Table>>;
 
@@ -348,7 +349,7 @@ pub enum Value {
   Boolean(bool),
   Integer(i64),
   Number(f64),
-  String(#[serde(serialize_with = "serialize_slice_as_str")] Vec<u8>),
+  String(#[serde(serialize_with = "serialize_slice_as_str")] SmallVec<[u8; 32]>),
   Table(Table),
 }
 

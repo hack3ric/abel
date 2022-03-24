@@ -1,3 +1,4 @@
+use super::ServiceName;
 use crate::path::PathMatcher;
 use crate::permission::PermissionSet;
 use crate::ErrorKind::ServiceDropped;
@@ -42,7 +43,7 @@ impl ServiceState {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ServiceImpl {
-  pub(crate) name: Box<str>,
+  pub(crate) name: ServiceName,
   pub(crate) pkg_name: Option<String>,
   pub(crate) description: Option<String>,
   pub(crate) paths: Vec<PathMatcher>,
@@ -131,17 +132,17 @@ impl Serialize for RunningServiceGuard<'_> {
 pub struct StoppedService<'a>(StoppedServiceInner<'a>);
 
 enum StoppedServiceInner<'a> {
-  Ref(Ref<'a, Box<str>, ServiceState>),
-  RefMulti(RefMulti<'a, Box<str>, ServiceState>),
+  Ref(Ref<'a, ServiceName, ServiceState>),
+  RefMulti(RefMulti<'a, ServiceName, ServiceState>),
 }
 
 impl<'a> StoppedService<'a> {
-  pub(crate) fn from_ref(x: Ref<'a, Box<str>, ServiceState>) -> Self {
+  pub(crate) fn from_ref(x: Ref<'a, ServiceName, ServiceState>) -> Self {
     assert!(matches!(x.value(), ServiceState::Stopped(_)));
     Self(StoppedServiceInner::Ref(x))
   }
 
-  pub(crate) fn from_ref_multi(x: RefMulti<'a, Box<str>, ServiceState>) -> Self {
+  pub(crate) fn from_ref_multi(x: RefMulti<'a, ServiceName, ServiceState>) -> Self {
     assert!(matches!(x.value(), ServiceState::Stopped(_)));
     Self(StoppedServiceInner::RefMulti(x))
   }

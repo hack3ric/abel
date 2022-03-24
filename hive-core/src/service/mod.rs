@@ -9,13 +9,15 @@ use dashmap::DashMap;
 pub use impls::*;
 use log::warn;
 use replace_with::{replace_with_or_abort, replace_with_or_abort_and_return};
+use smallstr::SmallString;
 use std::sync::Arc;
 use uuid::Uuid;
 
+pub type ServiceName = SmallString<[u8; 16]>;
+
 #[derive(Default)]
 pub struct ServicePool {
-  // services: DashSet<ServiceState>,
-  services: DashMap<Box<str>, ServiceState>,
+  services: DashMap<ServiceName, ServiceState>,
 }
 
 impl ServicePool {
@@ -27,7 +29,7 @@ impl ServicePool {
   pub async fn create(
     &self,
     sandbox_pool: &Pool<Sandbox>,
-    name: String,
+    name: ServiceName,
     uuid: Option<Uuid>,
     source: Source,
     config: Config,
@@ -48,7 +50,7 @@ impl ServicePool {
           .pre_create_service(&name2, source.clone(), permissions.clone())
           .await?;
         let service_impl = Arc::new(ServiceImpl {
-          name: name2.into_boxed_str(),
+          name: name2,
           pkg_name,
           description,
           paths,
@@ -87,7 +89,7 @@ impl ServicePool {
       .map(|(_name, service)| service.into_impl());
     assert!(self
       .services
-      .insert(name.into(), ServiceState::Running(service_impl))
+      .insert(name, ServiceState::Running(service_impl))
       .is_none());
     Ok((service, replaced))
   }
@@ -95,13 +97,18 @@ impl ServicePool {
   pub async fn load(
     &self,
     sandbox_pool: &Pool<Sandbox>,
-    name: String,
+    name: ServiceName,
     uuid: Uuid,
     source: Source,
     config: Config,
   ) -> Result<StoppedService<'_>> {
     if self.services.contains_key(&*name) {
-      return Err(ServiceExists { name: name.into() }.into());
+      return Err(
+        ServiceExists {
+          name: name.into_string().into(),
+        }
+        .into(),
+      );
     }
 
     let name2 = name.clone();
@@ -119,7 +126,7 @@ impl ServicePool {
         sandbox.remove_registry(local_env)?;
         sandbox.remove_registry(internal)?;
         let service_impl = ServiceImpl {
-          name: name2.into_boxed_str(),
+          name: name2,
           pkg_name,
           description,
           paths,
@@ -132,10 +139,7 @@ impl ServicePool {
       .await?;
 
     let service_state = ServiceState::Stopped(service_impl);
-    assert!(self
-      .services
-      .insert(name.clone().into(), service_state)
-      .is_none());
+    assert!(self.services.insert(name.clone(), service_state).is_none());
     let service = self.services.get(&*name).unwrap();
     Ok(StoppedService::from_ref(service))
   }

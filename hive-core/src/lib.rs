@@ -18,7 +18,7 @@ pub use source::Source;
 
 use hyper::{Body, Request};
 use lua::Sandbox;
-use service::{Service, ServicePool, StoppedService};
+use service::{Service, ServiceName, ServicePool, StoppedService};
 use std::path::PathBuf;
 use std::sync::Arc;
 use task::Pool;
@@ -59,25 +59,25 @@ impl Hive {
 
   pub async fn create_service(
     &self,
-    name: String,
+    name: impl Into<ServiceName>,
     uuid: Option<Uuid>,
     source: Source,
     config: Config,
   ) -> Result<(RunningService, Option<ServiceImpl>)> {
     (self.service_pool)
-      .create(&self.sandbox_pool, name, uuid, source, config, true)
+      .create(&self.sandbox_pool, name.into(), uuid, source, config, true)
       .await
   }
 
   pub async fn load_service(
     &self,
-    name: String,
+    name: impl Into<ServiceName>,
     uuid: Uuid,
     source: Source,
     config: Config,
   ) -> Result<StoppedService<'_>> {
     (self.service_pool)
-      .load(&self.sandbox_pool, name, uuid, source, config)
+      .load(&self.sandbox_pool, name.into(), uuid, source, config)
       .await
   }
 

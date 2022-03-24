@@ -66,7 +66,7 @@ impl<'a> Permission<'a> {
   pub fn parse(s: &'a str) -> Result<Self> {
     let result = Self::_parse(s).map_err(|error| ErrorKind::InvalidPermission {
       string: s.into(),
-      reason: error.into_owned().into_boxed_str(),
+      reason: error.as_ref().into(),
     })?;
     Ok(result)
   }
@@ -83,7 +83,7 @@ impl<'a> Permission<'a> {
           .rsplit_once(':')
           .map(|(x, p)| Ok::<_, ParseIntError>((x, p.parse::<NonZeroU16>()?)))
           .transpose()
-          .map_err(|e| format!("failed parsing port: {e}"))?
+          .map_err(|e| format!("failed to parse port: {e}"))?
           .unwrap_or((content, nonzero!(443u16)));
         Net(host.into(), port)
       }
