@@ -87,7 +87,7 @@ impl UserData for Table {
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_meta_method("__index", |lua, this, key: Key| {
       let result = this.get(key);
-      (&*result).to_lua(lua)
+      lua.pack(&*result)
     });
 
     methods.add_meta_method("__newindex", |_lua, this, (key, value): (Key, Value)| {
@@ -99,9 +99,7 @@ impl UserData for Table {
 
     methods.add_meta_method("__pairs", |lua, this, ()| {
       let rl = this.0.read();
-      let keys = rl
-        .0
-        .keys()
+      let keys = (rl.0.keys())
         .map(|i| Key(Value::Integer(*i)))
         .chain(rl.1.keys().cloned())
         .map(|x| (x, true));
