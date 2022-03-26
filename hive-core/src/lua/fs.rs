@@ -189,12 +189,6 @@ impl UserData for LuaFile {
       },
     );
 
-    methods.add_async_function("flush", |_lua, this: AnyUserData| async move {
-      let mut this = this.borrow_mut::<Self>()?;
-      this.0.flush().await?;
-      Ok(())
-    });
-
     methods.add_async_function(
       "seek",
       |_lua, (this, whence, offset): (AnyUserData, Option<LuaString>, Option<i64>)| async move {
@@ -215,6 +209,23 @@ impl UserData for LuaFile {
         Ok(this.0.seek(seekfrom).await?)
       },
     );
+
+    methods.add_function("lines", |lua, this: AnyUserData| {
+      let iter = lua.create_async_function(|lua, this: AnyUserData| async move {
+        let mut this = this.borrow_mut::<Self>()?;
+        let mut buf = Vec::new();
+        this.0.read_until(b'\n', &mut buf).await?;
+        lua.create_string(&buf)
+      })?;
+
+      iter.bind(this)
+    });
+
+    methods.add_async_function("flush", |_lua, this: AnyUserData| async move {
+      let mut this = this.borrow_mut::<Self>()?;
+      this.0.flush().await?;
+      Ok(())
+    });
 
     methods.add_async_function("into_stream", |_lua, this: AnyUserData| async move {
       let this = this.take::<Self>()?;
