@@ -3,6 +3,10 @@ name = "hive-core"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["vendored"]
+vendored = ["mlua/vendored"]
+
 [dependencies]
 backtrace = "0.3.63"
 dashmap = "5.0.0"

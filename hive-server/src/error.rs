@@ -80,7 +80,7 @@ where
     Self {
       kind: ErrorKind::Custom {
         status,
-        msg: error.into(),
+        error: error.into(),
         detail,
       },
       detail: None,
@@ -108,25 +108,25 @@ impl From<&'static str> for Error {
 impl From<Error> for Response<Body> {
   fn from(x: Error) -> Self {
     use ErrorKind::*;
-    let (status, msg, detail, backtrace) = match x.kind {
+    let (status, error, detail, backtrace) = match x.kind {
       // Hive(x) => return x.into(),
       Hive(x) => {
         let (kind, backtrace) = x.into_parts();
         (
           kind.status(),
-          kind.msg().to_string().into(),
+          kind.error().to_string().into(),
           kind.detail(),
           backtrace,
         )
       }
       Custom {
         status,
-        msg,
+        error: msg,
         detail,
       } => (status, msg, detail, x.backtrace),
       _ => (
         x.kind.get_str("status").unwrap().parse().unwrap(),
-        x.kind.get_str("msg").unwrap().into(),
+        x.kind.get_str("error").unwrap().into(),
         serde_json::to_value(&x.kind).unwrap(),
         x.backtrace,
       ),
@@ -144,7 +144,7 @@ impl From<Error> for Response<Body> {
     };
 
     let mut body = serde_json::Map::<String, serde_json::Value>::new();
-    body.insert("error".to_string(), msg.into_owned().into());
+    body.insert("error".to_string(), error.into_owned().into());
     if let Some(detail) = detail {
       body.insert("detail".to_string(), detail.into());
     }
@@ -161,7 +161,7 @@ impl From<Error> for Response<Body> {
 #[non_exhaustive]
 pub enum ErrorKind {
   #[error("unauthorized")]
-  #[strum(props(status = "401", msg = "unauthorized"))]
+  #[strum(props(status = "401", error = "unauthorized"))]
   Unauthorized,
 
   // Errors when reading multipart body are *mostly* client-side, so they all
@@ -170,7 +170,7 @@ pub enum ErrorKind {
   // This may change in the future if `multer::Error` proved not suitable to
   // be exposed to untrusted client.
   #[error(transparent)]
-  #[strum(props(status = "400", msg = "failed to read multipart body"))]
+  #[strum(props(status = "400", error = "failed to read multipart body"))]
   Multipart(
     #[from]
     #[serde(serialize_with = "serialize_error")]
@@ -178,7 +178,7 @@ pub enum ErrorKind {
   ),
 
   #[error(transparent)]
-  #[strum(props(status = "400", msg = "failed to (de)serialize object"))]
+  #[strum(props(status = "400", error = "failed to (de)serialize object"))]
   SerdeJson(
     #[from]
     #[serde(serialize_with = "serialize_error")]
@@ -186,7 +186,7 @@ pub enum ErrorKind {
   ),
 
   #[error(transparent)]
-  #[strum(props(status = "400", msg = "failed to parse query string"))]
+  #[strum(props(status = "400", error = "failed to parse query string"))]
   SerdeQs(
     #[from]
     #[serde(serialize_with = "serialize_error")]
@@ -194,7 +194,7 @@ pub enum ErrorKind {
   ),
 
   #[error(transparent)]
-  #[strum(props(status = "500", msg = "I/O error"))]
+  #[strum(props(status = "500", error = "I/O error"))]
   Io(
     #[from]
     #[serde(serialize_with = "serialize_error")]
@@ -205,11 +205,11 @@ pub enum ErrorKind {
   #[serde(skip)]
   Hive(#[from] hive_core::Error),
 
-  #[error("{msg}: {detail:?}")]
+  #[error("{error}: {detail:?}")]
   #[serde(skip)]
   Custom {
     status: StatusCode,
-    msg: Cow<'static, str>,
+    error: Cow<'static, str>,
     detail: serde_json::Value,
   },
 }

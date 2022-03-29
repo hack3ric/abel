@@ -69,7 +69,7 @@ impl Sandbox {
               .raw_get::<_, u16>("status")?
               .try_into()
               .to_lua_err()?,
-            msg: std::str::from_utf8(custom_error.raw_get::<_, LuaString>("msg")?.as_bytes())
+            error: std::str::from_utf8(custom_error.raw_get::<_, LuaString>("error")?.as_bytes())
               .to_lua_err()?
               .into(),
             detail: (self.lua).from_value(custom_error.raw_get::<_, mlua::Value>("detail")?)?,

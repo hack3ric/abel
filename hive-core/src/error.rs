@@ -69,43 +69,43 @@ impl From<Error> for mlua::Error {
 pub enum ErrorKind {
   // -- Service --
   #[error("invalid service name: {name}")]
-  #[strum(props(status = "400", msg = "invalid service name"))]
+  #[strum(props(status = "400", error = "invalid service name"))]
   InvalidServiceName { name: ServiceName },
 
   #[error("service '{name}' not found")]
-  #[strum(props(status = "404", msg = "service not found"))]
+  #[strum(props(status = "404", error = "service not found"))]
   ServiceNotFound { name: ServiceName },
 
   #[error("path not found in service '{service}': {path}")]
-  #[strum(props(status = "404", msg = "path not found"))]
+  #[strum(props(status = "404", error = "path not found"))]
   ServicePathNotFound {
     service: ServiceName,
     path: Box<str>,
   },
 
   #[error("service '{name}' already exists")]
-  #[strum(props(status = "409", msg = "service already exists"))]
+  #[strum(props(status = "409", error = "service already exists"))]
   ServiceExists { name: ServiceName },
 
   #[error("service '{name}' is still running")]
-  #[strum(props(status = "409", msg = "service is running"))]
+  #[strum(props(status = "409", error = "service is running"))]
   ServiceRunning { name: ServiceName },
 
   #[error("service '{name}' is stopped")]
-  #[strum(props(status = "409", msg = "service is stopped"))]
+  #[strum(props(status = "409", error = "service is stopped"))]
   ServiceStopped { name: ServiceName },
 
   #[error("service is dropped")]
-  #[strum(props(status = "500", msg = "service is dropped"))]
+  #[strum(props(status = "500", error = "service is dropped"))]
   ServiceDropped,
 
   // -- Permission --
   #[error("permission '{permission}' not granted")]
-  #[strum(props(status = "500", msg = "permission not granted"))]
+  #[strum(props(status = "500", error = "permission not granted"))]
   PermissionNotGranted { permission: Permission<'static> },
 
   #[error("invalid permission '{string}': {reason}")]
-  #[strum(props(status = "500", msg = "invalid permission"))]
+  #[strum(props(status = "500", error = "invalid permission"))]
   InvalidPermission {
     string: SmallString<[u8; 8]>,
     reason: SmallString<[u8; 32]>,
@@ -113,7 +113,7 @@ pub enum ErrorKind {
 
   // -- Vendor --
   #[error(transparent)]
-  #[strum(props(status = "500", msg = "Lua error"))]
+  #[strum(props(status = "500", error = "Lua error"))]
   Lua(
     #[from]
     #[serde(serialize_with = "serialize_error")]
@@ -121,7 +121,7 @@ pub enum ErrorKind {
   ),
 
   #[error(transparent)]
-  #[strum(props(status = "500", msg = "I/O error"))]
+  #[strum(props(status = "500", error = "I/O error"))]
   Io(
     #[from]
     #[serde(serialize_with = "serialize_error")]
@@ -129,7 +129,7 @@ pub enum ErrorKind {
   ),
 
   #[error(transparent)]
-  #[strum(props(status = "500", msg = "regex error"))]
+  #[strum(props(status = "500", error = "regex error"))]
   Regex(
     #[from]
     #[serde(serialize_with = "serialize_error")]
@@ -137,7 +137,7 @@ pub enum ErrorKind {
   ),
 
   #[error(transparent)]
-  #[strum(props(status = "500", msg = "hyper error"))]
+  #[strum(props(status = "500", error = "hyper error"))]
   Hyper(
     #[from]
     #[serde(serialize_with = "serialize_error")]
@@ -145,11 +145,11 @@ pub enum ErrorKind {
   ),
 
   // -- Custom --
-  #[error("{msg} ({detail:?})")]
+  #[error("{error} ({detail:?})")]
   #[serde(skip)]
   LuaCustom {
     status: StatusCode,
-    msg: SmallString<[u8; 32]>,
+    error: SmallString<[u8; 32]>,
     detail: serde_json::Value,
   },
 }
@@ -170,10 +170,10 @@ impl ErrorKind {
     }
   }
 
-  pub fn msg(&self) -> &str {
+  pub fn error(&self) -> &str {
     match self {
-      Self::LuaCustom { msg, .. } => msg,
-      _ => self.get_str("msg").unwrap(),
+      Self::LuaCustom { error, .. } => error,
+      _ => self.get_str("error").unwrap(),
     }
   }
 

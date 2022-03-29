@@ -56,6 +56,7 @@ local local_env = {
     context = nil,
     permission = nil,
     current_worker = current_worker,
+    Error = Error,
   },
   require = require,
 }
