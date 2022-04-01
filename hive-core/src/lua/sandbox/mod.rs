@@ -15,8 +15,8 @@ use global_env::modify_global_env;
 use hyper::{Body, Request};
 use local_env::create_local_env;
 use mlua::{
-  ExternalResult, FromLuaMulti, Function, Lua, LuaSerdeExt, MultiValue, RegistryKey,
-  String as LuaString, Table, ToLuaMulti,
+  ExternalResult, FromLuaMulti, Function, Lua, LuaSerdeExt, MultiValue, RegistryKey, Table,
+  ToLuaMulti,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -69,9 +69,11 @@ impl Sandbox {
               .raw_get::<_, u16>("status")?
               .try_into()
               .to_lua_err()?,
-            error: std::str::from_utf8(custom_error.raw_get::<_, LuaString>("error")?.as_bytes())
-              .to_lua_err()?
-              .into(),
+            error: std::str::from_utf8(
+              custom_error.raw_get::<_, mlua::String>("error")?.as_bytes(),
+            )
+            .to_lua_err()?
+            .into(),
             detail: (self.lua).from_value(custom_error.raw_get::<_, mlua::Value>("detail")?)?,
           }
           .into(),

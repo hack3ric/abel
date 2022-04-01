@@ -1,6 +1,4 @@
-use mlua::{
-  ExternalError, ExternalResult, FromLua, Function, Lua, LuaSerdeExt, String as LuaString, UserData,
-};
+use mlua::{ExternalError, ExternalResult, FromLua, Function, Lua, LuaSerdeExt, UserData};
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -52,7 +50,7 @@ impl<'lua> FromLua<'lua> for LuaUri {
 }
 
 pub fn create_fn_create_uri(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|_lua, s: LuaString| {
+  lua.create_function(|_lua, s: mlua::String| {
     Ok(LuaUri(hyper::Uri::try_from(s.as_bytes()).to_lua_err()?))
   })
 }

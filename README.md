@@ -42,7 +42,6 @@ $ curl localhost:3000/hello/world | jq
 }
 ```
 
-
 ## Lua Version Compatibility
 
 Hive currently uses Lua 5.4 as its runtime. Lower versions and LuaJIT support is under consideration for now.

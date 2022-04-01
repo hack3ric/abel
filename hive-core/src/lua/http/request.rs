@@ -4,7 +4,7 @@ use crate::path::Params;
 use hyper::header::{HeaderName, HeaderValue};
 use hyper::http::request::Parts;
 use hyper::{Body, HeaderMap, Method, Request};
-use mlua::{ExternalError, ExternalResult, FromLua, Lua, String as LuaString, Table, UserData};
+use mlua::{ExternalError, ExternalResult, FromLua, Lua, Table, UserData};
 
 pub struct LuaRequest {
   pub(crate) method: Method,
@@ -87,14 +87,14 @@ impl<'lua> FromLua<'lua> for LuaRequest {
       }),
       mlua::Value::Table(table) => {
         let method = table
-          .raw_get::<_, Option<LuaString>>("method")?
+          .raw_get::<_, Option<mlua::String>>("method")?
           .map(|x| Method::from_bytes(x.as_bytes()))
           .transpose()
           .to_lua_err()?
           .unwrap_or(Method::GET);
 
         let uri: hyper::Uri = table
-          .raw_get::<_, LuaString>("uri")?
+          .raw_get::<_, mlua::String>("uri")?
           .as_bytes()
           .try_into()
           .to_lua_err()?;
@@ -102,7 +102,7 @@ impl<'lua> FromLua<'lua> for LuaRequest {
         let headers_table: Option<Table> = table.raw_get("headers")?;
         let mut headers = HeaderMap::new();
         if let Some(headers_table) = headers_table {
-          for entry in headers_table.pairs::<LuaString, mlua::Value>() {
+          for entry in headers_table.pairs::<mlua::String, mlua::Value>() {
             let (k, v) = entry?;
             let k = HeaderName::from_bytes(k.as_bytes()).to_lua_err()?;
             match v {
@@ -110,7 +110,7 @@ impl<'lua> FromLua<'lua> for LuaRequest {
                 headers.append(k, HeaderValue::from_bytes(v.as_bytes()).to_lua_err()?);
               }
               mlua::Value::Table(vs) => {
-                for v in vs.sequence_values::<LuaString>() {
+                for v in vs.sequence_values::<mlua::String>() {
                   let v = v?;
                   headers.append(&k, HeaderValue::from_bytes(v.as_bytes()).to_lua_err()?);
                 }

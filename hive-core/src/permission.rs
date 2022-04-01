@@ -1,6 +1,6 @@
 use crate::path::normalize_path;
 use crate::{ErrorKind, Result};
-use mlua::{ExternalResult, FromLua, Lua, String as LuaString, ToLua};
+use mlua::{ExternalResult, FromLua, Lua, ToLua};
 use nonzero_ext::nonzero;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
@@ -97,7 +97,7 @@ impl<'a> Permission<'a> {
 
 impl<'lua> FromLua<'lua> for Permission<'static> {
   fn from_lua(lua_value: mlua::Value<'lua>, lua: &'lua Lua) -> mlua::Result<Self> {
-    let s = lua.unpack::<LuaString>(lua_value)?;
+    let s = lua.unpack::<mlua::String>(lua_value)?;
     let s = std::str::from_utf8(s.as_bytes()).to_lua_err()?;
     Permission::_parse(s)
       .map(Permission::into_owned)

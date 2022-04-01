@@ -1,7 +1,8 @@
 use super::BadArgument;
 use dashmap::DashMap;
 use mlua::{
-  AnyUserData, ExternalError, ExternalResult, FromLua, Function, Lua, MultiValue, ToLua, UserData,
+  AnyUserData, ExternalError, ExternalResult, FromLua, Function, Lua, MultiValue, Table, ToLua,
+  UserData,
 };
 use once_cell::sync::Lazy;
 use parking_lot::lock_api::ArcRwLockWriteGuard;
@@ -14,14 +15,14 @@ use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-type ContextStore = Arc<DashMap<Box<str>, Table>>;
+type ContextStore = Arc<DashMap<Box<str>, SharedTable>>;
 
 static CONTEXT_STORE: Lazy<ContextStore> = Lazy::new(|| Arc::new(DashMap::new()));
 
 pub fn create_module_context(lua: &Lua, service_name: Box<str>) -> mlua::Result<AnyUserData> {
   let context = CONTEXT_STORE
     .entry(service_name)
-    .or_insert(Table::new())
+    .or_insert(SharedTable::new())
     .clone();
   lua.create_ser_userdata(context)
 }
@@ -31,17 +32,17 @@ pub fn remove_service_contexts(service_name: &str) {
 }
 
 #[derive(Clone, Default)]
-pub struct Table(Arc<RwLock<TableRepr>>);
+pub struct SharedTable(Arc<RwLock<SharedTableRepr>>);
 
-impl Table {
+impl SharedTable {
   pub fn new() -> Self {
     Default::default()
   }
 
-  pub fn from_lua_table(table: mlua::Table) -> mlua::Result<Self> {
+  pub fn from_lua_table(table: Table) -> mlua::Result<Self> {
     let mut int = BTreeMap::new();
     let mut other = HashMap::new();
-    for kv in table.pairs::<Key, Value>() {
+    for kv in table.pairs::<SharedTableKey, SharedTableValue>() {
       let (k, v) = kv?;
       if let Some(i) = k.to_i64() {
         int.insert(i, v);
@@ -49,31 +50,31 @@ impl Table {
         other.insert(k, v);
       }
     }
-    Ok(Self(Arc::new(RwLock::new(TableRepr(int, other)))))
+    Ok(Self(Arc::new(RwLock::new(SharedTableRepr(int, other)))))
   }
 
-  fn get(&self, key: Key) -> MappedRwLockReadGuard<'_, Value> {
+  fn get(&self, key: SharedTableKey) -> MappedRwLockReadGuard<'_, SharedTableValue> {
     RwLockReadGuard::map(self.0.read(), |x| x.get(key))
   }
 
-  fn set(&self, key: Key, value: Value) -> Value {
+  fn set(&self, key: SharedTableKey, value: SharedTableValue) -> SharedTableValue {
     self.0.write().set(key, value)
   }
 
   #[allow(unused)]
-  fn shallow_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<mlua::Table<'lua>> {
+  fn shallow_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<Table<'lua>> {
     self.0.read().shallow_dump(lua)
   }
 
-  fn deep_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<mlua::Table<'lua>> {
+  fn deep_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<Table<'lua>> {
     self._deep_dump(lua, &mut HashMap::new())
   }
 
   fn _deep_dump<'lua>(
     &self,
     lua: &'lua Lua,
-    tables: &mut HashMap<usize, mlua::Table<'lua>>,
-  ) -> mlua::Result<mlua::Table<'lua>> {
+    tables: &mut HashMap<usize, Table<'lua>>,
+  ) -> mlua::Result<Table<'lua>> {
     // preserve recursive structure
     if let Some(table) = tables.get(&(Arc::as_ptr(&self.0) as _)) {
       Ok(table.clone())
@@ -83,31 +84,34 @@ impl Table {
   }
 }
 
-impl UserData for Table {
+impl UserData for SharedTable {
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-    methods.add_meta_method("__index", |lua, this, key: Key| {
+    methods.add_meta_method("__index", |lua, this, key: SharedTableKey| {
       let result = this.get(key);
       lua.pack(&*result)
     });
 
-    methods.add_meta_method("__newindex", |_lua, this, (key, value): (Key, Value)| {
-      this.set(key, value);
-      Ok(())
-    });
+    methods.add_meta_method(
+      "__newindex",
+      |_lua, this, (key, value): (SharedTableKey, SharedTableValue)| {
+        this.set(key, value);
+        Ok(())
+      },
+    );
 
     methods.add_meta_method("__len", |_lua, this, ()| Ok(len(&this.0.read())));
 
     methods.add_meta_method("__pairs", |lua, this, ()| {
       let rl = this.0.read();
       let keys = (rl.0.keys())
-        .map(|i| Key(Value::Integer(*i)))
+        .map(|i| SharedTableKey(SharedTableValue::Integer(*i)))
         .chain(rl.1.keys().cloned())
         .map(|x| (x, true));
       let keys = lua.create_table_from(keys)?;
       let iter = lua.create_function(
-        |lua, (table, keys, prev_key): (Table, mlua::Table, mlua::Value)| {
+        |lua, (table, keys, prev_key): (SharedTable, Table, mlua::Value)| {
           let next: Function = lua.globals().raw_get("next")?;
-          let key: Option<Key> = next.call((keys, prev_key))?;
+          let key: Option<SharedTableKey> = next.call((keys, prev_key))?;
           if let Some(key) = key {
             lua.pack_multi((key.clone(), lua.pack(&*table.get(key))?))
           } else {
@@ -122,7 +126,7 @@ impl UserData for Table {
   }
 }
 
-impl Serialize for Table {
+impl Serialize for SharedTable {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
@@ -131,14 +135,14 @@ impl Serialize for Table {
   }
 }
 
-struct TableScope(ArcRwLockWriteGuard<RawRwLock, TableRepr>);
+struct SharedTableScope(ArcRwLockWriteGuard<RawRwLock, SharedTableRepr>);
 
-impl TableScope {
-  fn new(x: Arc<RwLock<TableRepr>>) -> Self {
+impl SharedTableScope {
+  fn new(x: Arc<RwLock<SharedTableRepr>>) -> Self {
     Self(x.write_arc())
   }
 
-  fn deep_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<mlua::Table<'lua>> {
+  fn deep_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<Table<'lua>> {
     self._deep_dump(
       lua,
       Arc::as_ptr(ArcRwLockWriteGuard::rwlock(&self.0)) as _,
@@ -147,31 +151,34 @@ impl TableScope {
   }
 }
 
-impl Deref for TableScope {
-  type Target = TableRepr;
+impl Deref for SharedTableScope {
+  type Target = SharedTableRepr;
 
-  fn deref(&self) -> &TableRepr {
+  fn deref(&self) -> &SharedTableRepr {
     &self.0
   }
 }
 
-impl DerefMut for TableScope {
-  fn deref_mut(&mut self) -> &mut TableRepr {
+impl DerefMut for SharedTableScope {
+  fn deref_mut(&mut self) -> &mut SharedTableRepr {
     &mut self.0
   }
 }
 
-impl UserData for TableScope {
+impl UserData for SharedTableScope {
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-    methods.add_meta_method("__index", |lua, this, key: Key| {
+    methods.add_meta_method("__index", |lua, this, key: SharedTableKey| {
       let result = this.get(key);
       (&*result).to_lua(lua)
     });
 
-    methods.add_meta_method_mut("__newindex", |_lua, this, (key, value): (Key, Value)| {
-      this.set(key, value);
-      Ok(())
-    });
+    methods.add_meta_method_mut(
+      "__newindex",
+      |_lua, this, (key, value): (SharedTableKey, SharedTableValue)| {
+        this.set(key, value);
+        Ok(())
+      },
+    );
 
     methods.add_meta_method("__len", |_lua, this, ()| Ok(len(&this.0)));
 
@@ -185,11 +192,14 @@ impl UserData for TableScope {
 }
 
 #[derive(Default)]
-struct TableRepr(BTreeMap<i64, Value>, HashMap<Key, Value>);
+struct SharedTableRepr(
+  BTreeMap<i64, SharedTableValue>,
+  HashMap<SharedTableKey, SharedTableValue>,
+);
 
-impl TableRepr {
-  fn get(&self, key: Key) -> &Value {
-    const CONST_NIL: Value = Value::Nil;
+impl SharedTableRepr {
+  fn get(&self, key: SharedTableKey) -> &SharedTableValue {
+    const CONST_NIL: SharedTableValue = SharedTableValue::Nil;
 
     (key.to_i64())
       .map(|i| self.0.get(&i))
@@ -197,16 +207,16 @@ impl TableRepr {
       .unwrap_or(&CONST_NIL)
   }
 
-  fn set(&mut self, key: Key, value: Value) -> Value {
+  fn set(&mut self, key: SharedTableKey, value: SharedTableValue) -> SharedTableValue {
     if let Some(i) = key.to_i64() {
       self.0.insert(i, value)
     } else {
       self.1.insert(key, value)
     }
-    .unwrap_or(Value::Nil)
+    .unwrap_or(SharedTableValue::Nil)
   }
 
-  fn shallow_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<mlua::Table<'lua>> {
+  fn shallow_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<Table<'lua>> {
     let int_iter = (self.0)
       .iter()
       .map(|(i, v)| Ok::<_, mlua::Error>((mlua::Value::Integer(*i), v)));
@@ -225,8 +235,8 @@ impl TableRepr {
     &self,
     lua: &'lua Lua,
     ptr: usize,
-    tables: &mut HashMap<usize, mlua::Table<'lua>>,
-  ) -> mlua::Result<mlua::Table<'lua>> {
+    tables: &mut HashMap<usize, Table<'lua>>,
+  ) -> mlua::Result<Table<'lua>> {
     let int_iter = (self.0)
       .iter()
       .map(|(i, v)| Ok::<_, mlua::Error>((mlua::Value::Integer(*i), v)));
@@ -237,8 +247,8 @@ impl TableRepr {
     tables.insert(ptr, table.clone());
     for kv in int_iter.chain(other_iter) {
       let (k, v) = kv?;
-      if let Value::Table(x @ Table(_)) = v {
-        let sub_table = Table::_deep_dump(x, lua, tables)?;
+      if let SharedTableValue::Table(x @ SharedTable(_)) = v {
+        let sub_table = SharedTable::_deep_dump(x, lua, tables)?;
         table.raw_set(k, sub_table)?;
       } else {
         table.raw_set(k, v)?;
@@ -248,7 +258,7 @@ impl TableRepr {
   }
 }
 
-impl Serialize for TableRepr {
+impl Serialize for SharedTableRepr {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
@@ -290,9 +300,9 @@ pub fn create_fn_table_dump(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, table: mlua::Value| match table {
     mlua::Value::Table(table) => Ok(table),
     mlua::Value::UserData(x) => {
-      if let Ok(x) = x.borrow::<Table>() {
+      if let Ok(x) = x.borrow::<SharedTable>() {
         x.deep_dump(lua)
-      } else if let Ok(x) = x.borrow::<TableScope>() {
+      } else if let Ok(x) = x.borrow::<SharedTableScope>() {
         x.deep_dump(lua)
       } else {
         Err(userdata_not_shared_table("dump", 1))
@@ -307,13 +317,13 @@ pub fn create_fn_table_scope(lua: &Lua) -> mlua::Result<Function> {
     match table {
       mlua::Value::Table(table) => f.call_async(table).await,
       mlua::Value::UserData(x) => {
-        if let Ok(x) = x.borrow::<Table>() {
-          let x = lua.create_userdata(TableScope::new(x.0.clone()))?;
+        if let Ok(x) = x.borrow::<SharedTable>() {
+          let x = lua.create_userdata(SharedTableScope::new(x.0.clone()))?;
           let result = f.call_async::<_, mlua::Value>(x.clone()).await;
-          x.take::<TableScope>()?;
+          x.take::<SharedTableScope>()?;
           return result;
         }
-        if x.borrow::<TableScope>().is_ok() {
+        if x.borrow::<SharedTableScope>().is_ok() {
           f.call_async::<_, mlua::Value>(x).await
         } else {
           Err(userdata_not_shared_table("scope", 1))
@@ -334,22 +344,25 @@ pub fn create_fn_table_insert_shared_3(lua: &Lua) -> mlua::Result<Function> {
       if pos < 1 {
         return Err(out_of_bounds("insert", 2));
       }
-      if let Ok(table) = table.borrow::<Table>() {
+      if let Ok(table) = table.borrow::<SharedTable>() {
         let mut lock = table.0.write();
         if pos > len(&lock) + 1 {
           return Err(out_of_bounds("insert", 2));
         }
         let right = lock.0.split_off(&pos);
         let iter = right.into_iter().map(|(i, v)| (i + 1, v));
-        lock.0.insert(pos, Value::from_lua(value, lua)?);
+        lock.0.insert(pos, SharedTableValue::from_lua(value, lua)?);
         lock.0.extend(iter);
-      } else if let Ok(mut table) = table.borrow_mut::<TableScope>() {
+      } else if let Ok(mut table) = table.borrow_mut::<SharedTableScope>() {
         if pos > len(&table.0) + 1 {
           return Err(out_of_bounds("insert", 2));
         }
         let right = table.0 .0.split_off(&pos);
         let iter = right.into_iter().map(|(i, v)| (i + 1, v));
-        table.0 .0.insert(pos, Value::from_lua(value, lua)?);
+        table
+          .0
+           .0
+          .insert(pos, SharedTableValue::from_lua(value, lua)?);
         table.0 .0.extend(iter);
       } else {
         return Err(userdata_not_shared_table("insert", 1));
@@ -359,19 +372,19 @@ pub fn create_fn_table_insert_shared_3(lua: &Lua) -> mlua::Result<Function> {
   )
 }
 
-fn len(x: &TableRepr) -> i64 {
+fn len(x: &SharedTableRepr) -> i64 {
   x.0.iter().last().map(|x| 0.max(*x.0)).unwrap_or(0)
 }
 
 #[derive(Clone, Serialize)]
 #[serde(untagged)]
-pub enum Value {
+pub enum SharedTableValue {
   Nil,
   Boolean(bool),
   Integer(i64),
   Number(f64),
   String(#[serde(serialize_with = "serialize_slice_as_str")] SmallVec<[u8; 32]>),
-  Table(Table),
+  Table(SharedTable),
 }
 
 fn serialize_slice_as_str<S: Serializer>(slice: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
@@ -382,7 +395,7 @@ fn serialize_slice_as_str<S: Serializer>(slice: &[u8], serializer: S) -> Result<
   }
 }
 
-impl<'lua> FromLua<'lua> for Value {
+impl<'lua> FromLua<'lua> for SharedTableValue {
   fn from_lua(lua_value: mlua::Value<'lua>, _lua: &'lua Lua) -> mlua::Result<Self> {
     use mlua::Value::*;
     let result = match lua_value {
@@ -391,9 +404,9 @@ impl<'lua> FromLua<'lua> for Value {
       Integer(x) => Self::Integer(x),
       Number(x) => Self::Number(x),
       String(x) => Self::String(x.as_bytes().into()),
-      Table(x) => Self::Table(self::Table::from_lua_table(x)?),
+      Table(x) => Self::Table(self::SharedTable::from_lua_table(x)?),
       UserData(x) => {
-        if let Ok(x) = x.borrow::<self::Table>() {
+        if let Ok(x) = x.borrow::<self::SharedTable>() {
           Self::Table(x.clone())
         } else {
           return Err("invalid table value".to_lua_err());
@@ -405,9 +418,9 @@ impl<'lua> FromLua<'lua> for Value {
   }
 }
 
-impl<'a, 'lua> ToLua<'lua> for &'a Value {
+impl<'a, 'lua> ToLua<'lua> for &'a SharedTableValue {
   fn to_lua(self, lua: &'lua Lua) -> mlua::Result<mlua::Value<'lua>> {
-    use Value::*;
+    use SharedTableValue::*;
     let result = match self {
       Nil => mlua::Value::Nil,
       Boolean(x) => mlua::Value::Boolean(*x),
@@ -420,9 +433,9 @@ impl<'a, 'lua> ToLua<'lua> for &'a Value {
   }
 }
 
-impl<'lua> ToLua<'lua> for Value {
+impl<'lua> ToLua<'lua> for SharedTableValue {
   fn to_lua(self, lua: &'lua Lua) -> mlua::Result<mlua::Value<'lua>> {
-    use Value::*;
+    use SharedTableValue::*;
     let result = match self {
       Nil => mlua::Value::Nil,
       Boolean(x) => mlua::Value::Boolean(x),
@@ -435,9 +448,9 @@ impl<'lua> ToLua<'lua> for Value {
   }
 }
 
-impl PartialEq for Value {
+impl PartialEq for SharedTableValue {
   fn eq(&self, other: &Self) -> bool {
-    use Value::*;
+    use SharedTableValue::*;
     match (self, other) {
       (Nil, Nil) => true,
       (Nil, _) => false,
@@ -463,15 +476,15 @@ impl PartialEq for Value {
 }
 
 #[derive(Clone, Serialize)]
-pub struct Key(Value);
+pub struct SharedTableKey(SharedTableValue);
 
 #[derive(Debug, thiserror::Error)]
 #[error("invalid key")]
 pub struct InvalidKey(());
 
-impl Key {
-  pub fn from_value(value: Value) -> Result<Self, InvalidKey> {
-    use Value::*;
+impl SharedTableKey {
+  pub fn from_value(value: SharedTableValue) -> Result<Self, InvalidKey> {
+    use SharedTableValue::*;
     match value {
       Nil => Err(InvalidKey(())),
       Table(_) => Err(InvalidKey(())),
@@ -489,7 +502,7 @@ impl Key {
   }
 
   pub fn to_i64(&self) -> Option<i64> {
-    if let Value::Integer(i) = self.0 {
+    if let SharedTableValue::Integer(i) = self.0 {
       Some(i)
     } else {
       None
@@ -497,9 +510,9 @@ impl Key {
   }
 }
 
-impl Hash for Key {
+impl Hash for SharedTableKey {
   fn hash<H: Hasher>(&self, state: &mut H) {
-    use Value::*;
+    use SharedTableValue::*;
 
     fn canonical_float_bytes(f: f64) -> [u8; 8] {
       assert!(!f.is_nan());
@@ -521,27 +534,27 @@ impl Hash for Key {
   }
 }
 
-impl PartialEq for Key {
+impl PartialEq for SharedTableKey {
   fn eq(&self, other: &Self) -> bool {
     self.0 == other.0
   }
 }
 
-impl Eq for Key {}
+impl Eq for SharedTableKey {}
 
-impl<'lua> FromLua<'lua> for Key {
+impl<'lua> FromLua<'lua> for SharedTableKey {
   fn from_lua(lua_value: mlua::Value<'lua>, lua: &'lua Lua) -> mlua::Result<Self> {
-    Self::from_value(Value::from_lua(lua_value, lua)?).to_lua_err()
+    Self::from_value(SharedTableValue::from_lua(lua_value, lua)?).to_lua_err()
   }
 }
 
-impl<'a, 'lua> ToLua<'lua> for &'a Key {
+impl<'a, 'lua> ToLua<'lua> for &'a SharedTableKey {
   fn to_lua(self, lua: &'lua Lua) -> mlua::Result<mlua::Value<'lua>> {
     (&self.0).to_lua(lua)
   }
 }
 
-impl<'a, 'lua> ToLua<'lua> for Key {
+impl<'a, 'lua> ToLua<'lua> for SharedTableKey {
   fn to_lua(self, lua: &'lua Lua) -> mlua::Result<mlua::Value<'lua>> {
     self.0.to_lua(lua)
   }

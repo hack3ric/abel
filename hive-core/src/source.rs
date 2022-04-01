@@ -1,6 +1,6 @@
 use crate::path::normalize_path_str;
 use crate::Result;
-use mlua::{ExternalResult, Function, Lua, String as LuaString, Table, UserData};
+use mlua::{ExternalResult, Function, Lua, Table, UserData};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs;
@@ -67,14 +67,14 @@ impl Source {
 
 impl UserData for Source {
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-    methods.add_async_method("exists", |_lua, this, path: LuaString| async move {
+    methods.add_async_method("exists", |_lua, this, path: mlua::String| async move {
       let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
       Ok(this.exists(path).await)
     });
 
     methods.add_async_method(
       "load",
-      |lua, this, (path, env): (LuaString, Table)| async move {
+      |lua, this, (path, env): (mlua::String, Table)| async move {
         let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
         this.load(lua, path, env).await.to_lua_err()
       },

@@ -1,4 +1,4 @@
-use mlua::{ExternalResult, Function, Lua, LuaSerdeExt, String as LuaString, Table};
+use mlua::{ExternalResult, Function, Lua, LuaSerdeExt, Table};
 
 pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, ()| {
@@ -12,7 +12,7 @@ pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn create_fn_json_parse(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, string: LuaString| {
+  lua.create_function(|lua, string: mlua::String| {
     let result: serde_json::Value = serde_json::from_slice(string.as_bytes()).to_lua_err()?;
     lua.to_value(&result)
   })

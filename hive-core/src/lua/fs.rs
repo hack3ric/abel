@@ -4,8 +4,8 @@ use crate::path::{normalize_path, normalize_path_str};
 use crate::permission::{Permission, PermissionSet};
 use crate::{HiveState, Result, Source};
 use mlua::{
-  AnyUserData, ExternalError, ExternalResult, Function, Lua, MultiValue, String as LuaString,
-  ToLua, UserData, UserDataMethods, Variadic,
+  AnyUserData, ExternalError, ExternalResult, Function, Lua, MultiValue, ToLua, UserData,
+  UserDataMethods, Variadic,
 };
 use std::borrow::Cow;
 use std::io::SeekFrom;
@@ -25,7 +25,7 @@ enum OpenMode {
 }
 
 impl OpenMode {
-  fn from_lua(mode: Option<LuaString>) -> mlua::Result<Self> {
+  fn from_lua(mode: Option<mlua::String>) -> mlua::Result<Self> {
     use OpenMode::*;
     if let Some(mode) = mode {
       let result = match mode.as_bytes() {
@@ -180,7 +180,7 @@ impl UserData for LuaFile {
 
     methods.add_async_function(
       "write",
-      |_lua, (this, content): (AnyUserData, Variadic<LuaString>)| async move {
+      |_lua, (this, content): (AnyUserData, Variadic<mlua::String>)| async move {
         let mut this = this.borrow_mut::<Self>()?;
         for x in content {
           this.0.write_all(x.as_bytes()).await?;
@@ -191,7 +191,7 @@ impl UserData for LuaFile {
 
     methods.add_async_function(
       "seek",
-      |_lua, (this, whence, offset): (AnyUserData, Option<LuaString>, Option<i64>)| async move {
+      |_lua, (this, whence, offset): (AnyUserData, Option<mlua::String>, Option<i64>)| async move {
         let mut this = this.borrow_mut::<Self>()?;
         let offset = offset.unwrap_or(0);
         let seekfrom = if let Some(whence) = whence {
@@ -240,45 +240,47 @@ fn create_fn_fs_open(
   local_storage_path: Arc<Path>,
   permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function<'_>> {
-  lua.create_async_function(move |_lua, (path, mode): (LuaString, Option<LuaString>)| {
-    use OpenMode::*;
-    let source = source.clone();
-    let local_storage_path = local_storage_path.clone();
-    let permissions = permissions.clone();
-    async move {
-      let (scheme, path) = parse_path(&path)?;
-      let mode = OpenMode::from_lua(mode)?;
-      let file = match scheme {
-        "local" => {
-          let path = normalize_path_str(path);
-          mode
-            .to_open_options()
-            .open(local_storage_path.join(path))
-            .await?
-        }
-        "external" => {
-          let path = normalize_path(path);
-          let read = Permission::Read(Cow::Borrowed(&path));
-          let write = Permission::Write(Cow::Borrowed(&path));
-          match mode {
-            Read => permissions.check(&read)?,
-            Write | Append => permissions.check(&write)?,
-            ReadWrite | ReadWriteNew | ReadAppend => {
-              permissions.check(&read)?;
-              permissions.check(&write)?;
-            }
+  lua.create_async_function(
+    move |_lua, (path, mode): (mlua::String, Option<mlua::String>)| {
+      use OpenMode::*;
+      let source = source.clone();
+      let local_storage_path = local_storage_path.clone();
+      let permissions = permissions.clone();
+      async move {
+        let (scheme, path) = parse_path(&path)?;
+        let mode = OpenMode::from_lua(mode)?;
+        let file = match scheme {
+          "local" => {
+            let path = normalize_path_str(path);
+            mode
+              .to_open_options()
+              .open(local_storage_path.join(path))
+              .await?
           }
-          mode.to_open_options().open(path).await?
-        }
-        "source" => {
-          // For `source:`, the only open mode is "read"
-          source.get(path).await?
-        }
-        _ => return scheme_not_supported(scheme),
-      };
-      Ok(LuaFile(BufReader::new(file)))
-    }
-  })
+          "external" => {
+            let path = normalize_path(path);
+            let read = Permission::Read(Cow::Borrowed(&path));
+            let write = Permission::Write(Cow::Borrowed(&path));
+            match mode {
+              Read => permissions.check(&read)?,
+              Write | Append => permissions.check(&write)?,
+              ReadWrite | ReadWriteNew | ReadAppend => {
+                permissions.check(&read)?;
+                permissions.check(&write)?;
+              }
+            }
+            mode.to_open_options().open(path).await?
+          }
+          "source" => {
+            // For `source:`, the only open mode is "read"
+            source.get(path).await?
+          }
+          _ => return scheme_not_supported(scheme),
+        };
+        Ok(LuaFile(BufReader::new(file)))
+      }
+    },
+  )
 }
 
 pub async fn create_preload_fs<'lua>(
@@ -323,7 +325,7 @@ fn create_fn_fs_mkdir(
   local_storage_path: Arc<Path>,
   permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function> {
-  lua.create_async_function(move |_lua, (path, all): (LuaString, bool)| {
+  lua.create_async_function(move |_lua, (path, all): (mlua::String, bool)| {
     let local_storage_path = local_storage_path.clone();
     let permissions = permissions.clone();
     async move {
@@ -354,7 +356,7 @@ fn create_fn_fs_remove(
   local_storage_path: Arc<Path>,
   permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function> {
-  lua.create_async_function(move |_lua, (path, all): (LuaString, bool)| {
+  lua.create_async_function(move |_lua, (path, all): (mlua::String, bool)| {
     let local_storage_path = local_storage_path.clone();
     let permissions = permissions.clone();
     async move {
@@ -386,7 +388,7 @@ fn create_fn_fs_remove(
   })
 }
 
-fn parse_path<'a>(path: &'a LuaString<'a>) -> mlua::Result<(&'a str, &'a str)> {
+fn parse_path<'a>(path: &'a mlua::String<'a>) -> mlua::Result<(&'a str, &'a str)> {
   let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
   Ok(path.split_once(':').unwrap_or(("local", path)))
 }
