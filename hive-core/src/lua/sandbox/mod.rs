@@ -162,15 +162,15 @@ impl Sandbox {
     if service.is_dropped() {
       return Err(ServiceDropped.into());
     }
-    if !hot_update {
-      self.run_start(service.clone()).await?;
-    }
     let loaded = LoadedService {
-      service,
+      service: service.clone(),
       local_env,
       internal,
     };
     self.loaded.borrow_mut().insert(name.into(), loaded);
+    if !hot_update {
+      self.run_start(service).await?;
+    }
     Ok(())
   }
 

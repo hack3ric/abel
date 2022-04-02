@@ -17,7 +17,6 @@ pub struct Error {
 
 impl Error {
   pub fn add_detail(&mut self, key: impl Into<String>, value: impl Into<serde_json::Value>) {
-    dbg!("adding detail");
     if self.detail.is_none() {
       self.detail = Some(Default::default());
     }

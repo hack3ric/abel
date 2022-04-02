@@ -1,5 +1,6 @@
 use crate::lua::context::{
-  create_fn_table_dump, create_fn_table_insert_shared_3, create_fn_table_scope,
+  create_fn_table_dump, create_fn_table_insert_shared_2, create_fn_table_insert_shared_3,
+  create_fn_table_scope,
 };
 use crate::Result;
 use mlua::{Function, Lua, Table, ToLua};
@@ -34,7 +35,9 @@ fn create_fn_current_worker(lua: &Lua) -> Result<Function> {
 }
 
 fn create_fn_table_insert(lua: &Lua) -> Result<Function> {
+  let table_insert_shared_2 = create_fn_table_insert_shared_2(lua)?;
   let table_insert_shared_3 = create_fn_table_insert_shared_3(lua)?;
+
   let table_insert = mlua::chunk! {
     local old_table_insert = table.insert
     local function insert(t, ...)
@@ -43,14 +46,15 @@ fn create_fn_table_insert(lua: &Lua) -> Result<Function> {
       elseif type(t) == "userdata" then
         local len = select("#", ...)
         if len == 1 then
-          t[#t + 1] = ...
+          // t[#t + 1] = ... // this caused data racing
+          $table_insert_shared_2(t, ...)
         elseif len == 2 then
           $table_insert_shared_3(t, ...)
         else
           error "wrong number of arguments"
         end
       else
-        error "expected table or shared table"
+        error("expected table or shared table, got " .. type(t))
       end
     end
     return insert

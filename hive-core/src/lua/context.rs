@@ -53,12 +53,18 @@ impl SharedTable {
     Ok(Self(Arc::new(RwLock::new(SharedTableRepr(int, other)))))
   }
 
-  fn get(&self, key: SharedTableKey) -> MappedRwLockReadGuard<'_, SharedTableValue> {
+  pub(crate) fn get(&self, key: SharedTableKey) -> MappedRwLockReadGuard<'_, SharedTableValue> {
     RwLockReadGuard::map(self.0.read(), |x| x.get(key))
   }
 
-  fn set(&self, key: SharedTableKey, value: SharedTableValue) -> SharedTableValue {
+  pub(crate) fn set(&self, key: SharedTableKey, value: SharedTableValue) -> SharedTableValue {
     self.0.write().set(key, value)
+  }
+
+  fn push(&self, value: SharedTableValue) {
+    let mut wl = self.0.write();
+    let pos = len(&wl) + 1;
+    wl.set(SharedTableKey(SharedTableValue::Integer(pos)), value);
   }
 
   #[allow(unused)]
@@ -338,6 +344,17 @@ fn out_of_bounds(fn_name: &'static str, pos: u8) -> mlua::Error {
   BadArgument::new(fn_name, pos, "out of bounds").into()
 }
 
+pub fn create_fn_table_insert_shared_2(lua: &Lua) -> mlua::Result<Function> {
+  lua.create_function(|lua, (table, value): (mlua::AnyUserData, mlua::Value)| {
+    if let Ok(table) = table.borrow::<SharedTable>() {
+      table.push(lua.unpack(value)?);
+      Ok(())
+    } else {
+      Err(userdata_not_shared_table("insert", 1))
+    }
+  })
+}
+
 pub fn create_fn_table_insert_shared_3(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(
     |lua, (table, pos, value): (mlua::AnyUserData, i64, mlua::Value)| {
@@ -351,7 +368,7 @@ pub fn create_fn_table_insert_shared_3(lua: &Lua) -> mlua::Result<Function> {
         }
         let right = lock.0.split_off(&pos);
         let iter = right.into_iter().map(|(i, v)| (i + 1, v));
-        lock.0.insert(pos, SharedTableValue::from_lua(value, lua)?);
+        lock.0.insert(pos, lua.unpack(value)?);
         lock.0.extend(iter);
       } else if let Ok(mut table) = table.borrow_mut::<SharedTableScope>() {
         if pos > len(&table.0) + 1 {
@@ -359,10 +376,7 @@ pub fn create_fn_table_insert_shared_3(lua: &Lua) -> mlua::Result<Function> {
         }
         let right = table.0 .0.split_off(&pos);
         let iter = right.into_iter().map(|(i, v)| (i + 1, v));
-        table
-          .0
-           .0
-          .insert(pos, SharedTableValue::from_lua(value, lua)?);
+        (table.0 .0).insert(pos, lua.unpack(value)?);
         table.0 .0.extend(iter);
       } else {
         return Err(userdata_not_shared_table("insert", 1));
