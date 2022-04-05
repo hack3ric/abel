@@ -50,7 +50,10 @@ fn create_fn_request(lua: &Lua, permissions: Arc<PermissionSet>) -> mlua::Result
               .ok_or("no URI scheme specified")
           })
           .to_lua_err()?;
-        permissions.check(&Permission::Net(host.into(), port))?;
+        permissions.check(&Permission::Net {
+          host: host.into(),
+          port,
+        })?;
       } else {
         return Err("absolute-form URI required".to_lua_err());
       }

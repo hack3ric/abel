@@ -16,3 +16,12 @@ function Error(obj)
     }
   end
 end
+
+function safe_getmetatable(t)
+  local typet = type(t)
+  if typet == "table" then
+    getmetatable(t)
+  else
+    error("bad argument #1 to 'getmetatable' (table expected, got" .. typet .. ")")
+  end
+end

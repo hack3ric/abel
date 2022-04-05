@@ -129,12 +129,13 @@ local whitelist = {
     "remove", "sort", "concat", "pack",
     "unpack",
   },
+  coroutine = {
+    "close", "create", "isyieldable", "resume",
+    "running", "status", "wrap", "yield",
+  },
 }
 
 local monkey_patch = {
-  [false] = {
-    "Error",
-  },
   table = {
     "insert", "dump", "scope"
   },
@@ -157,5 +158,7 @@ end
 
 apply_whitelist(whitelist)
 apply_whitelist(monkey_patch)
+
+local_env.getmetatable = safe_getmetatable
 
 return local_env, internal

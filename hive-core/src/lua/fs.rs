@@ -259,8 +259,12 @@ fn create_fn_fs_open(
           }
           "external" => {
             let path = normalize_path(path);
-            let read = Permission::Read(Cow::Borrowed(&path));
-            let write = Permission::Write(Cow::Borrowed(&path));
+            let read = Permission::Read {
+              path: Cow::Borrowed(&path),
+            };
+            let write = Permission::Write {
+              path: Cow::Borrowed(&path),
+            };
             match mode {
               Read => permissions.check(&read)?,
               Write | Append => permissions.check(&write)?,
@@ -334,7 +338,9 @@ fn create_fn_fs_mkdir(
       let path: Cow<Path> = match scheme {
         "local" => local_storage_path.join(normalize_path_str(path)).into(),
         "external" => {
-          permissions.check(&Permission::Write(Cow::Borrowed(Path::new(path))))?;
+          permissions.check(&Permission::Write {
+            path: Cow::Borrowed(Path::new(path)),
+          })?;
           Path::new(path).into()
         }
         "source" => return Err("cannot modify service source".to_lua_err()),
@@ -366,7 +372,7 @@ fn create_fn_fs_remove(
         "local" => local_storage_path.join(normalize_path_str(path)).into(),
         "external" => {
           let path: Cow<_> = Path::new(path).into();
-          permissions.check(&Permission::Write(path.clone()))?;
+          permissions.check(&Permission::Write { path: path.clone() })?;
           path
         }
         "source" => return Err("cannot modify service source".to_lua_err()),
