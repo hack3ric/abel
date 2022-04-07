@@ -7,25 +7,35 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex, RwLock};
 
-pub struct Pool<T: Send + 'static> {
+pub struct Pool<T: 'static> {
   name: String,
   executors: Vec<RwLock<Executor<T>>>,
-  init: Box<dyn Fn() -> Result<T> + Send + Sync + 'static>,
+  init: Arc<dyn Fn() -> Result<T> + Send + Sync + 'static>,
 }
 
+// Since `Arc<dyn Fn> does not implement `Fn{,Mut,Once}`, we need to stop clippy
+// from complaining us to wrap it in another closure.
+#[allow(clippy::redundant_closure)]
 impl Pool<Sandbox> {
   pub fn new(
     name: String,
     size: usize,
     init: impl Fn() -> Result<Sandbox> + Send + Sync + 'static,
   ) -> Result<Self> {
+    let init: Arc<dyn Fn() -> _ + Send + Sync + 'static> = Arc::new(init);
     let executors = (0..size)
-      .map(|i| Ok(RwLock::new(Executor::new(init()?, format!("{}-{i}", name)))))
+      .map(|i| {
+        let init = init.clone();
+        Ok(RwLock::new(Executor::new(
+          move || init(),
+          format!("{}-{i}", name),
+        )))
+      })
       .collect::<Result<_>>()?;
     Ok(Self {
       name,
       executors,
-      init: Box::new(init),
+      init,
     })
   }
 
@@ -46,7 +56,8 @@ impl Pool<Sandbox> {
       if rl.is_panicked() {
         drop(rl);
         let mut wl = e.write().await;
-        *wl = Executor::new((self.init)().unwrap(), format!("{}-{i}", self.name));
+        let init = self.init.clone();
+        *wl = Executor::new(move || init(), format!("{}-{i}", self.name));
       } else {
         rl.push::<R>(task.clone());
       }

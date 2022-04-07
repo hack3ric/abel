@@ -1,4 +1,5 @@
 use crate::lua::Sandbox;
+use crate::Result;
 use futures::future::{select, Either, LocalBoxFuture};
 use futures::stream::FuturesUnordered;
 use futures::{pin_mut, FutureExt, Stream};
@@ -57,14 +58,14 @@ type Task<T> = Arc<Mutex<Option<(TaskFn<T>, oneshot::Sender<AnyBox>)>>>;
 type TaskFn<T> = Box<(dyn FnOnce(Rc<T>) -> LocalBoxFuture<'static, AnyBox> + Send + 'static)>;
 
 // TODO: use broadcast?
-pub struct Executor<T: Send + 'static> {
+pub struct Executor<T: 'static> {
   pub task_count: Arc<AtomicU32>,
   task_tx: mpsc::UnboundedSender<Task<T>>,
   panicked: Arc<AtomicBool>,
 }
 
 impl Executor<Sandbox> {
-  pub fn new(obj: Sandbox, name: String) -> Self {
+  pub fn new(f: impl FnOnce() -> Result<Sandbox> + Send + 'static, name: String) -> Self {
     let task_count = Arc::new(AtomicU32::new(0));
     let (task_tx, mut task_rx) = mpsc::unbounded_channel::<Task<_>>();
     let panicked = Arc::new(AtomicBool::new(false));
@@ -77,6 +78,7 @@ impl Executor<Sandbox> {
       .spawn(move || {
         let _panic_notifier = panic_notifier;
         rt.block_on(async move {
+          let obj = f().unwrap();
           let mut tasks = FuturesUnordered::<LocalBoxFuture<()>>::new();
           let (waker_tx, mut waker_rx) = mpsc::unbounded_channel();
           let mut waker = MyWaker::from_tx(waker_tx.clone());
