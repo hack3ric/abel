@@ -61,7 +61,6 @@ pub(crate) async fn handle(
       (state.hive)
         .run_service(&service_name.to_string(), sub_path, req)
         .await
-        .map(From::from)
         .map_err(From::from)
     }
 

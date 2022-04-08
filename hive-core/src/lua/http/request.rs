@@ -1,16 +1,19 @@
 use super::body::LuaBody;
+use super::header_map::LuaHeaderMap;
 use super::uri::LuaUri;
 use crate::path::Params;
 use hyper::header::{HeaderName, HeaderValue};
 use hyper::http::request::Parts;
 use hyper::{Body, HeaderMap, Method, Request};
 use mlua::{ExternalError, ExternalResult, FromLua, Lua, Table, UserData};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct LuaRequest {
   pub(crate) method: Method,
   /// Must be absolute
   pub(crate) uri: hyper::Uri,
-  pub(crate) headers: HeaderMap,
+  pub(crate) headers: Rc<RefCell<HeaderMap>>,
   pub(crate) body: Option<LuaBody>,
   /// Only used in Hive core
   params: Option<Params>,
@@ -20,8 +23,10 @@ impl LuaRequest {
   #[rustfmt::skip]
   pub fn new(req: Request<Body>, params: Params) -> Self {
     let (Parts { method, uri, headers, .. }, body) = req.into_parts();
+    let headers = Rc::new(RefCell::new(headers));
+    let body = Some(body.into());
     let params = Some(params);
-    Self { method, uri, headers, body: Some(body.into()), params }
+    Self { method, uri, headers, body, params }
   }
 }
 
@@ -29,8 +34,8 @@ impl Default for LuaRequest {
   fn default() -> Self {
     Self {
       method: Method::GET,
-      uri: hyper::Uri::default(),
-      headers: HeaderMap::new(),
+      uri: Default::default(),
+      headers: Default::default(),
       body: Some(LuaBody::Empty),
       params: None,
     }
@@ -74,7 +79,9 @@ impl UserData for LuaRequest {
       }
     });
 
-    // TODO: headers
+    fields.add_field_method_get("headers", |_lua, this| {
+      Ok(LuaHeaderMap(this.headers.clone()))
+    });
   }
 }
 
@@ -120,12 +127,11 @@ impl<'lua> FromLua<'lua> for LuaRequest {
           }
         }
 
-        // TODO: body
-
         Ok(Self {
           method,
           uri,
-          headers,
+          headers: Rc::new(RefCell::new(headers)),
+          body: Some(table.raw_get("body")?),
           ..Default::default()
         })
       }
@@ -144,8 +150,12 @@ impl<'lua> FromLua<'lua> for LuaRequest {
 
 impl From<LuaRequest> for Request<Body> {
   fn from(x: LuaRequest) -> Self {
+    let headers = Rc::try_unwrap(x.headers)
+      .map(RefCell::into_inner)
+      .unwrap_or_else(|x| x.borrow().clone());
+
     let mut builder = Request::builder().method(x.method).uri(x.uri);
-    *builder.headers_mut().unwrap() = x.headers;
+    *builder.headers_mut().unwrap() = headers;
     builder.body(x.body.unwrap().into()).unwrap()
   }
 }

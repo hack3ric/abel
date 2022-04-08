@@ -4,6 +4,8 @@ use crate::LuaResponse;
 use hyper::header::HeaderValue;
 use hyper::{Body, HeaderMap, StatusCode};
 use mlua::{ExternalError, FromLua, Lua, LuaSerdeExt, ToLua};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub enum LuaBody {
   Empty,
@@ -13,7 +15,6 @@ pub enum LuaBody {
 }
 
 impl LuaBody {
-  // pub fn from_hyper(body: hyper::Body)
   pub fn into_default_response(self) -> LuaResponse {
     let (status, headers) = match &self {
       Self::Empty => (StatusCode::NO_CONTENT, Default::default()),
@@ -26,7 +27,7 @@ impl LuaBody {
     };
     LuaResponse {
       status,
-      headers,
+      headers: Rc::new(RefCell::new(headers)),
       body: Some(self),
     }
   }

@@ -5,11 +5,14 @@ use hyper::{Body, Response};
 use mlua::{
   ExternalError, ExternalResult, FromLua, Function, Lua, Table, UserData, UserDataFields,
 };
+use std::rc::Rc;
+use std::cell::RefCell;
+use super::header_map::LuaHeaderMap;
 
 #[derive(Default)]
 pub struct LuaResponse {
   pub status: StatusCode,
-  pub headers: HeaderMap,
+  pub headers: Rc<RefCell<HeaderMap>>,
   pub body: Option<LuaBody>,
 }
 
@@ -18,7 +21,7 @@ impl LuaResponse {
     let (parts, body) = resp.into_parts();
     Self {
       status: parts.status,
-      headers: parts.headers,
+      headers: Rc::new(RefCell::new(parts.headers)),
       body: Some(body.into()),
     }
   }
@@ -38,7 +41,9 @@ impl UserData for LuaResponse {
         this.get_named_user_value("body")
       }
     });
-    // TODO: headers
+    fields.add_field_method_get("headers", |_lua, this| {
+      Ok(LuaHeaderMap(this.headers.clone()))
+    })
   }
 }
 
@@ -67,8 +72,12 @@ impl<'lua> FromLua<'lua> for LuaResponse {
 
 impl From<LuaResponse> for Response<Body> {
   fn from(x: LuaResponse) -> Self {
+    let headers = Rc::try_unwrap(x.headers)
+      .map(RefCell::into_inner)
+      .unwrap_or_else(|x| x.borrow().clone());
+
     let mut builder = Response::builder().status(x.status);
-    *builder.headers_mut().unwrap() = x.headers;
+    *builder.headers_mut().unwrap() = headers;
     builder.body(x.body.unwrap().into()).unwrap()
   }
 }
@@ -87,9 +96,10 @@ pub fn create_fn_create_response(lua: &Lua) -> mlua::Result<Function> {
 
     let headers = params.raw_get::<_, Option<Table>>("headers")?;
     if let Some(x) = headers {
+      let mut headers = response.headers.borrow_mut();
       for f in x.pairs::<String, String>() {
         let (k, v) = f?;
-        response.headers.insert(
+        headers.insert(
           HeaderName::from_bytes(k.as_bytes())
             .map_err(|_| format!("invalid header value: {}", k))
             .to_lua_err()?,

@@ -16,7 +16,7 @@ pub use mlua::Error as LuaError;
 pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 pub use source::Source;
 
-use hyper::{Body, Request};
+use hyper::{Body, Request, Response};
 use lua::Sandbox;
 use service::{Service, ServiceName, ServicePool, StoppedService};
 use std::path::PathBuf;
@@ -98,10 +98,10 @@ impl Hive {
     name: &str,
     path: String,
     req: Request<Body>,
-  ) -> Result<LuaResponse> {
+  ) -> Result<Response<Body>> {
     let service = self.get_running_service(name)?;
     (self.sandbox_pool)
-      .scope(move |sandbox| async move { sandbox.run(service, &path, req).await })
+      .scope(move |sandbox| async move { Ok(sandbox.run(service, &path, req).await?.into()) })
       .await
   }
 
