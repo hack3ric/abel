@@ -162,7 +162,7 @@ async fn create_service(
   let guard = service.upgrade();
   let name = guard.name();
 
-  let service_path = state.config_path.join("services").join(&name);
+  let service_path = state.hive_path.join("services").join(&name);
   if service_path.exists() {
     fs::remove_dir_all(&service_path).await?;
   }

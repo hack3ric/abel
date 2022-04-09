@@ -125,8 +125,7 @@ async fn start_stop(state: &MainState, name: &str, query: &str) -> Result<Respon
   }
 
   let Query { op } = serde_qs::from_str(query)?;
-  let metadata_path = state
-    .config_path
+  let metadata_path = (state.hive_path)
     .join("services")
     .join(name)
     .join("metadata.json");
@@ -149,7 +148,7 @@ async fn start_stop(state: &MainState, name: &str, query: &str) -> Result<Respon
 
 async fn remove(state: &MainState, service_name: &str) -> Result<Response<Body>> {
   let removed = state.hive.remove_service(service_name).await?;
-  tokio::fs::remove_dir_all(state.config_path.join("services").join(service_name)).await?;
+  tokio::fs::remove_dir_all(state.hive_path.join("services").join(service_name)).await?;
   info!("Removed service '{}' ({})", removed.name(), removed.uuid());
   json_response(StatusCode::OK, json!({ "removed_service": removed }))
 }

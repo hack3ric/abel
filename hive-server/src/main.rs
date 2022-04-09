@@ -3,77 +3,52 @@ mod handle;
 mod metadata;
 #[macro_use]
 mod util;
+mod config;
 
-use crate::handle::handle;
-use crate::metadata::Metadata;
+use clap::Parser;
+use config::{Args, HALF_NUM_CPUS};
 use error::Error;
+use handle::handle;
 use hive_core::{Hive, HiveOptions, Source};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use log::{error, info, warn};
-use once_cell::sync::Lazy;
+use metadata::Metadata;
 use std::convert::Infallible;
-use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::sync::Arc;
-use structopt::StructOpt;
 use tokio::io::AsyncReadExt;
 use tokio::{fs, io};
 use uuid::Uuid;
+use crate::config::Config;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
-#[derive(StructOpt)]
-struct Opt {
-  #[structopt(short = "l", long = "listen", default_value = "127.0.0.1:3000")]
-  addr: SocketAddr,
-
-  #[structopt(long)]
-  pool_size: Option<usize>,
-}
-
 pub(crate) struct MainState {
   hive: Hive,
-  config_path: PathBuf,
+  hive_path: PathBuf,
   auth_token: Option<Uuid>,
 }
-
-static HALF_NUM_CPUS: Lazy<usize> = Lazy::new(|| 1.max(num_cpus::get() / 2));
 
 async fn run() -> anyhow::Result<()> {
   if option_env!("RUST_LOG").is_none() {
     std::env::set_var("RUST_LOG", "INFO");
   }
   pretty_env_logger::init();
-  let opt = Opt::from_args();
+  let args = Args::parse();
 
-  let mut config_path = home::home_dir().expect("no home directory found");
-  config_path.push(".hive");
-  let local_storage_path = async {
-    if !config_path.exists() {
-      fs::create_dir(&config_path).await?;
-    }
-    let services_path = config_path.join("services");
-    if !services_path.exists() {
-      fs::create_dir(&services_path).await?;
-    }
-    let local_storage_path = config_path.join("storage");
-    if !local_storage_path.exists() {
-      fs::create_dir(&local_storage_path).await?;
-    }
-    Ok::<_, io::Error>(local_storage_path)
-  }
-  .await
-  .expect("failed to create Hive config directory");
+  let (hive_path, local_storage_path) = init_paths().await;
+  
+  let config_path = hive_path.join("config.json");
+  let config = Config::get(config_path, args.config).await?;
 
   let state = Arc::new(MainState {
     hive: Hive::new(HiveOptions {
-      sandbox_pool_size: opt.pool_size.unwrap_or(*HALF_NUM_CPUS),
+      sandbox_pool_size: config.pool_size(),
       local_storage_path,
     })?,
-    config_path: config_path.clone(),
-    // auth_token: Some(Uuid::new_v4()),
-    auth_token: None,
+    hive_path: hive_path.clone(),
+    auth_token: Some(config.auth_token),
   });
 
   if let Some(auth_token) = &state.auth_token {
@@ -82,7 +57,54 @@ async fn run() -> anyhow::Result<()> {
     warn!("No authentication token set. Don't do this in production environment!");
   }
 
+  load_saved_services(&state, hive_path).await?;
+
+  let state2 = state.clone();
+  let make_svc = make_service_fn(move |_conn| {
+    let state = state2.clone();
+    async move { Ok::<_, Infallible>(service_fn(move |req| handle(state.clone(), req))) }
+  });
+
+  let server = Server::bind(&config.listen)
+    .serve(make_svc)
+    .with_graceful_shutdown(shutdown_signal());
+
+  info!("Hive is listening to {}", config.listen);
+
+  if let Err(error) = server.await {
+    error!("fatal server error: {}", error);
+  }
+
+  state.hive.stop_all_services().await;
+
+  Ok(())
+}
+
+async fn init_paths() -> (PathBuf, PathBuf) {
+  async fn create_dir_path<T: AsRef<Path>>(path: T) -> io::Result<T> {
+    if !(&path).as_ref().exists() {
+      fs::create_dir(&path).await?;
+    }
+    Ok(path)
+  }
+
+  let mut hive_path = home::home_dir().expect("no home directory found");
+  hive_path.push(".hive");
+
+  let local_storage_path = async {
+    create_dir_path(&hive_path).await?;
+    create_dir_path(hive_path.join("services")).await?;
+    create_dir_path(hive_path.join("storage")).await
+  }
+  .await
+  .expect("failed to create Hive config directory");
+
+  (hive_path, local_storage_path)
+}
+
+async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<()> {
   let mut services = fs::read_dir(config_path.join("services")).await?;
+
   while let Some(service_folder) = services.next_entry().await? {
     if service_folder.file_type().await?.is_dir() {
       let name = service_folder.file_name().to_string_lossy().into_owned();
@@ -121,25 +143,6 @@ async fn run() -> anyhow::Result<()> {
       }
     }
   }
-
-  let state2 = state.clone();
-  let make_svc = make_service_fn(move |_conn| {
-    let state = state2.clone();
-    async move { Ok::<_, Infallible>(service_fn(move |req| handle(state.clone(), req))) }
-  });
-
-  let server = Server::bind(&opt.addr)
-    .serve(make_svc)
-    .with_graceful_shutdown(shutdown_signal());
-
-  info!("Hive is listening to {}", opt.addr);
-
-  if let Err(error) = server.await {
-    error!("fatal server error: {}", error);
-  }
-
-  state.hive.stop_all_services().await;
-
   Ok(())
 }
 
