@@ -19,9 +19,14 @@ fn create_fn_json_parse(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn create_fn_json_stringify(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, value: mlua::Value| {
+  lua.create_function(|lua, (value, pretty): (mlua::Value, Option<bool>)| {
     let result = lua.from_value::<serde_json::Value>(value)?;
-    Ok(result.to_string())
+    let string = if pretty.unwrap_or_default() {
+      serde_json::to_string_pretty(&result).to_lua_err()?
+    } else {
+      result.to_string()
+    };
+    Ok(string)
   })
 }
 
