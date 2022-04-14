@@ -19,7 +19,8 @@ pub struct Args {
 #[derive(Debug, Clone, Parser)]
 #[clap(author, version, about)]
 pub struct ConfigArgs {
-  /// Listening address. Default to `127.0.0.1:3000` (explicitly written in config).
+  /// Listening address. Default to `127.0.0.1:3000` (explicitly written in
+  /// config).
   #[clap(short, long)]
   pub listen: Option<SocketAddr>,
 

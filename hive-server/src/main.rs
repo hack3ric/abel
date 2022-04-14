@@ -5,6 +5,7 @@ mod metadata;
 mod util;
 mod config;
 
+use crate::config::Config;
 use clap::Parser;
 use config::{Args, HALF_NUM_CPUS};
 use error::Error;
@@ -15,12 +16,11 @@ use hyper::Server;
 use log::{error, info, warn};
 use metadata::Metadata;
 use std::convert::Infallible;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::{fs, io};
 use uuid::Uuid;
-use crate::config::Config;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -38,7 +38,7 @@ async fn run() -> anyhow::Result<()> {
   let args = Args::parse();
 
   let (hive_path, local_storage_path) = init_paths().await;
-  
+
   let config_path = hive_path.join("config.json");
   let config = Config::get(config_path, args.config).await?;
 
@@ -48,7 +48,8 @@ async fn run() -> anyhow::Result<()> {
       local_storage_path,
     })?,
     hive_path: hive_path.clone(),
-    auth_token: Some(config.auth_token),
+    // auth_token: Some(config.auth_token),
+    auth_token: None,
   });
 
   if let Some(auth_token) = &state.auth_token {

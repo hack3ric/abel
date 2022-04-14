@@ -1,8 +1,8 @@
 mod body;
+mod header_map;
 mod request;
 mod response;
 mod uri;
-mod header_map;
 
 pub use request::LuaRequest;
 pub use response::LuaResponse;

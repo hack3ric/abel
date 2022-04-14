@@ -6,6 +6,7 @@ mod env;
 mod fs;
 mod json;
 mod permission;
+mod print;
 mod sandbox;
 
 pub use fs::remove_service_local_storage;

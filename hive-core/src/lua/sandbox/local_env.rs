@@ -4,6 +4,7 @@ use crate::lua::fs::create_preload_fs;
 use crate::lua::http::create_preload_http;
 use crate::lua::json::create_preload_json;
 use crate::lua::permission::create_module_permission;
+use crate::lua::print::create_fn_print;
 use crate::lua::LuaTableExt;
 use crate::permission::PermissionSet;
 use crate::{HiveState, Result, Source};
@@ -19,6 +20,8 @@ pub(super) async fn create_local_env<'a, 'b>(
 ) -> Result<(Table<'a>, Table<'a>)> {
   let local_env_fn = lua.named_registry_value::<_, Function>("local_env_fn")?;
   let (local_env, internal): (Table, Table) = local_env_fn.call(())?;
+
+  local_env.raw_set("print", create_fn_print(lua, service_name)?)?;
 
   let context = lua.pack(create_module_context(lua, service_name.into())?)?;
 

@@ -1,13 +1,13 @@
 use super::body::LuaBody;
+use super::header_map::LuaHeaderMap;
 use hyper::header::HeaderName;
 use hyper::http::{HeaderMap, HeaderValue, StatusCode};
 use hyper::{Body, Response};
 use mlua::{
   ExternalError, ExternalResult, FromLua, Function, Lua, Table, UserData, UserDataFields,
 };
-use std::rc::Rc;
 use std::cell::RefCell;
-use super::header_map::LuaHeaderMap;
+use std::rc::Rc;
 
 #[derive(Default)]
 pub struct LuaResponse {
