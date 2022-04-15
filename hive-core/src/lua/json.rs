@@ -1,5 +1,5 @@
-use mlua::{ExternalResult, Function, Lua, LuaSerdeExt, ExternalError};
 use super::shared::SharedTable;
+use mlua::{ExternalError, ExternalResult, Function, Lua, LuaSerdeExt};
 
 pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, ()| {
@@ -7,6 +7,7 @@ pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
     json_table.raw_set("parse", create_fn_json_parse(lua)?)?;
     json_table.raw_set("stringify", create_fn_json_stringify(lua)?)?;
     json_table.raw_set("array", create_fn_json_array(lua)?)?;
+    json_table.raw_set("undo_array", create_fn_json_undo_array(lua)?)?;
     json_table.raw_set("array_metatable", lua.array_metatable())?;
     Ok(json_table)
   })
@@ -38,7 +39,29 @@ fn create_fn_json_array(lua: &Lua) -> mlua::Result<Function> {
         let table = table.borrow_mut::<SharedTable>()?;
         table.set_array(true);
       }
-      _ => return Err("expected table or shared table".to_lua_err())
+      _ => return Err("expected table or shared table".to_lua_err()),
+    }
+    Ok(table)
+  })
+}
+
+fn create_fn_json_undo_array(lua: &Lua) -> mlua::Result<Function> {
+  lua.create_function(|lua, table: mlua::Value| {
+    match &table {
+      mlua::Value::Table(table) => {
+        if table
+          .get_metatable()
+          .map(|x| x == lua.array_metatable())
+          .unwrap_or(false)
+        {
+          table.set_metatable(None);
+        }
+      }
+      mlua::Value::UserData(table) => {
+        let table = table.borrow_mut::<SharedTable>()?;
+        table.set_array(false);
+      }
+      _ => return Err("expected table or shared table".to_lua_err()),
     }
     Ok(table)
   })
