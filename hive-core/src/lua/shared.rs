@@ -1,8 +1,8 @@
 use super::BadArgument;
 use dashmap::DashMap;
 use mlua::{
-  AnyUserData, ExternalError, ExternalResult, FromLua, Function, Lua, MultiValue, Table, ToLua,
-  UserData,
+  AnyUserData, ExternalError, ExternalResult, FromLua, Function, Lua, LuaSerdeExt, MultiValue,
+  Table, ToLua, UserData,
 };
 use once_cell::sync::Lazy;
 use parking_lot::lock_api::ArcRwLockWriteGuard;
@@ -39,18 +39,23 @@ impl SharedTable {
     Default::default()
   }
 
-  pub fn from_lua_table(table: Table) -> mlua::Result<Self> {
+  pub fn from_lua_table(lua: &Lua, table: Table) -> mlua::Result<Self> {
     let mut int = BTreeMap::new();
-    let mut other = HashMap::new();
-    for kv in table.pairs::<SharedTableKey, SharedTableValue>() {
+    let mut hash = HashMap::new();
+    for kv in table.clone().pairs::<SharedTableKey, SharedTableValue>() {
       let (k, v) = kv?;
       if let Some(i) = k.to_i64() {
         int.insert(i, v);
       } else {
-        other.insert(k, v);
+        hash.insert(k, v);
       }
     }
-    Ok(Self(Arc::new(RwLock::new(SharedTableRepr(int, other)))))
+    let array = table
+      .get_metatable()
+      .map(|x| x == lua.array_metatable())
+      .unwrap_or(false);
+    let repr = SharedTableRepr { int, hash, array };
+    Ok(Self(Arc::new(RwLock::new(repr))))
   }
 
   pub(crate) fn get(&self, key: SharedTableKey) -> MappedRwLockReadGuard<'_, SharedTableValue> {
@@ -65,6 +70,10 @@ impl SharedTable {
     let mut wl = self.0.write();
     let pos = len(&wl) + 1;
     wl.set(SharedTableKey(SharedTableValue::Integer(pos)), value);
+  }
+
+  pub fn set_array(&self, array: bool) {
+    self.0.write().array = array;
   }
 
   #[allow(unused)]
@@ -109,9 +118,9 @@ impl UserData for SharedTable {
 
     methods.add_meta_method("__pairs", |lua, this, ()| {
       let rl = this.0.read();
-      let keys = (rl.0.keys())
+      let keys = (rl.int.keys())
         .map(|i| SharedTableKey(SharedTableValue::Integer(*i)))
-        .chain(rl.1.keys().cloned())
+        .chain(rl.hash.keys().cloned())
         .map(|x| (x, true));
       let keys = lua.create_table_from(keys)?;
       let iter = lua.create_function(
@@ -198,38 +207,39 @@ impl UserData for SharedTableScope {
 }
 
 #[derive(Default)]
-struct SharedTableRepr(
-  BTreeMap<i64, SharedTableValue>,
-  HashMap<SharedTableKey, SharedTableValue>,
-);
+struct SharedTableRepr {
+  int: BTreeMap<i64, SharedTableValue>,
+  hash: HashMap<SharedTableKey, SharedTableValue>,
+  array: bool,
+}
 
 impl SharedTableRepr {
   fn get(&self, key: SharedTableKey) -> &SharedTableValue {
     const CONST_NIL: SharedTableValue = SharedTableValue::Nil;
 
     (key.to_i64())
-      .map(|i| self.0.get(&i))
-      .unwrap_or_else(|| self.1.get(&key))
+      .map(|i| self.int.get(&i))
+      .unwrap_or_else(|| self.hash.get(&key))
       .unwrap_or(&CONST_NIL)
   }
 
   fn set(&mut self, key: SharedTableKey, value: SharedTableValue) -> SharedTableValue {
     if let Some(i) = key.to_i64() {
-      self.0.insert(i, value)
+      self.int.insert(i, value)
     } else {
-      self.1.insert(key, value)
+      self.hash.insert(key, value)
     }
     .unwrap_or(SharedTableValue::Nil)
   }
 
   fn shallow_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<Table<'lua>> {
-    let int_iter = (self.0)
+    let int_iter = (self.int)
       .iter()
       .map(|(i, v)| Ok::<_, mlua::Error>((mlua::Value::Integer(*i), v)));
-    let other_iter = (self.1)
+    let other_iter = (self.hash)
       .iter()
       .map(|(k, v)| Ok::<_, mlua::Error>((k.to_lua(lua)?, v)));
-    let t = lua.create_table_with_capacity(self.0.len() as _, self.1.len() as _)?;
+    let t = lua.create_table_with_capacity(self.int.len() as _, self.hash.len() as _)?;
     for kv in int_iter.chain(other_iter) {
       let (k, v) = kv?;
       t.raw_set(k, v)?;
@@ -243,13 +253,16 @@ impl SharedTableRepr {
     ptr: usize,
     tables: &mut HashMap<usize, Table<'lua>>,
   ) -> mlua::Result<Table<'lua>> {
-    let int_iter = (self.0)
+    let int_iter = (self.int)
       .iter()
       .map(|(i, v)| Ok::<_, mlua::Error>((mlua::Value::Integer(*i), v)));
-    let other_iter = (self.1)
+    let other_iter = (self.hash)
       .iter()
       .map(|(k, v)| Ok::<_, mlua::Error>((k.to_lua(lua)?, v)));
-    let table = lua.create_table_with_capacity(self.0.len() as _, self.1.len() as _)?;
+    let table = lua.create_table_with_capacity(self.int.len() as _, self.hash.len() as _)?;
+    if self.array {
+      table.set_metatable(Some(lua.array_metatable()));
+    }
     tables.insert(ptr, table.clone());
     for kv in int_iter.chain(other_iter) {
       let (k, v) = kv?;
@@ -269,10 +282,10 @@ impl Serialize for SharedTableRepr {
   where
     S: Serializer,
   {
-    if self.0.contains_key(&1) {
+    if self.int.contains_key(&1) || self.array {
       let mut seq = serializer.serialize_seq(None)?;
       let mut prev = 0;
-      for (&i, v) in self.0.iter() {
+      for (&i, v) in self.int.iter() {
         if i < 1 {
           continue;
         }
@@ -284,7 +297,7 @@ impl Serialize for SharedTableRepr {
       }
       seq.end()
     } else {
-      self.1.serialize(serializer)
+      self.hash.serialize(serializer)
     }
   }
 }
@@ -366,18 +379,18 @@ pub fn create_fn_table_insert_shared_3(lua: &Lua) -> mlua::Result<Function> {
         if pos > len(&lock) + 1 {
           return Err(out_of_bounds("insert", 2));
         }
-        let right = lock.0.split_off(&pos);
+        let right = lock.int.split_off(&pos);
         let iter = right.into_iter().map(|(i, v)| (i + 1, v));
-        lock.0.insert(pos, lua.unpack(value)?);
-        lock.0.extend(iter);
+        lock.int.insert(pos, lua.unpack(value)?);
+        lock.int.extend(iter);
       } else if let Ok(mut table) = table.borrow_mut::<SharedTableScope>() {
         if pos > len(&table.0) + 1 {
           return Err(out_of_bounds("insert", 2));
         }
-        let right = table.0 .0.split_off(&pos);
+        let right = table.0.int.split_off(&pos);
         let iter = right.into_iter().map(|(i, v)| (i + 1, v));
-        (table.0 .0).insert(pos, lua.unpack(value)?);
-        table.0 .0.extend(iter);
+        (table.0.int).insert(pos, lua.unpack(value)?);
+        table.0.int.extend(iter);
       } else {
         return Err(userdata_not_shared_table("insert", 1));
       }
@@ -387,7 +400,7 @@ pub fn create_fn_table_insert_shared_3(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn len(x: &SharedTableRepr) -> i64 {
-  x.0.iter().last().map(|x| 0.max(*x.0)).unwrap_or(0)
+  x.int.iter().last().map(|x| 0.max(*x.0)).unwrap_or(0)
 }
 
 #[derive(Clone, Serialize)]
@@ -410,7 +423,7 @@ fn serialize_slice_as_str<S: Serializer>(slice: &[u8], serializer: S) -> Result<
 }
 
 impl<'lua> FromLua<'lua> for SharedTableValue {
-  fn from_lua(lua_value: mlua::Value<'lua>, _lua: &'lua Lua) -> mlua::Result<Self> {
+  fn from_lua(lua_value: mlua::Value<'lua>, lua: &'lua Lua) -> mlua::Result<Self> {
     use mlua::Value::*;
     let result = match lua_value {
       Nil => Self::Nil,
@@ -418,7 +431,7 @@ impl<'lua> FromLua<'lua> for SharedTableValue {
       Integer(x) => Self::Integer(x),
       Number(x) => Self::Number(x),
       String(x) => Self::String(x.as_bytes().into()),
-      Table(x) => Self::Table(self::SharedTable::from_lua_table(x)?),
+      Table(x) => Self::Table(self::SharedTable::from_lua_table(lua, x)?),
       UserData(x) => {
         if let Ok(x) = x.borrow::<self::SharedTable>() {
           Self::Table(x.clone())

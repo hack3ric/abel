@@ -1,4 +1,5 @@
-use mlua::{ExternalResult, Function, Lua, LuaSerdeExt, Table};
+use mlua::{ExternalResult, Function, Lua, LuaSerdeExt, ExternalError};
+use super::shared::SharedTable;
 
 pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, ()| {
@@ -30,8 +31,15 @@ fn create_fn_json_stringify(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn create_fn_json_array(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, table: Table| {
-    table.set_metatable(Some(lua.array_metatable()));
+  lua.create_function(|lua, table: mlua::Value| {
+    match &table {
+      mlua::Value::Table(table) => table.set_metatable(Some(lua.array_metatable())),
+      mlua::Value::UserData(table) => {
+        let table = table.borrow_mut::<SharedTable>()?;
+        table.set_array(true);
+      }
+      _ => return Err("expected table or shared table".to_lua_err())
+    }
     Ok(table)
   })
 }
