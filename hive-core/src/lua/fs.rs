@@ -210,6 +210,7 @@ impl UserData for LuaFile {
       },
     );
 
+    // TODO: accept read mode?
     methods.add_function("lines", |lua, this: AnyUserData| {
       let iter = lua.create_async_function(|lua, this: AnyUserData| async move {
         let mut this = this.borrow_mut::<Self>()?;
@@ -217,7 +218,6 @@ impl UserData for LuaFile {
         this.0.read_until(b'\n', &mut buf).await?;
         lua.create_string(&buf)
       })?;
-
       iter.bind(this)
     });
 

@@ -120,7 +120,7 @@ async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<
         let config = serde_json::from_slice(&bytes)?;
 
         if metadata.started {
-          // TODO: if failed to create service, load it instead
+          // TODO: if failed to start service, load it instead
           // Don't forget to change `metadata.json` too
           let (service, _) = (state.hive)
             .create_service(name.clone(), Some(metadata.uuid), source, config)

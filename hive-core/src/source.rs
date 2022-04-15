@@ -12,6 +12,7 @@ pub struct Source {
   base: Arc<RwLock<PathBuf>>,
 }
 
+// TODO: maybe use sync fs?
 impl Source {
   pub async fn new(base: impl AsRef<Path>) -> Result<Self> {
     let base = fs::canonicalize(base).await?;

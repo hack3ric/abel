@@ -125,7 +125,6 @@ impl Executor<Sandbox> {
                   waker.wake_by_ref();
                 }
               }
-              // TODO: gracefully shut down
               Either::Right((None, _)) => break,
             }
           }
