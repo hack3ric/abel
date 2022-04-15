@@ -1,12 +1,17 @@
 local json = require "json"
 
+function hive.start()
+  names = json.array {}
+end
+
 local function hello(req)
   local name = req.params.name or "world"
-  return { greeting = "Hello, " .. name .. "(new) !" }
+  table.insert(names, name)
+  return { greeting = "Hello, " .. name .. "!" }
 end
 
 local function list(req)
-  return json.array(table.dump(hive.context))
+  return hive.shared.names
 end
 
 hive.register("/", hello)
