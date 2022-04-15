@@ -1,9 +1,9 @@
 use crate::lua::byte_stream::ByteStream;
-use crate::lua::context::SharedTable;
+use crate::lua::shared::SharedTable;
 use crate::LuaResponse;
 use hyper::header::HeaderValue;
 use hyper::{Body, HeaderMap, StatusCode};
-use mlua::{ExternalError, FromLua, Lua, LuaSerdeExt, ToLua};
+use mlua::{ExternalError, ExternalResult, FromLua, Lua, LuaSerdeExt, ToLua};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -59,8 +59,8 @@ impl<'lua> FromLua<'lua> for LuaBody {
       mlua::Value::UserData(u) => {
         if let Ok(s) = u.take::<ByteStream>() {
           Self::ByteStream(s)
-        } else if u.borrow::<SharedTable>().is_ok() {
-          Self::Json(lua.from_value(mlua::Value::UserData(u))?)
+        } else if let Ok(x) = u.borrow::<SharedTable>() {
+          Self::Json(serde_json::to_value(&*x).to_lua_err()?)
         } else {
           return Err("failed to turn object into body".to_lua_err());
         }

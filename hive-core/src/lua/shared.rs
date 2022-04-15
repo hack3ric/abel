@@ -15,20 +15,20 @@ use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-type ContextStore = Arc<DashMap<Box<str>, SharedTable>>;
+type SharedStore = Arc<DashMap<Box<str>, SharedTable>>;
 
-static CONTEXT_STORE: Lazy<ContextStore> = Lazy::new(|| Arc::new(DashMap::new()));
+static SHARED_STORE: Lazy<SharedStore> = Lazy::new(|| Arc::new(DashMap::new()));
 
-pub fn create_module_context(lua: &Lua, service_name: Box<str>) -> mlua::Result<AnyUserData> {
-  let context = CONTEXT_STORE
+pub fn create_module_shared(lua: &Lua, service_name: Box<str>) -> mlua::Result<AnyUserData> {
+  let shared = SHARED_STORE
     .entry(service_name)
     .or_insert(SharedTable::new())
     .clone();
-  lua.create_ser_userdata(context)
+  lua.create_ser_userdata(shared)
 }
 
-pub fn remove_service_contexts(service_name: &str) {
-  CONTEXT_STORE.retain(|k, _| k.as_ref() != service_name);
+pub fn remove_service_shared_stores(service_name: &str) {
+  SHARED_STORE.retain(|k, _| k.as_ref() != service_name);
 }
 
 #[derive(Clone, Default)]

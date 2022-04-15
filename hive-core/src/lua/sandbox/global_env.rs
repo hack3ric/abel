@@ -1,4 +1,4 @@
-use crate::lua::context::{
+use crate::lua::shared::{
   create_fn_table_dump, create_fn_table_insert_shared_2, create_fn_table_insert_shared_3,
   create_fn_table_scope,
 };

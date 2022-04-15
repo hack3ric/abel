@@ -1,10 +1,10 @@
-use crate::lua::context::{create_module_context, SharedTable, SharedTableKey, SharedTableValue};
 use crate::lua::env::create_fn_os_getenv;
 use crate::lua::fs::create_preload_fs;
 use crate::lua::http::create_preload_http;
 use crate::lua::json::create_preload_json;
 use crate::lua::permission::create_module_permission;
 use crate::lua::print::create_fn_print;
+use crate::lua::shared::{create_module_shared, SharedTable, SharedTableKey, SharedTableValue};
 use crate::lua::LuaTableExt;
 use crate::permission::PermissionSet;
 use crate::{HiveState, Result, Source};
@@ -23,11 +23,11 @@ pub(super) async fn create_local_env<'a, 'b>(
 
   local_env.raw_set("print", create_fn_print(lua, service_name)?)?;
 
-  let context = lua.pack(create_module_context(lua, service_name.into())?)?;
+  let shared = lua.pack(create_module_shared(lua, service_name.into())?)?;
 
   let hive: Table = local_env.raw_get("hive")?;
-  hive.raw_set("context", context.clone())?;
-  bind_local_env_to_context(lua, local_env.clone(), context)?;
+  hive.raw_set("shared", shared.clone())?;
+  bind_local_env_to_shared(lua, local_env.clone(), shared)?;
   hive.raw_set(
     "permission",
     create_module_permission(lua, permissions.clone())?,
@@ -49,34 +49,34 @@ pub(super) async fn create_local_env<'a, 'b>(
   Ok((local_env, internal))
 }
 
-fn bind_local_env_to_context(lua: &Lua, local_env: Table, context: mlua::Value) -> Result<()> {
+fn bind_local_env_to_shared(lua: &Lua, local_env: Table, shared: mlua::Value) -> Result<()> {
   let index = lua
     .create_function(
-      |lua, (context, _this, key): (SharedTable, Table, mlua::Value)| {
+      |lua, (shared, _this, key): (SharedTable, Table, mlua::Value)| {
         if let Ok(key) = lua.unpack::<SharedTableKey>(key) {
-          lua.pack(&*context.get(key))
+          lua.pack(&*shared.get(key))
         } else {
           Ok(mlua::Value::Nil)
         }
       },
     )?
-    .bind(context.clone())?;
+    .bind(shared.clone())?;
 
   let newindex = lua
     .create_function(
-      |lua, (context, this, key, value): (SharedTable, Table, mlua::Value, mlua::Value)| {
+      |lua, (shared, this, key, value): (SharedTable, Table, mlua::Value, mlua::Value)| {
         if let (Ok(key), Ok(value)) = (
           lua.unpack::<SharedTableKey>(key.clone()),
           lua.unpack::<SharedTableValue>(value.clone()),
         ) {
-          context.set(key, value);
+          shared.set(key, value);
         } else {
           this.raw_set(key, value)?;
         }
         Ok(())
       },
     )?
-    .bind(context)?;
+    .bind(shared)?;
 
   let mt = lua.create_table_from([("__index", index), ("__newindex", newindex)])?;
   local_env.set_metatable(Some(mt));

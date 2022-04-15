@@ -1,8 +1,8 @@
 mod global_env;
 mod local_env;
 
-use super::context::remove_service_contexts;
 use super::http::LuaResponse;
+use super::shared::remove_service_shared_stores;
 use super::LuaTableExt;
 use crate::lua::http::LuaRequest;
 use crate::path::PathMatcher;
@@ -200,7 +200,7 @@ impl Sandbox {
     // Call modules' `stop`
     let service = loaded.service.try_upgrade()?;
     let service_name = service.name();
-    remove_service_contexts(service_name);
+    remove_service_shared_stores(service_name);
     // if destroy {
     //   remove_service_local_storage(&self.state, service_name).await?;
     // }

@@ -1,13 +1,13 @@
 pub mod http;
 
 mod byte_stream;
-mod context;
 mod env;
 mod fs;
 mod json;
 mod permission;
 mod print;
 mod sandbox;
+mod shared;
 
 pub use fs::remove_service_local_storage;
 pub use sandbox::Sandbox;
