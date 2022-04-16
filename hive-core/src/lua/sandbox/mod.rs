@@ -178,6 +178,10 @@ impl Sandbox {
     self.lua.remove_registry_value(key)
   }
 
+  pub(crate) fn expire_registry_values(&self) {
+    self.lua.expire_registry_values();
+  }
+
   pub(crate) async fn run_start(&self, service: RunningService) -> Result<()> {
     let loaded = self.load_service(service).await?;
     let start_fn: Option<Function> = (self.lua)
