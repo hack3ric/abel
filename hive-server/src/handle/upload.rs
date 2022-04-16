@@ -3,8 +3,9 @@ use crate::util::{asyncify, json_response};
 use crate::{MainState, Result};
 use futures::TryStreamExt;
 use hive_asar::Archive;
+use hive_core::service::Service;
 use hive_core::ErrorKind::ServiceExists;
-use hive_core::{Config, RunningService, ServiceImpl, Source};
+use hive_core::{Config, ServiceImpl, Source};
 use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 use log::info;
 use multer::{Constraints, Field, Multipart, SizeLimit};
@@ -15,6 +16,10 @@ use tokio::fs::{self, File};
 use tokio::io::{self, AsyncWrite};
 use tokio_util::io::StreamReader;
 
+// TODO: Add load, cold update, supporting general `Service` as response
+//
+// Loading isn't always going to succeed, and sometimes we only need to load it
+// without starting it.
 pub(crate) async fn upload(
   state: &MainState,
   name: Option<String>,
@@ -152,16 +157,14 @@ async fn create_service(
   name: String,
   config: Config,
   source_path: impl AsRef<Path>,
-) -> Result<(RunningService, Option<ServiceImpl>)> {
+) -> Result<(Service<'_>, Option<ServiceImpl>)> {
   let source = Source::new(source_path.as_ref()).await?;
   let (service, replaced) = (state.hive)
     .create_service(name, None, source.clone(), config)
     .await?;
-
   let guard = service.upgrade();
-  let name = guard.name();
 
-  let service_path = state.hive_path.join("services").join(&name);
+  let service_path = state.hive_path.join("services").join(guard.name());
   if service_path.exists() {
     fs::remove_dir_all(&service_path).await?;
   }
@@ -181,10 +184,7 @@ async fn create_service(
   Ok((service, replaced))
 }
 
-async fn response(
-  service: RunningService,
-  replaced: Option<ServiceImpl>,
-) -> Result<Response<Body>> {
+async fn response(service: Service<'_>, replaced: Option<ServiceImpl>) -> Result<Response<Body>> {
   let service = service.upgrade();
   if let Some(replaced) = replaced {
     info!(

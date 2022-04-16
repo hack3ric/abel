@@ -6,10 +6,9 @@ use crate::metadata::modify_metadata;
 use crate::util::{authenticate, json_response};
 use crate::{MainState, Result};
 use hive_core::service::Service;
-use hive_core::{RunningServiceGuard, ServiceImpl};
 use hyper::{Body, Method, Request, Response, StatusCode};
 use log::{error, info};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -78,40 +77,19 @@ pub(crate) async fn handle(
   }))
 }
 
-#[derive(Serialize)]
-#[serde(tag = "status")]
-#[allow(non_camel_case_types)]
-enum ServiceSerde<'a> {
-  running { service: RunningServiceGuard<'a> },
-  stopped { service: &'a ServiceImpl },
-}
-
-impl<'a> ServiceSerde<'a> {
-  fn from_service(service: &'a Service<'a>) -> Self {
-    match service {
-      Service::Running(x) => ServiceSerde::running {
-        service: x.upgrade(),
-      },
-      Service::Stopped(x) => ServiceSerde::stopped { service: x },
-    }
-  }
-}
-
 async fn hello_world() -> Result<Response<Body>> {
   json_response(StatusCode::OK, json!({ "msg": "Hello, world!" }))
 }
 
 fn list(state: &MainState) -> Result<Response<Body>> {
   let services = state.hive.list_services().collect::<Vec<_>>();
-  let services = (services.iter())
-    .map(ServiceSerde::from_service)
-    .collect::<Vec<_>>();
+  let services = (services.iter()).map(Service::upgrade).collect::<Vec<_>>();
   json_response(StatusCode::OK, services)
 }
 
 fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
   let service = state.hive.get_service(name)?;
-  json_response(StatusCode::OK, ServiceSerde::from_service(&service))
+  json_response(StatusCode::OK, service.upgrade())
 }
 
 async fn start_stop(state: &MainState, name: &str, query: &str) -> Result<Response<Body>> {

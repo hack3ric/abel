@@ -80,6 +80,41 @@ pub enum Service<'a> {
   Stopped(StoppedService<'a>),
 }
 
+impl Service<'_> {
+  pub fn try_upgrade(&self) -> Result<ServiceGuard<'_>> {
+    Ok(match self {
+      Service::Running(x) => ServiceGuard::Running {
+        service: x.try_upgrade()?,
+      },
+      Service::Stopped(service) => ServiceGuard::Stopped { service },
+    })
+  }
+
+  pub fn upgrade(&self) -> ServiceGuard<'_> {
+    self.try_upgrade().unwrap()
+  }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "status")]
+pub enum ServiceGuard<'a> {
+  #[serde(rename = "running")]
+  Running { service: RunningServiceGuard<'a> },
+  #[serde(rename = "stopped")]
+  Stopped { service: &'a ServiceImpl },
+}
+
+impl Deref for ServiceGuard<'_> {
+  type Target = ServiceImpl;
+
+  fn deref(&self) -> &ServiceImpl {
+    match self {
+      Self::Running { service } => &*service,
+      Self::Stopped { service } => service,
+    }
+  }
+}
+
 /// A reference to an inner service.
 #[derive(Debug, Clone)]
 pub struct RunningService {

@@ -18,7 +18,7 @@ pub use source::Source;
 
 use hyper::{Body, Request, Response};
 use lua::Sandbox;
-use service::{Service, ServiceName, ServicePool, StoppedService};
+use service::{Service, ServiceLoadMode, ServiceName, ServicePool, StoppedService};
 use std::path::PathBuf;
 use std::sync::Arc;
 use task::Pool;
@@ -63,9 +63,17 @@ impl Hive {
     uuid: Option<Uuid>,
     source: Source,
     config: Config,
-  ) -> Result<(RunningService, Option<ServiceImpl>)> {
+  ) -> Result<(Service<'_>, Option<ServiceImpl>)> {
+    // TODO: cold update
     (self.service_pool)
-      .create(&self.sandbox_pool, name.into(), uuid, source, config, true)
+      .create(
+        ServiceLoadMode::HotUpdate,
+        &self.sandbox_pool,
+        name.into(),
+        uuid,
+        source,
+        config,
+      )
       .await
   }
 
@@ -76,9 +84,22 @@ impl Hive {
     source: Source,
     config: Config,
   ) -> Result<StoppedService<'_>> {
-    (self.service_pool)
-      .load(&self.sandbox_pool, name.into(), uuid, source, config)
-      .await
+    let (service, replaced) = (self.service_pool)
+      .create(
+        ServiceLoadMode::Load,
+        &self.sandbox_pool,
+        name.into(),
+        Some(uuid),
+        source,
+        config,
+      )
+      .await?;
+    assert!(replaced.is_none());
+    if let Service::Stopped(service) = service {
+      Ok(service)
+    } else {
+      unreachable!()
+    }
   }
 
   pub fn get_service(&self, name: &str) -> Result<Service<'_>> {
