@@ -51,10 +51,10 @@ impl From<LuaBody> for Body {
 }
 
 impl<'lua> FromLua<'lua> for LuaBody {
-  fn from_lua(lua_value: mlua::Value<'lua>, lua: &'lua Lua) -> mlua::Result<Self> {
+  fn from_lua(lua_value: mlua::Value<'lua>, _lua: &'lua Lua) -> mlua::Result<Self> {
     let result = match lua_value {
       mlua::Value::Nil => Self::Empty,
-      x @ mlua::Value::Table(_) => Self::Json(lua.from_value(x)?),
+      x @ mlua::Value::Table(_) => Self::Json(serde_json::to_value(&x).to_lua_err()?),
       mlua::Value::String(s) => Self::Bytes(s.as_bytes().into()),
       mlua::Value::UserData(u) => {
         if let Ok(s) = u.take::<ByteStream>() {
