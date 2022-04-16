@@ -1,10 +1,11 @@
+use super::Task;
 use crate::lua::Sandbox;
 use crate::Result;
 use futures::future::{select, Either, LocalBoxFuture};
 use futures::stream::FuturesUnordered;
 use futures::{pin_mut, FutureExt, Stream};
 use log::info;
-use std::any::Any;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Relaxed;
@@ -13,7 +14,8 @@ use std::sync::Arc;
 use std::task::{Context, Poll, Wake, Waker};
 use std::time::Duration;
 use tokio::runtime::Handle;
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::broadcast::error::RecvError;
+use tokio::sync::{broadcast, mpsc};
 use tokio::time::Instant;
 
 struct MyWaker {
@@ -53,21 +55,24 @@ impl Drop for PanicNotifier {
   }
 }
 
-type AnyBox = Box<dyn Any + Send>;
-type Task<T> = Arc<Mutex<Option<(TaskFn<T>, oneshot::Sender<AnyBox>)>>>;
-type TaskFn<T> = Box<(dyn FnOnce(Rc<T>) -> LocalBoxFuture<'static, AnyBox> + Send + 'static)>;
-
 // TODO: use broadcast?
 pub struct Executor<T: 'static> {
   pub task_count: Arc<AtomicU32>,
-  task_tx: mpsc::UnboundedSender<Task<T>>,
   panicked: Arc<AtomicBool>,
+  _p: PhantomData<UnsafeSendSyncPtr<T>>,
 }
 
+struct UnsafeSendSyncPtr<T>(*const T);
+unsafe impl<T> Send for UnsafeSendSyncPtr<T> {}
+unsafe impl<T> Sync for UnsafeSendSyncPtr<T> {}
+
 impl Executor<Sandbox> {
-  pub fn new(f: impl FnOnce() -> Result<Sandbox> + Send + 'static, name: String) -> Self {
+  pub fn new(
+    mut task_rx: broadcast::Receiver<Task<Sandbox>>,
+    f: impl FnOnce() -> Result<Sandbox> + Send + 'static,
+    name: String,
+  ) -> Self {
     let task_count = Arc::new(AtomicU32::new(0));
-    let (task_tx, mut task_rx) = mpsc::unbounded_channel::<Task<_>>();
     let panicked = Arc::new(AtomicBool::new(false));
     let panic_notifier = PanicNotifier(panicked.clone());
 
@@ -89,6 +94,7 @@ impl Executor<Sandbox> {
 
           loop {
             let waker_recv = waker_rx.recv();
+            // let new_task_recv = task_rx.recv();
             let new_task_recv = task_rx.recv();
             let clean = clean_interval.tick();
             pin_mut!(waker_recv, new_task_recv, clean);
@@ -109,8 +115,8 @@ impl Executor<Sandbox> {
                   info!("successfully cleaned {count} dropped services");
                 }
               }
-              Either::Right((Some(msg), _)) => {
-                if let Some((task, tx)) = msg.lock().await.take() {
+              Either::Right((Ok(msg), _)) => {
+                if let Some((task, tx)) = msg.try_lock().ok().and_then(|mut x| x.take()) {
                   let task_count = task_count2.clone();
                   task_count.fetch_add(1, Ordering::AcqRel);
                   let obj = obj.clone();
@@ -125,7 +131,8 @@ impl Executor<Sandbox> {
                   waker.wake_by_ref();
                 }
               }
-              Either::Right((None, _)) => break,
+              Either::Right((Err(RecvError::Lagged(_n)), _)) => {}
+              Either::Right((Err(RecvError::Closed), _)) => break,
             }
           }
         })
@@ -134,14 +141,14 @@ impl Executor<Sandbox> {
 
     Self {
       task_count,
-      task_tx,
       panicked,
+      _p: PhantomData,
     }
   }
 
-  pub(crate) fn push<R: Send + 'static>(&self, task: Task<Sandbox>) {
-    let _ = self.task_tx.send(task);
-  }
+  // pub(crate) fn push<R: Send + 'static>(&self, task: Task<Sandbox>) {
+  //   let _ = self.task_tx.send(task);
+  // }
 
   pub fn is_panicked(&self) -> bool {
     self.panicked.load(Ordering::Acquire)

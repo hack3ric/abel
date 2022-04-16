@@ -57,9 +57,10 @@ pub(crate) async fn handle(
 
     // TODO: solve self-referencing issue
     (_, [service_name, ..]) => {
-      let sub_path = "/".to_string() + path[1..].split_once("/").unwrap_or(("", "")).1;
+      let sub_path = "/".to_string() + path[1..].split_once('/').unwrap_or(("", "")).1;
+      let service_name = service_name.to_string();
       (state.hive)
-        .run_service(&service_name.to_string(), sub_path, req)
+        .run_service(&service_name, sub_path, req)
         .await
         .map_err(From::from)
     }

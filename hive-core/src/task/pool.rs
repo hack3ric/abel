@@ -1,15 +1,17 @@
 use super::executor::Executor;
+use super::Task;
 use crate::lua::Sandbox;
 use crate::Result;
 use futures::{Future, FutureExt};
 use std::any::Any;
 use std::rc::Rc;
 use std::sync::Arc;
-use tokio::sync::{oneshot, Mutex, RwLock};
+use tokio::sync::{broadcast, oneshot, Mutex, RwLock};
 
 pub struct Pool<T: 'static> {
   name: String,
   executors: Vec<RwLock<Executor<T>>>,
+  task_tx: broadcast::Sender<Task<T>>,
   init: Arc<dyn Fn() -> Result<T> + Send + Sync + 'static>,
 }
 
@@ -23,19 +25,24 @@ impl Pool<Sandbox> {
     init: impl Fn() -> Result<Sandbox> + Send + Sync + 'static,
   ) -> Result<Self> {
     let init: Arc<dyn Fn() -> _ + Send + Sync + 'static> = Arc::new(init);
+
+    let (task_tx, _) = broadcast::channel(255);
     let executors = (0..size)
       .map(|i| {
         let init = init.clone();
         Ok(RwLock::new(Executor::new(
+          task_tx.subscribe(),
           move || init(),
           format!("{}-{i}", name),
         )))
       })
       .collect::<Result<_>>()?;
+
     Ok(Self {
       name,
       executors,
       init,
+      task_tx,
     })
   }
 
@@ -57,12 +64,14 @@ impl Pool<Sandbox> {
         drop(rl);
         let mut wl = e.write().await;
         let init = self.init.clone();
-        *wl = Executor::new(move || init(), format!("{}-{i}", self.name));
-      } else {
-        rl.push::<R>(task.clone());
+        *wl = Executor::new(
+          self.task_tx.subscribe(),
+          move || init(),
+          format!("{}-{i}", self.name),
+        );
       }
     }
-
+    let _ = self.task_tx.send(task);
     *rx.await.unwrap().downcast().unwrap()
   }
 }

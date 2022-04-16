@@ -73,6 +73,6 @@ impl Config {
   }
 
   pub fn pool_size(&self) -> usize {
-    self.pool_size.unwrap_or_else(|| *HALF_NUM_CPUS)
+    self.pool_size.unwrap_or(*HALF_NUM_CPUS)
   }
 }
