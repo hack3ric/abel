@@ -77,7 +77,6 @@ async fn read_single<'a>(
   save_field(source_field, &mut main).await?;
 
   if let Some(config_field) = multipart.next_field().await? {
-    // FIXME: use `Option::contains` when it stablizes
     if config_field.name().map(|x| x != "config").unwrap_or(true) {
       return Err(From::from((
         "unknown field name",

@@ -37,6 +37,7 @@ pub(crate) async fn handle(
   let result = match (method, &*segments) {
     (GET, []) => hello_world().await,
 
+    // Service management API entry
     (_, ["services", ..]) => match (method, &segments[1..]) {
       _ if !auth => Err(Unauthorized.into()),
       (GET, []) => list(&state),
@@ -55,14 +56,16 @@ pub(crate) async fn handle(
       (_, [..]) => Err((404, "hive path not found", json!({ "path": path })).into()),
     },
 
-    // TODO: solve self-referencing issue
+    // Service entry
     (_, [service_name, ..]) => {
       let sub_path = "/".to_string() + path[1..].split_once('/').unwrap_or(("", "")).1;
-      let service_name = service_name.to_string();
-      (state.hive)
-        .run_service(&service_name, sub_path, req)
-        .await
-        .map_err(From::from)
+      match state.hive.get_running_service(service_name) {
+        Ok(service) => (state.hive)
+          .run_service(service, sub_path, req)
+          .await
+          .map_err(From::from),
+        Err(err) => Err(err.into()),
+      }
     }
 
     _ => Err((404, "hive path not found", json!({ "path": path })).into()),

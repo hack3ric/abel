@@ -95,11 +95,10 @@ impl Hive {
 
   pub async fn run_service(
     &self,
-    name: &str,
+    service: RunningService,
     path: String,
     req: Request<Body>,
   ) -> Result<Response<Body>> {
-    let service = self.get_running_service(name)?;
     (self.sandbox_pool)
       .scope(move |sandbox| async move { Ok(sandbox.run(service, &path, req).await?.into()) })
       .await

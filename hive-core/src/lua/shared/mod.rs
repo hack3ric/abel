@@ -227,11 +227,11 @@ impl SharedTableRepr {
     let int_iter = (self.int)
       .iter()
       .map(|(i, v)| Ok::<_, mlua::Error>((mlua::Value::Integer(*i), v)));
-    let other_iter = (self.hash)
+    let hash_iter = (self.hash)
       .iter()
       .map(|(k, v)| Ok::<_, mlua::Error>((k.to_lua(lua)?, v)));
     let t = lua.create_table_with_capacity(self.int.len() as _, self.hash.len() as _)?;
-    for kv in int_iter.chain(other_iter) {
+    for kv in int_iter.chain(hash_iter) {
       let (k, v) = kv?;
       t.raw_set(k, v)?;
     }

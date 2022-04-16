@@ -210,7 +210,6 @@ impl UserData for LuaFile {
       },
     );
 
-    // TODO: accept read mode?
     methods.add_function("lines", |lua, this: AnyUserData| {
       let iter = lua.create_async_function(|lua, this: AnyUserData| async move {
         let mut this = this.borrow_mut::<Self>()?;
@@ -301,7 +300,6 @@ pub async fn create_preload_fs<'lua>(
 
   lua.create_function(move |lua, ()| {
     let fs_table = lua.create_table()?;
-    // TODO: Symlink `io.open`
     fs_table.raw_set(
       "open",
       create_fn_fs_open(
@@ -315,7 +313,6 @@ pub async fn create_preload_fs<'lua>(
       "mkdir",
       create_fn_fs_mkdir(lua, local_storage_path.clone(), permissions.clone())?,
     )?;
-    // TODO: Symlink `os.remove`
     fs_table.raw_set(
       "remove",
       create_fn_fs_remove(lua, local_storage_path.clone(), permissions.clone())?,

@@ -55,7 +55,6 @@ impl Drop for PanicNotifier {
   }
 }
 
-// TODO: use broadcast?
 pub struct Executor<T: 'static> {
   pub task_count: Arc<AtomicU32>,
   panicked: Arc<AtomicBool>,
