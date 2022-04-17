@@ -93,6 +93,14 @@ impl Service<'_> {
   pub fn upgrade(&self) -> ServiceGuard<'_> {
     self.try_upgrade().unwrap()
   }
+
+  pub fn is_running(&self) -> bool {
+    matches!(self, Self::Running(_))
+  }
+
+  pub fn is_stopped(&self) -> bool {
+    matches!(self, Self::Stopped(_))
+  }
 }
 
 #[derive(Serialize)]

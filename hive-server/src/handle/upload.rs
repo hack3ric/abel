@@ -3,11 +3,11 @@ use crate::util::{asyncify, json_response};
 use crate::{MainState, Result};
 use futures::TryStreamExt;
 use hive_asar::Archive;
-use hive_core::service::Service;
+use hive_core::service::{ErrorPayload, Service};
 use hive_core::ErrorKind::ServiceExists;
 use hive_core::{Config, ServiceImpl, Source};
 use hyper::{Body, HeaderMap, Request, Response, StatusCode};
-use log::info;
+use log::{info, warn};
 use multer::{Constraints, Field, Multipart, SizeLimit};
 use serde_json::json;
 use std::path::Path;
@@ -50,8 +50,9 @@ pub(crate) async fn upload(
   }
 
   let (name, config) = get_name_config(state, name, config).await?;
-  let (service, replaced) = create_service(state, name, config, tmp.into_path()).await?;
-  response(service, replaced).await
+  let (service, replaced, error_payload) =
+    create_service(state, name, config, tmp.into_path()).await?;
+  response(service, replaced, error_payload).await
 }
 
 fn parse_multipart(headers: &HeaderMap, body: Body) -> Result<Multipart<'static>> {
@@ -157,9 +158,9 @@ async fn create_service(
   name: String,
   config: Config,
   source_path: impl AsRef<Path>,
-) -> Result<(Service<'_>, Option<ServiceImpl>)> {
+) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
   let source = Source::new(source_path.as_ref()).await?;
-  let (service, replaced) = (state.hive)
+  let (service, replaced, error_payload) = (state.hive)
     .create_service(name, None, source.clone(), config)
     .await?;
   let guard = service.upgrade();
@@ -181,11 +182,18 @@ async fn create_service(
   )
   .await?;
 
-  Ok((service, replaced))
+  Ok((service, replaced, error_payload))
 }
 
-async fn response(service: Service<'_>, replaced: Option<ServiceImpl>) -> Result<Response<Body>> {
+async fn response(
+  service: Service<'_>,
+  replaced: Option<ServiceImpl>,
+  error_payload: ErrorPayload,
+) -> Result<Response<Body>> {
   let service = service.upgrade();
+  let mut resp = serde_json::Map::<String, serde_json::Value>::new();
+  resp.insert("new_service".into(), json!(service));
+
   if let Some(replaced) = replaced {
     info!(
       "Updated service '{}' ({} -> {})",
@@ -193,15 +201,15 @@ async fn response(service: Service<'_>, replaced: Option<ServiceImpl>) -> Result
       replaced.uuid(),
       service.uuid()
     );
-    json_response(
-      StatusCode::OK,
-      json!({
-        "new_service": service,
-        "replaced_service": replaced
-      }),
-    )
+    resp.insert("replaced_service".into(), json!(replaced));
   } else {
     info!("Created service '{}' ({})", service.name(), service.uuid());
-    json_response(StatusCode::OK, json!({ "new_service": service }))
   }
+
+  if !error_payload.is_empty() {
+    // TODO: serialize error payload
+    warn!("error payload: {error_payload:?}");
+  }
+
+  json_response(StatusCode::OK, resp)
 }

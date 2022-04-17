@@ -1,130 +1,30 @@
+mod create;
 mod impls;
 
+pub use create::{ErrorPayload, ServiceLoadMode};
+pub use impls::*;
+
 use crate::lua::{remove_service_local_storage, Sandbox};
-use crate::source::Source;
 use crate::task::Pool;
 use crate::ErrorKind::*;
-use crate::{Config, HiveState, Result};
+use crate::{HiveState, Result};
 use dashmap::DashMap;
-pub use impls::*;
-use log::{error, warn};
+use log::warn;
 use replace_with::{replace_with_or_abort, replace_with_or_abort_and_return};
 use smallstr::SmallString;
 use std::sync::Arc;
-use uuid::Uuid;
 
 pub type ServiceName = SmallString<[u8; 16]>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ServiceLoadMode {
-  Load,
-  ColdUpdate,
-  HotUpdate,
-}
+type Services = DashMap<ServiceName, ServiceState>;
 
 #[derive(Default)]
 pub struct ServicePool {
-  services: DashMap<ServiceName, ServiceState>,
+  services: Arc<Services>,
 }
 
 impl ServicePool {
   pub fn new() -> Self {
     Default::default()
-  }
-
-  pub async fn create(
-    &self,
-    mode: ServiceLoadMode,
-    sandbox_pool: &Pool<Sandbox>,
-    name: ServiceName,
-    uuid: Option<Uuid>,
-    source: Source,
-    config: Config,
-  ) -> Result<(Service<'_>, Option<ServiceImpl>)> {
-    let hot_update = self.services.contains_key(&*name) && mode == ServiceLoadMode::HotUpdate;
-
-    let name2 = name.clone();
-    let service_state = sandbox_pool
-      .scope(move |sandbox| async move {
-        let Config {
-          pkg_name,
-          description,
-          permissions,
-        } = config;
-        let permissions = Arc::new(permissions);
-        let (paths, local_env, internal) = sandbox
-          .pre_create_service(&name2, source.clone(), permissions.clone())
-          .await?;
-        let service_impl = ServiceImpl {
-          name: name2.clone(),
-          pkg_name,
-          description,
-          paths,
-          source,
-          permissions,
-          uuid: uuid.unwrap_or_else(Uuid::new_v4),
-        };
-        let state = if mode == ServiceLoadMode::Load {
-          sandbox.remove_registry(local_env)?;
-          sandbox.remove_registry(internal)?;
-          ServiceState::Stopped(service_impl)
-        } else {
-          let service_impl = Arc::new(service_impl);
-          let result = sandbox
-            .finish_create_service(
-              &service_impl.name,
-              service_impl.downgrade(),
-              local_env,
-              internal,
-              hot_update,
-            )
-            .await;
-          match result {
-            Ok(()) => ServiceState::Running(service_impl),
-            // TODO: return the error
-            Err(err) => {
-              error!("failed running `hive.start` in {name2}: {err}");
-              let service_impl = Arc::try_unwrap(service_impl).unwrap_or_else(|x| (*x).clone());
-              sandbox.expire_registry_values();
-              ServiceState::Stopped(service_impl)
-            }
-          }
-        };
-        Ok::<_, crate::Error>(state)
-      })
-      .await?;
-
-    match service_state {
-      ServiceState::Running(service_impl) => {
-        let service = service_impl.downgrade();
-        if !hot_update
-          && self
-            .services
-            .get(&*name)
-            .map(|x| matches!(&*x, ServiceState::Running(_)))
-            .unwrap_or(false)
-        {
-          match self.stop(sandbox_pool, &name).await {
-            Ok(_) => {}
-            Err(x) if matches!(x.kind(), ServiceStopped { .. } | ServiceNotFound { .. }) => {}
-            Err(error) => return Err(error),
-          }
-        }
-        let replaced = (self.services)
-          .remove(&*name)
-          .map(|(_name, service)| service.into_impl());
-        assert!(self
-          .services
-          .insert(name, ServiceState::Running(service_impl))
-          .is_none());
-        Ok((Service::Running(service), replaced))
-      }
-      ServiceState::Stopped(_) => {
-        assert!(self.services.insert(name.clone(), service_state).is_none());
-        let service = self.services.get(&*name).unwrap();
-        Ok((Service::Stopped(StoppedService::from_ref(service)), None))
-      }
-    }
   }
 
   pub fn get(&self, name: &str) -> Option<Service<'_>> {
@@ -163,6 +63,22 @@ impl ServicePool {
           .await;
         replace_with_or_abort(state, |x| ServiceState::Stopped(x.into_impl()));
         result.map(|_| StoppedService::from_ref(service.downgrade()))
+      } else {
+        Err(ServiceStopped { name: name.into() }.into())
+      }
+    } else {
+      Err(ServiceNotFound { name: name.into() }.into())
+    }
+  }
+
+  async fn scope_stop(services: Arc<Services>, sandbox: &Sandbox, name: &str) -> Result<()> {
+    if let Some(mut service) = services.get_mut(name) {
+      let state = service.value_mut();
+      if let ServiceState::Running(service2) = state {
+        let x = service2.downgrade();
+        let result = sandbox.run_stop(x).await;
+        replace_with_or_abort(state, |x| ServiceState::Stopped(x.into_impl()));
+        result
       } else {
         Err(ServiceStopped { name: name.into() }.into())
       }

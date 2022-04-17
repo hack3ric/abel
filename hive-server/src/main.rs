@@ -10,6 +10,7 @@ use clap::Parser;
 use config::{Args, HALF_NUM_CPUS};
 use error::Error;
 use handle::handle;
+use hive_core::service::Service;
 use hive_core::{Hive, HiveOptions, Source};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
@@ -119,20 +120,30 @@ async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<
         config.read_to_end(&mut bytes).await?;
         let config = serde_json::from_slice(&bytes)?;
 
-        if metadata.started {
-          // TODO: if failed to start service, load it instead
-          // Don't forget to change `metadata.json` too
-          let (service, _) = (state.hive)
+        let (service, error_payload) = if metadata.started {
+          let (service, _, error_payload) = (state.hive)
             .create_service(name.clone(), Some(metadata.uuid), source, config)
             .await?;
-          let service = service.upgrade();
-          info!("Loaded service '{}' ({})", service.name(), service.uuid())
+          (service, error_payload)
         } else {
-          let service = (state.hive)
+          let (service, error_payload) = (state.hive)
             .load_service(name.clone(), metadata.uuid, source, config)
             .await?;
-          info!("Loaded service '{}' ({})", service.name(), service.uuid())
+          (Service::Stopped(service), error_payload)
+        };
+
+        let service = service.upgrade();
+        if !error_payload.is_empty() {
+          warn!(
+            "Loaded service '{}' with error ({})",
+            service.name(),
+            service.uuid()
+          );
+          warn!("error payload: {error_payload:?}");
+        } else {
+          info!("Loaded service '{}' ({})", service.name(), service.uuid());
         }
+
         Ok::<_, crate::Error>(())
       }
       .await;
