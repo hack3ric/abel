@@ -1,7 +1,7 @@
 mod create;
 mod impls;
 
-pub use create::{ErrorPayload, ServiceLoadMode};
+pub use create::ErrorPayload;
 pub use impls::*;
 
 use crate::lua::{remove_service_local_storage, Sandbox};

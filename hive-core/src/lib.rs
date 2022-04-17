@@ -64,9 +64,20 @@ impl Hive {
     source: Source,
     config: Config,
   ) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
-    // TODO: hot update
     (self.service_pool)
       .cold_update_or_create(&self.sandbox_pool, name.into(), uuid, source, config)
+      .await
+  }
+
+  pub async fn hot_update_service(
+    &self,
+    name: impl Into<ServiceName>,
+    uuid: Option<Uuid>,
+    source: Source,
+    config: Config,
+  ) -> Result<(RunningService, ServiceImpl)> {
+    (self.service_pool)
+      .hot_update(&self.sandbox_pool, name.into(), uuid, source, config)
       .await
   }
 

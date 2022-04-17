@@ -9,13 +9,6 @@ use mlua::RegistryKey;
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ServiceLoadMode {
-  Load,
-  ColdUpdate,
-  HotUpdate,
-}
-
 /// Contains non-critical errors when loading, creating or updating services.
 #[derive(Debug, Default)]
 #[non_exhaustive]
@@ -25,6 +18,10 @@ pub struct ErrorPayload {
 }
 
 impl ErrorPayload {
+  pub fn empty() -> Self {
+    Default::default()
+  }
+
   pub fn is_empty(&self) -> bool {
     self.stop.is_none() && self.start.is_none()
   }
@@ -71,7 +68,7 @@ impl ServicePool {
     let name2 = name.clone();
     let (service_impl, error_payload) = sandbox_pool
       .scope(move |sandbox| async move {
-        let mut error_payload = ErrorPayload::default();
+        let mut error_payload = ErrorPayload::empty();
 
         let (service_impl, local_env, internal) =
           prepare_service(&sandbox, name2.clone(), uuid, source, config).await?;

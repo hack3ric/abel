@@ -50,12 +50,12 @@ impl Source {
     Ok(())
   }
 
-  pub(crate) async fn load<'lua>(
+  pub(crate) async fn load<'a>(
     &self,
-    lua: &'lua Lua,
+    lua: &'a Lua,
     path: &str,
-    env: Table<'lua>,
-  ) -> Result<Function<'lua>> {
+    env: Table<'a>,
+  ) -> Result<Function<'a>> {
     let code = self.get_bytes(path).await?;
     let result = lua
       .load(&code)

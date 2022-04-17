@@ -1,3 +1,4 @@
+use crate::error::{Error, ErrorKind};
 use crate::metadata::Metadata;
 use crate::util::{asyncify, json_response};
 use crate::{MainState, Result};
@@ -160,9 +161,20 @@ async fn create_service(
   source_path: impl AsRef<Path>,
 ) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
   let source = Source::new(source_path.as_ref()).await?;
-  let (service, replaced, error_payload) = (state.hive)
-    .create_service(name, None, source.clone(), config)
-    .await?;
+  let (service, replaced, error_payload) = if state.hive.get_running_service(&name).is_ok() {
+    let (service, replaced) = (state.hive)
+      .hot_update_service(name, None, source.clone(), config)
+      .await?;
+    (
+      Service::Running(service),
+      Some(replaced),
+      Default::default(),
+    )
+  } else {
+    (state.hive)
+      .create_service(name, None, source.clone(), config)
+      .await?
+  };
   let guard = service.upgrade();
 
   let service_path = state.hive_path.join("services").join(guard.name());
@@ -191,8 +203,8 @@ async fn response(
   error_payload: ErrorPayload,
 ) -> Result<Response<Body>> {
   let service = service.upgrade();
-  let mut resp = serde_json::Map::<String, serde_json::Value>::new();
-  resp.insert("new_service".into(), json!(service));
+  let mut body = serde_json::Map::<String, serde_json::Value>::new();
+  body.insert("new_service".into(), json!(service));
 
   if let Some(replaced) = replaced {
     info!(
@@ -201,15 +213,28 @@ async fn response(
       replaced.uuid(),
       service.uuid()
     );
-    resp.insert("replaced_service".into(), json!(replaced));
+    body.insert("replaced_service".into(), json!(replaced));
   } else {
     info!("Created service '{}' ({})", service.name(), service.uuid());
   }
 
   if !error_payload.is_empty() {
-    // TODO: serialize error payload
     warn!("error payload: {error_payload:?}");
+    let mut map = serde_json::Map::<String, serde_json::Value>::new();
+    if let Some(stop) = error_payload.stop {
+      map.insert(
+        "stop".into(),
+        json!(Error::from(ErrorKind::Hive(stop)).into_status_and_body().1),
+      );
+    }
+    if let Some(start) = error_payload.start {
+      map.insert(
+        "start".into(),
+        json!(Error::from(ErrorKind::Hive(start)).into_status_and_body().1),
+      );
+    }
+    body.insert("errors".into(), serde_json::Value::Object(map));
   }
 
-  json_response(StatusCode::OK, resp)
+  json_response(StatusCode::OK, body)
 }

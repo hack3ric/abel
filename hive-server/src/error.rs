@@ -26,6 +26,54 @@ impl Error {
       unreachable!()
     }
   }
+
+  pub fn into_status_and_body(self) -> (StatusCode, serde_json::Map<String, serde_json::Value>) {
+    use ErrorKind::*;
+    let (status, error, detail, backtrace) = match self.kind {
+      Hive(x) => {
+        let (kind, backtrace) = x.into_parts();
+        (
+          kind.status(),
+          kind.error().to_string().into(),
+          kind.detail(),
+          backtrace,
+        )
+      }
+      Custom {
+        status,
+        error: msg,
+        detail,
+      } => (status, msg, detail, self.backtrace),
+      _ => (
+        self.kind.get_str("status").unwrap().parse().unwrap(),
+        self.kind.get_str("error").unwrap().into(),
+        serde_json::to_value(&self.kind).unwrap(),
+        self.backtrace,
+      ),
+    };
+
+    let detail: Option<serde_json::Map<_, _>> = match detail {
+      serde_json::Value::Null => self.detail,
+      serde_json::Value::Object(mut o) => {
+        if let Some(d) = self.detail {
+          o.extend(d);
+        }
+        Some(o)
+      }
+      _ => panic!("expected null or object as error detail"),
+    };
+
+    let mut body = serde_json::Map::<String, serde_json::Value>::new();
+    body.insert("error".to_string(), error.into_owned().into());
+    if let Some(detail) = detail {
+      body.insert("detail".to_string(), detail.into());
+    }
+    if let Some(bt) = backtrace {
+      body.insert("backtrace".to_string(), format!("{bt:?}").into());
+    }
+
+    (status, body)
+  }
 }
 
 impl<E: Into<ErrorKind>> From<E> for Error {
@@ -106,50 +154,7 @@ impl From<&'static str> for Error {
 
 impl From<Error> for Response<Body> {
   fn from(x: Error) -> Self {
-    use ErrorKind::*;
-    let (status, error, detail, backtrace) = match x.kind {
-      // Hive(x) => return x.into(),
-      Hive(x) => {
-        let (kind, backtrace) = x.into_parts();
-        (
-          kind.status(),
-          kind.error().to_string().into(),
-          kind.detail(),
-          backtrace,
-        )
-      }
-      Custom {
-        status,
-        error: msg,
-        detail,
-      } => (status, msg, detail, x.backtrace),
-      _ => (
-        x.kind.get_str("status").unwrap().parse().unwrap(),
-        x.kind.get_str("error").unwrap().into(),
-        serde_json::to_value(&x.kind).unwrap(),
-        x.backtrace,
-      ),
-    };
-
-    let detail: Option<serde_json::Map<_, _>> = match detail {
-      serde_json::Value::Null => x.detail,
-      serde_json::Value::Object(mut o) => {
-        if let Some(d) = x.detail {
-          o.extend(d);
-        }
-        Some(o)
-      }
-      _ => panic!("expected null or object as error detail"),
-    };
-
-    let mut body = serde_json::Map::<String, serde_json::Value>::new();
-    body.insert("error".to_string(), error.into_owned().into());
-    if let Some(detail) = detail {
-      body.insert("detail".to_string(), detail.into());
-    }
-    if let Some(bt) = backtrace {
-      body.insert("backtrace".to_string(), format!("{bt:?}").into());
-    }
+    let (status, body) = x.into_status_and_body();
 
     json_response_raw(status, body)
   }
