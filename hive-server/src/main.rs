@@ -122,12 +122,12 @@ async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<
 
         let (service, error_payload) = if metadata.started {
           let (service, _, error_payload) = (state.hive)
-            .create_service(name.clone(), Some(metadata.uuid), source, config)
+            .cold_update_or_create_service(name.clone(), Some(metadata.uuid), source, config)
             .await?;
           (service, error_payload)
         } else {
           let (service, error_payload) = (state.hive)
-            .load_service(name.clone(), metadata.uuid, source, config)
+            .preload_service(name.clone(), metadata.uuid, source, config)
             .await?;
           (Service::Stopped(service), error_payload)
         };

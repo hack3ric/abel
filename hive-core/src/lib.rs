@@ -57,7 +57,19 @@ impl Hive {
     })
   }
 
-  pub async fn create_service(
+  pub async fn load_service(
+    &self,
+    name: impl Into<ServiceName>,
+    uuid: Option<Uuid>,
+    source: Source,
+    config: Config,
+  ) -> Result<(StoppedService<'_>, Option<ServiceImpl>, ErrorPayload)> {
+    (self.service_pool)
+      .load(&self.sandbox_pool, name.into(), uuid, source, config)
+      .await
+  }
+
+  pub async fn cold_update_or_create_service(
     &self,
     name: impl Into<ServiceName>,
     uuid: Option<Uuid>,
@@ -81,7 +93,7 @@ impl Hive {
       .await
   }
 
-  pub async fn load_service(
+  pub async fn preload_service(
     &self,
     name: impl Into<ServiceName>,
     uuid: Uuid,

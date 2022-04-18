@@ -10,12 +10,35 @@ use hive_core::{Config, ServiceImpl, Source};
 use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 use log::{info, warn};
 use multer::{Constraints, Field, Multipart, SizeLimit};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::Path;
 use tempfile::{tempdir, tempfile};
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncWrite};
 use tokio_util::io::StreamReader;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+enum UploadMode {
+  #[serde(rename = "hot")]
+  Hot,
+  #[serde(rename = "cold")]
+  Cold,
+  #[serde(rename = "load")]
+  Load,
+}
+
+impl Default for UploadMode {
+  fn default() -> Self {
+    Self::Hot
+  }
+}
+
+#[derive(Deserialize)]
+struct UploadQuery {
+  #[serde(default)]
+  mode: UploadMode,
+}
 
 // TODO: Add load, cold update, supporting general `Service` as response
 //
@@ -28,6 +51,8 @@ pub(crate) async fn upload(
 ) -> Result<Response<Body>> {
   let (parts, body) = req.into_parts();
   let mut multipart = parse_multipart(&parts.headers, body)?;
+
+  let UploadQuery { mode } = serde_qs::from_str(parts.uri.query().unwrap_or(""))?;
 
   let source_field = multipart.next_field().await?.ok_or((
     "no source uploaded",
@@ -52,7 +77,7 @@ pub(crate) async fn upload(
 
   let (name, config) = get_name_config(state, name, config).await?;
   let (service, replaced, error_payload) =
-    create_service(state, name, config, tmp.into_path()).await?;
+    create_service(state, mode, name, config, tmp.into_path()).await?;
   response(service, replaced, error_payload).await
 }
 
@@ -147,7 +172,7 @@ async fn get_name_config(
     (name, Default::default())
   };
 
-  if !name_provided && state.hive.get_running_service(&name).is_ok() {
+  if !name_provided && state.hive.get_service(&name).is_ok() {
     return Err(ServiceExists { name: name.into() }.into());
   }
 
@@ -156,24 +181,35 @@ async fn get_name_config(
 
 async fn create_service(
   state: &MainState,
+  mode: UploadMode,
   name: String,
   config: Config,
   source_path: impl AsRef<Path>,
 ) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
   let source = Source::new(source_path.as_ref()).await?;
-  let (service, replaced, error_payload) = if state.hive.get_running_service(&name).is_ok() {
-    let (service, replaced) = (state.hive)
-      .hot_update_service(name, None, source.clone(), config)
-      .await?;
-    (
-      Service::Running(service),
-      Some(replaced),
-      Default::default(),
-    )
-  } else {
-    (state.hive)
-      .create_service(name, None, source.clone(), config)
-      .await?
+  let (service, replaced, error_payload) = match mode {
+    UploadMode::Hot if state.hive.get_running_service(&name).is_ok() => {
+      let (service, replaced) = (state.hive)
+        .hot_update_service(name, None, source.clone(), config)
+        .await?;
+      (
+        Service::Running(service),
+        Some(replaced),
+        Default::default(),
+      )
+    }
+    UploadMode::Hot | UploadMode::Cold => {
+      (state.hive)
+        .cold_update_or_create_service(name, None, source.clone(), config)
+        .await?
+    }
+    UploadMode::Load => {
+      let (service, replaced, error_payload) = state
+        .hive
+        .load_service(name, None, source.clone(), config)
+        .await?;
+      (Service::Stopped(service), replaced, error_payload)
+    }
   };
   let guard = service.upgrade();
 
