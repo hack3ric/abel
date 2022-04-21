@@ -11,6 +11,7 @@ use parking_lot::lock_api::ArcRwLockWriteGuard;
 use parking_lot::{MappedRwLockReadGuard, RawRwLock, RwLock, RwLockReadGuard};
 use serde::ser::SerializeSeq;
 use serde::{Serialize, Serializer};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -63,12 +64,6 @@ impl SharedTable {
 
   pub(crate) fn set(&self, key: SharedTableKey, value: SharedTableValue) -> SharedTableValue {
     self.0.write().set(key, value)
-  }
-
-  fn push(&self, value: SharedTableValue) {
-    let mut wl = self.0.write();
-    let pos = len(&wl) + 1;
-    wl.set(SharedTableKey(SharedTableValue::Integer(pos)), value);
   }
 
   pub fn set_array(&self, array: bool) {
@@ -149,17 +144,24 @@ impl Serialize for SharedTable {
   }
 }
 
-struct SharedTableScope(ArcRwLockWriteGuard<RawRwLock, SharedTableRepr>);
+struct SharedTableScope(RefCell<ArcRwLockWriteGuard<RawRwLock, SharedTableRepr>>);
 
 impl SharedTableScope {
   fn new(x: Arc<RwLock<SharedTableRepr>>) -> Self {
-    Self(x.write_arc())
+    Self(RefCell::new(x.write_arc()))
+  }
+
+  fn push(&self, value: SharedTableValue) {
+    let mut wl = self.0.borrow_mut();
+    let pos = len(&wl) + 1;
+    wl.set(SharedTableKey(SharedTableValue::Integer(pos)), value);
   }
 
   fn deep_dump<'lua>(&self, lua: &'lua Lua) -> mlua::Result<Table<'lua>> {
-    self.0._deep_dump(
+    let guard = self.0.borrow();
+    guard._deep_dump(
       lua,
-      Arc::as_ptr(ArcRwLockWriteGuard::rwlock(&self.0)) as _,
+      Arc::as_ptr(ArcRwLockWriteGuard::rwlock(&guard)) as _,
       &mut HashMap::new(),
     )
   }
@@ -168,24 +170,25 @@ impl SharedTableScope {
 impl UserData for SharedTableScope {
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_meta_method("__index", |lua, this, key: SharedTableKey| {
-      let result = this.0.get(key);
-      (&*result).to_lua(lua)
+      let guard = this.0.borrow();
+      let result = guard.get(key);
+      lua.pack(result)
     });
 
-    methods.add_meta_method_mut(
+    methods.add_meta_method(
       "__newindex",
       |_lua, this, (key, value): (SharedTableKey, SharedTableValue)| {
-        this.0.set(key, value);
+        this.0.borrow_mut().set(key, value);
         Ok(())
       },
     );
 
-    methods.add_meta_method("__len", |_lua, this, ()| Ok(len(&this.0)));
+    methods.add_meta_method("__len", |_lua, this, ()| Ok(len(&this.0.borrow())));
 
     // TODO: replace shallow dump with new implementation used in `Table`?
     methods.add_meta_method("__pairs", |lua, this, ()| {
       let next: mlua::Value = lua.globals().raw_get("next")?;
-      let table = this.0.shallow_dump(lua)?;
+      let table = this.0.borrow().shallow_dump(lua)?;
       Ok((next, table, mlua::Value::Nil))
     });
   }
@@ -193,7 +196,7 @@ impl UserData for SharedTableScope {
 
 impl Serialize for SharedTableScope {
   fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
-    self.0.serialize(ser)
+    self.0.borrow().serialize(ser)
   }
 }
 

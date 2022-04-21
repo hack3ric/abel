@@ -1,6 +1,6 @@
 use super::{len, SharedTable, SharedTableScope};
-use crate::lua::BadArgument;
-use mlua::{Function, Lua, Table};
+use crate::lua::{BadArgument, LuaTableExt};
+use mlua::{AnyUserData, ExternalError, Function, Lua, MultiValue, Table};
 
 pub fn apply_table_module_patch(lua: &Lua, table_module: Table) -> mlua::Result<()> {
   table_module.raw_set("dump", create_fn_table_dump(lua)?)?;
@@ -47,76 +47,81 @@ fn create_fn_table_scope(lua: &Lua) -> mlua::Result<Function> {
   })
 }
 
-fn create_fn_table_insert_shared_2(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, (table, value): (mlua::AnyUserData, mlua::Value)| {
-    if let Ok(table) = table.borrow::<SharedTable>() {
-      table.push(lua.unpack(value)?);
-      Ok(())
-    } else {
-      Err(userdata_not_shared_table("insert", 1))
-    }
-  })
-}
-
-fn create_fn_table_insert_shared_3(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(
-    |lua, (table, pos, value): (mlua::AnyUserData, i64, mlua::Value)| {
-      if pos < 1 {
-        return Err(out_of_bounds("insert", 2));
-      }
-      if let Ok(table) = table.borrow::<SharedTable>() {
-        let mut lock = table.0.write();
-        if pos > len(&lock) + 1 {
-          return Err(out_of_bounds("insert", 2));
-        }
-        let right = lock.int.split_off(&pos);
-        let iter = right.into_iter().map(|(i, v)| (i + 1, v));
-        lock.int.insert(pos, lua.unpack(value)?);
-        lock.int.extend(iter);
-      } else if let Ok(mut table) = table.borrow_mut::<SharedTableScope>() {
-        if pos > len(&table.0) + 1 {
-          return Err(out_of_bounds("insert", 2));
-        }
-        let right = table.0.int.split_off(&pos);
-        let iter = right.into_iter().map(|(i, v)| (i + 1, v));
-        (table.0.int).insert(pos, lua.unpack(value)?);
-        table.0.int.extend(iter);
-      } else {
-        return Err(userdata_not_shared_table("insert", 1));
-      }
-      Ok(())
-    },
-  )
-}
-
-// TODO: replace it with Rust implementation
-fn create_fn_table_insert(lua: &Lua) -> mlua::Result<Function> {
-  let table_insert_shared_2 = create_fn_table_insert_shared_2(lua)?;
-  let table_insert_shared_3 = create_fn_table_insert_shared_3(lua)?;
-
-  let table_insert = mlua::chunk! {
-    local old_table_insert = table.insert
-    local function insert(t, ...)
-      if type(t) == "table" then
-        return old_table_insert(t, ...)
-      elseif type(t) == "userdata" then
-        local len = select("#", ...)
-        if len == 1 then
-          // t[#t + 1] = ... // this caused data racing
-          $table_insert_shared_2(t, ...)
-        elseif len == 2 then
-          $table_insert_shared_3(t, ...)
-        else
-          error "wrong number of arguments"
-        end
-      else
-        error("expected table or shared table, got " .. type(t))
-      end
-    end
-    return insert
+fn table_insert_shared_2(lua: &Lua, table: AnyUserData, value: mlua::Value) -> mlua::Result<()> {
+  let (borrowed, owned);
+  let table = if let Ok(table) = table.borrow::<SharedTable>() {
+    owned = SharedTableScope::new(table.0.clone());
+    &owned
+  } else if let Ok(table) = table.borrow::<SharedTableScope>() {
+    borrowed = table;
+    &borrowed
+  } else {
+    return Err(userdata_not_shared_table("insert", 1));
   };
-  lua.load(table_insert).call(())
+
+  table.push(lua.unpack(value)?);
+  Ok(())
 }
+
+fn table_insert_shared_3(
+  lua: &Lua,
+  table: AnyUserData,
+  pos: i64,
+  value: mlua::Value,
+) -> mlua::Result<()> {
+  if pos < 1 {
+    return Err(out_of_bounds("insert", 2));
+  }
+  let (borrowed, owned);
+  let table = if let Ok(table) = table.borrow::<SharedTable>() {
+    owned = SharedTableScope::new(table.0.clone());
+    &owned
+  } else if let Ok(table) = table.borrow::<SharedTableScope>() {
+    borrowed = table;
+    &borrowed
+  } else {
+    return Err(userdata_not_shared_table("insert", 1));
+  };
+
+  let mut guard = table.0.borrow_mut();
+  if pos > len(&guard) + 1 {
+    return Err(out_of_bounds("insert", 2));
+  }
+  let right = guard.int.split_off(&pos);
+  let iter = right.into_iter().map(|(i, v)| (i + 1, v));
+  (guard.int).insert(pos, lua.unpack(value)?);
+  guard.int.extend(iter);
+
+  Ok(())
+}
+
+fn create_fn_table_insert(lua: &Lua) -> mlua::Result<Function> {
+  let old: Function = lua
+    .globals()
+    .raw_get_path("<global>", &["table", "insert"])?;
+  let f = lua.create_function(
+    |lua, (old, table, args): (Function, mlua::Value, MultiValue)| match table {
+      mlua::Value::Table(table) => old.call::<_, ()>((table, args)),
+      mlua::Value::UserData(table) => {
+        let mut args = args.into_iter();
+        match args.len() {
+          1 => table_insert_shared_2(lua, table, args.next().unwrap()),
+          2 => table_insert_shared_3(
+            lua,
+            table,
+            lua.unpack(args.next().unwrap())?,
+            args.next().unwrap(),
+          ),
+          _ => Err("wrong number of arguments".to_lua_err()),
+        }
+      }
+      _ => Err(format!("expected table or shared table, got {}", table.type_name()).to_lua_err()),
+    },
+  )?;
+  f.bind(old)
+}
+
+// Exceptions
 
 fn userdata_not_shared_table(fn_name: &'static str, pos: u8) -> mlua::Error {
   BadArgument::new(fn_name, pos, "failed to borrow userdata as shared table").into()

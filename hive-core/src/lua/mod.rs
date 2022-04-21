@@ -60,11 +60,8 @@ impl BadArgument {
     pos: u8,
     msg: impl Into<Box<dyn std::error::Error + Send + Sync>>,
   ) -> Self {
-    Self {
-      fn_name,
-      pos,
-      msg: msg.into().into(),
-    }
+    let msg = msg.into().into();
+    Self { fn_name, pos, msg }
   }
 }
 
