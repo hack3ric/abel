@@ -11,7 +11,7 @@ local function hello(req)
 end
 
 local function list(req)
-  return hive.shared.names
+  return names
 end
 
 hive.register("/", hello)
