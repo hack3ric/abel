@@ -2,7 +2,7 @@ use crate::lua::byte_stream::ByteStream;
 use crate::lua::BadArgument;
 use crate::path::{normalize_path, normalize_path_str};
 use crate::permission::{Permission, PermissionSet};
-use crate::source::{DirSource, GenericFile, Source};
+use crate::source::{GenericFile, Source};
 use crate::{HiveState, Result};
 use mlua::{
   AnyUserData, ExternalError, ExternalResult, Function, Lua, MultiValue, ToLua, UserData,
@@ -236,7 +236,7 @@ impl UserData for LuaFile {
 
 fn create_fn_fs_open(
   lua: &Lua,
-  source: DirSource,
+  source: impl Source,
   local_storage_path: Arc<Path>,
   permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function<'_>> {
@@ -293,7 +293,7 @@ pub async fn create_preload_fs<'lua>(
   lua: &'lua Lua,
   state: &HiveState,
   service_name: &str,
-  source: DirSource,
+  source: impl Source,
   permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function<'lua>> {
   let local_storage_path: Arc<Path> = state.local_storage_path.join(service_name).into();

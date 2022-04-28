@@ -8,7 +8,8 @@ use crate::lua::print::create_fn_print;
 use crate::lua::shared::{create_module_shared, SharedTable, SharedTableKey, SharedTableValue};
 use crate::lua::LuaTableExt;
 use crate::permission::PermissionSet;
-use crate::{DirSource, HiveState, Result};
+use crate::source::{Source, SourceUserData};
+use crate::{HiveState, Result};
 use mlua::{Function, Lua, Table};
 use std::sync::Arc;
 
@@ -16,7 +17,7 @@ pub(super) async fn create_local_env<'a, 'b>(
   lua: &'a Lua,
   state: &HiveState,
   service_name: &'b str,
-  source: DirSource,
+  source: impl Source,
   permissions: Arc<PermissionSet>,
 ) -> Result<(Table<'a>, Table<'a>)> {
   let local_env_fn = lua.named_registry_value::<_, Function>("local_env_fn")?;
@@ -34,7 +35,7 @@ pub(super) async fn create_local_env<'a, 'b>(
     create_module_permission(lua, permissions.clone())?,
   )?;
 
-  internal.raw_set("source", source.clone())?;
+  internal.raw_set("source", SourceUserData(source.clone()))?;
 
   let preload: Table = internal.raw_get_path("<internal>", &["package", "preload"])?;
   let fs_preload = create_preload_fs(lua, state, service_name, source, permissions.clone()).await?;

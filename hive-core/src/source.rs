@@ -2,7 +2,7 @@ use crate::path::normalize_path_str;
 use crate::Result;
 use async_trait::async_trait;
 use mlua::{ExternalResult, Function, Lua, Table, UserData};
-use std::fs::Metadata;
+use std::fs::Metadata as FsMetadata;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -45,24 +45,6 @@ impl Source for DirSource {
     (self.base.read().await)
       .join(normalize_path_str(path))
       .exists()
-  }
-}
-
-// TODO: impl UserData for any type that implements Source
-impl UserData for DirSource {
-  fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-    methods.add_async_method("exists", |_lua, this, path: mlua::String| async move {
-      let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
-      Ok(this.exists(path).await)
-    });
-
-    methods.add_async_method(
-      "load",
-      |lua, this, (path, env): (mlua::String, Table)| async move {
-        let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
-        this.load(lua, path, env).await.to_lua_err()
-      },
-    )
   }
 }
 
@@ -137,14 +119,16 @@ impl AsyncSeek for ReadOnlyArcCursor {
 #[async_trait(?Send)]
 impl FileLike for ReadOnlyArcCursor {
   async fn metadata(&self) -> io::Result<Metadata> {
-    // TODO: metadata for cursor
-    todo!()
+    Ok(Metadata {
+      len: self.0.get_ref().len() as _,
+    })
   }
 }
 
 #[async_trait(?Send)]
-pub trait Source {
+pub trait Source: Clone + 'static {
   async fn get(&self, path: &str) -> io::Result<GenericFile>;
+  async fn exists(&self, path: &str) -> bool;
 
   async fn get_bytes(&self, path: &str) -> io::Result<Vec<u8>> {
     let mut code_file = self.get(path).await?;
@@ -157,8 +141,6 @@ pub trait Source {
     Ok(code)
   }
 
-  async fn exists(&self, path: &str) -> bool;
-
   async fn load<'a>(&self, lua: &'a Lua, path: &str, env: Table<'a>) -> Result<Function<'a>> {
     let code = self.get_bytes(path).await?;
     let result = lua
@@ -167,6 +149,27 @@ pub trait Source {
       .set_environment(env)?
       .into_function()?;
     Ok(result)
+  }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SourceUserData<T: Source + 'static>(pub(crate) T);
+
+// TODO: impl UserData for any type that implements Source
+impl<T: Source + 'static> UserData for SourceUserData<T> {
+  fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
+    methods.add_async_method("exists", |_lua, this, path: mlua::String| async move {
+      let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
+      Ok(this.0.exists(path).await)
+    });
+
+    methods.add_async_method(
+      "load",
+      |lua, this, (path, env): (mlua::String, Table)| async move {
+        let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
+        this.0.load(lua, path, env).await.to_lua_err()
+      },
+    )
   }
 }
 
@@ -180,6 +183,24 @@ pub trait FileLike: AsyncRead + AsyncWrite + AsyncSeek {
 #[async_trait(?Send)]
 impl FileLike for File {
   async fn metadata(&self) -> io::Result<Metadata> {
-    self.metadata().await
+    Ok(self.metadata().await?.into())
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct Metadata {
+  len: u64,
+}
+
+impl Metadata {
+  #[allow(clippy::len_without_is_empty)]
+  pub fn len(&self) -> u64 {
+    self.len
+  }
+}
+
+impl From<FsMetadata> for Metadata {
+  fn from(x: FsMetadata) -> Self {
+    Self { len: x.len() }
   }
 }
