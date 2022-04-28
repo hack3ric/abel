@@ -2,9 +2,10 @@ use super::{
   RunningService, Service, ServiceImpl, ServiceName, ServicePool, ServiceState, StoppedService,
 };
 use crate::lua::Sandbox;
+use crate::source::DirSource;
 use crate::task::Pool;
 use crate::ErrorKind::{self, ServiceNotFound, ServiceStopped};
-use crate::{Config, Error, Result, Source};
+use crate::{Config, Error, Result};
 use mlua::RegistryKey;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -31,7 +32,7 @@ async fn prepare_service(
   sandbox: &Sandbox,
   name: ServiceName,
   uuid: Option<Uuid>,
-  source: Source,
+  source: DirSource,
   config: Config,
 ) -> Result<(ServiceImpl, RegistryKey, RegistryKey)> {
   let Config {
@@ -61,7 +62,7 @@ impl ServicePool {
     sandbox_pool: &Pool<Sandbox>,
     name: ServiceName,
     uuid: Option<Uuid>,
-    source: Source,
+    source: DirSource,
     config: Config,
   ) -> Result<(StoppedService<'_>, Option<ServiceImpl>, ErrorPayload)> {
     let services = self.services.clone();
@@ -101,7 +102,7 @@ impl ServicePool {
     sandbox_pool: &Pool<Sandbox>,
     name: ServiceName,
     uuid: Option<Uuid>,
-    source: Source,
+    source: DirSource,
     config: Config,
   ) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
     let services = self.services.clone();
@@ -176,7 +177,7 @@ impl ServicePool {
     sandbox_pool: &Pool<Sandbox>,
     name: ServiceName,
     uuid: Option<Uuid>,
-    source: Source,
+    source: DirSource,
     config: Config,
   ) -> Result<(RunningService, ServiceImpl)> {
     match self.get(&*name) {

@@ -5,8 +5,9 @@ use crate::{MainState, Result};
 use futures::TryStreamExt;
 use hive_asar::Archive;
 use hive_core::service::{ErrorPayload, Service};
+use hive_core::source::DirSource;
 use hive_core::ErrorKind::ServiceExists;
-use hive_core::{Config, ServiceImpl, Source};
+use hive_core::{Config, ServiceImpl};
 use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 use log::{info, warn};
 use multer::{Constraints, Field, Multipart, SizeLimit};
@@ -186,7 +187,7 @@ async fn create_service(
   config: Config,
   source_path: impl AsRef<Path>,
 ) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
-  let source = Source::new(source_path.as_ref()).await?;
+  let source = DirSource::new(source_path.as_ref()).await?;
   let (service, replaced, error_payload) = match mode {
     UploadMode::Hot if state.hive.get_running_service(&name).is_ok() => {
       let (service, replaced) = (state.hive)

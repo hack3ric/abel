@@ -8,7 +8,7 @@ use crate::lua::http::LuaRequest;
 use crate::path::PathMatcher;
 use crate::permission::PermissionSet;
 use crate::service::RunningService;
-use crate::source::Source;
+use crate::source::{DirSource, Source};
 use crate::ErrorKind::*;
 use crate::{HiveState, Result};
 use global_env::modify_global_env;
@@ -129,7 +129,7 @@ impl Sandbox {
   pub(crate) async fn pre_create_service(
     &self,
     name: &str,
-    source: Source,
+    source: DirSource,
     permissions: Arc<PermissionSet>,
   ) -> Result<(Vec<PathMatcher>, RegistryKey, RegistryKey)> {
     if !NAME_CHECK_REGEX.is_match(name) {
@@ -214,7 +214,7 @@ impl Sandbox {
   async fn run_source<'a>(
     &'a self,
     name: &str,
-    source: Source,
+    source: DirSource,
     permissions: Arc<PermissionSet>,
   ) -> Result<(RegistryKey, RegistryKey, Table<'a>)> {
     let (local_env, internal) =

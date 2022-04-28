@@ -8,7 +8,7 @@ use crate::lua::print::create_fn_print;
 use crate::lua::shared::{create_module_shared, SharedTable, SharedTableKey, SharedTableValue};
 use crate::lua::LuaTableExt;
 use crate::permission::PermissionSet;
-use crate::{HiveState, Result, Source};
+use crate::{DirSource, HiveState, Result};
 use mlua::{Function, Lua, Table};
 use std::sync::Arc;
 
@@ -16,7 +16,7 @@ pub(super) async fn create_local_env<'a, 'b>(
   lua: &'a Lua,
   state: &HiveState,
   service_name: &'b str,
-  source: Source,
+  source: DirSource,
   permissions: Arc<PermissionSet>,
 ) -> Result<(Table<'a>, Table<'a>)> {
   let local_env_fn = lua.named_registry_value::<_, Function>("local_env_fn")?;

@@ -2,7 +2,8 @@ use crate::lua::byte_stream::ByteStream;
 use crate::lua::BadArgument;
 use crate::path::{normalize_path, normalize_path_str};
 use crate::permission::{Permission, PermissionSet};
-use crate::{HiveState, Result, Source};
+use crate::source::{DirSource, GenericFile, Source};
+use crate::{HiveState, Result};
 use mlua::{
   AnyUserData, ExternalError, ExternalResult, Function, Lua, MultiValue, ToLua, UserData,
   UserDataMethods, Variadic,
@@ -11,7 +12,7 @@ use std::borrow::Cow;
 use std::io::SeekFrom;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::fs::{self, File, OpenOptions};
+use tokio::fs::{self, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,7 +88,7 @@ impl ReadMode {
   }
 }
 
-pub struct LuaFile(BufReader<File>);
+pub struct LuaFile(BufReader<GenericFile>);
 
 async fn read_once<'lua>(
   this: &mut LuaFile,
@@ -235,7 +236,7 @@ impl UserData for LuaFile {
 
 fn create_fn_fs_open(
   lua: &Lua,
-  source: Source,
+  source: DirSource,
   local_storage_path: Arc<Path>,
   permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function<'_>> {
@@ -251,10 +252,12 @@ fn create_fn_fs_open(
         let file = match scheme {
           "local" => {
             let path = normalize_path_str(path);
-            mode
-              .to_open_options()
-              .open(local_storage_path.join(path))
-              .await?
+            Box::pin(
+              mode
+                .to_open_options()
+                .open(local_storage_path.join(path))
+                .await?,
+            )
           }
           "external" => {
             let path = normalize_path(path);
@@ -272,7 +275,7 @@ fn create_fn_fs_open(
                 permissions.check(&write)?;
               }
             }
-            mode.to_open_options().open(path).await?
+            Box::pin(mode.to_open_options().open(path).await?)
           }
           "source" => {
             // For `source:`, the only open mode is "read"
@@ -290,7 +293,7 @@ pub async fn create_preload_fs<'lua>(
   lua: &'lua Lua,
   state: &HiveState,
   service_name: &str,
-  source: Source,
+  source: DirSource,
   permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function<'lua>> {
   let local_storage_path: Arc<Path> = state.local_storage_path.join(service_name).into();

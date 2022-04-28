@@ -1,11 +1,11 @@
 pub mod permission;
 pub mod service;
+pub mod source;
 
 mod config;
 mod error;
 mod lua;
 mod path;
-mod source;
 mod task;
 mod util;
 
@@ -14,11 +14,11 @@ pub use error::{Error, ErrorKind, Result};
 pub use lua::http::{LuaRequest, LuaResponse};
 pub use mlua::Error as LuaError;
 pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
-pub use source::Source;
 
 use hyper::{Body, Request, Response};
 use lua::Sandbox;
 use service::{ErrorPayload, Service, ServiceName, ServicePool, StoppedService};
+use source::DirSource;
 use std::path::PathBuf;
 use std::sync::Arc;
 use task::Pool;
@@ -61,7 +61,7 @@ impl Hive {
     &self,
     name: impl Into<ServiceName>,
     uuid: Option<Uuid>,
-    source: Source,
+    source: DirSource,
     config: Config,
   ) -> Result<(StoppedService<'_>, Option<ServiceImpl>, ErrorPayload)> {
     (self.service_pool)
@@ -73,7 +73,7 @@ impl Hive {
     &self,
     name: impl Into<ServiceName>,
     uuid: Option<Uuid>,
-    source: Source,
+    source: DirSource,
     config: Config,
   ) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
     (self.service_pool)
@@ -85,7 +85,7 @@ impl Hive {
     &self,
     name: impl Into<ServiceName>,
     uuid: Option<Uuid>,
-    source: Source,
+    source: DirSource,
     config: Config,
   ) -> Result<(RunningService, ServiceImpl)> {
     (self.service_pool)
@@ -97,7 +97,7 @@ impl Hive {
     &self,
     name: impl Into<ServiceName>,
     uuid: Uuid,
-    source: Source,
+    source: DirSource,
     config: Config,
   ) -> Result<(StoppedService<'_>, ErrorPayload)> {
     let (service, replaced, error_payload) = (self.service_pool)

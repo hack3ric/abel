@@ -11,7 +11,8 @@ use config::{Args, HALF_NUM_CPUS};
 use error::Error;
 use handle::handle;
 use hive_core::service::Service;
-use hive_core::{Hive, HiveOptions, Source};
+use hive_core::source::{DirSource, Source};
+use hive_core::{Hive, HiveOptions};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use log::{error, info, warn};
@@ -114,7 +115,7 @@ async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<
         let metadata_bytes = fs::read(service_folder.path().join("metadata.json")).await?;
         let metadata: Metadata = serde_json::from_slice(&metadata_bytes)?;
 
-        let source = Source::new(service_folder.path().join("src")).await?;
+        let source = DirSource::new(service_folder.path().join("src")).await?;
         let mut config = source.get("hive.json").await?;
         let mut bytes = Vec::with_capacity(config.metadata().await?.len() as _);
         config.read_to_end(&mut bytes).await?;

@@ -2,7 +2,7 @@ use super::ServiceName;
 use crate::path::PathMatcher;
 use crate::permission::PermissionSet;
 use crate::ErrorKind::ServiceDropped;
-use crate::{Result, Source};
+use crate::{DirSource, Result};
 use dashmap::mapref::multiple::RefMulti;
 use dashmap::mapref::one::Ref;
 use serde::Serialize;
@@ -48,7 +48,7 @@ pub struct ServiceImpl {
   pub(crate) description: Option<String>,
   pub(crate) paths: Vec<PathMatcher>,
   #[serde(skip)]
-  pub(crate) source: Source,
+  pub(crate) source: DirSource,
   #[serde(serialize_with = "crate::util::serialize_arc")]
   pub(crate) permissions: Arc<PermissionSet>,
   pub(crate) uuid: Uuid,
@@ -68,7 +68,7 @@ impl ServiceImpl {
   pub fn pkg_name(&self) -> Option<&str> { self.pkg_name.as_deref() }
   pub fn description(&self) -> Option<&str> { self.description.as_deref() }
   pub fn paths(&self) -> &[PathMatcher] { &self.paths }
-  pub fn source(&self) -> &Source { &self.source }
+  pub fn source(&self) -> &DirSource { &self.source }
   pub fn permissions(&self) -> &PermissionSet { &self.permissions }
   pub fn uuid(&self) -> Uuid { self.uuid }
 
