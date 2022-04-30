@@ -15,6 +15,49 @@ use std::sync::Arc;
 use tokio::fs::{self, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 
+pub async fn create_preload_fs<'lua>(
+  lua: &'lua Lua,
+  state: &HiveState,
+  service_name: &str,
+  source: impl Source,
+  permissions: Arc<PermissionSet>,
+) -> mlua::Result<Function<'lua>> {
+  let local_storage_path: Arc<Path> = state.local_storage_path.join(service_name).into();
+  if !local_storage_path.exists() {
+    tokio::fs::create_dir(&local_storage_path).await?;
+  }
+  _create_preload_fs(lua, local_storage_path, source, permissions)
+}
+
+fn _create_preload_fs(
+  lua: &Lua,
+  local_storage_path: Arc<Path>,
+  source: impl Source,
+  permissions: Arc<PermissionSet>,
+) -> mlua::Result<Function<'_>> {
+  lua.create_function(move |lua, ()| {
+    let fs_table = lua.create_table()?;
+    fs_table.raw_set(
+      "open",
+      create_fn_fs_open(
+        lua,
+        source.clone(),
+        local_storage_path.clone(),
+        permissions.clone(),
+      )?,
+    )?;
+    fs_table.raw_set(
+      "mkdir",
+      create_fn_fs_mkdir(lua, local_storage_path.clone(), permissions.clone())?,
+    )?;
+    fs_table.raw_set(
+      "remove",
+      create_fn_fs_remove(lua, local_storage_path.clone(), permissions.clone())?,
+    )?;
+    Ok(fs_table)
+  })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OpenMode {
   Read,
@@ -287,41 +330,6 @@ fn create_fn_fs_open(
       }
     },
   )
-}
-
-pub async fn create_preload_fs<'lua>(
-  lua: &'lua Lua,
-  state: &HiveState,
-  service_name: &str,
-  source: impl Source,
-  permissions: Arc<PermissionSet>,
-) -> mlua::Result<Function<'lua>> {
-  let local_storage_path: Arc<Path> = state.local_storage_path.join(service_name).into();
-  if !local_storage_path.exists() {
-    tokio::fs::create_dir(&local_storage_path).await?;
-  }
-
-  lua.create_function(move |lua, ()| {
-    let fs_table = lua.create_table()?;
-    fs_table.raw_set(
-      "open",
-      create_fn_fs_open(
-        lua,
-        source.clone(),
-        local_storage_path.clone(),
-        permissions.clone(),
-      )?,
-    )?;
-    fs_table.raw_set(
-      "mkdir",
-      create_fn_fs_mkdir(lua, local_storage_path.clone(), permissions.clone())?,
-    )?;
-    fs_table.raw_set(
-      "remove",
-      create_fn_fs_remove(lua, local_storage_path.clone(), permissions.clone())?,
-    )?;
-    Ok(fs_table)
-  })
 }
 
 fn create_fn_fs_mkdir(

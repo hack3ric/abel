@@ -50,7 +50,7 @@ impl Sandbox {
 }
 
 impl Sandbox {
-  async fn pcall<'a, T, R>(&'a self, f: Function<'a>, v: T) -> Result<R>
+  async fn call_extract_error<'a, T, R>(&'a self, f: Function<'a>, v: T) -> Result<R>
   where
     T: ToLuaMulti<'a>,
     R: FromLuaMulti<'a>,
@@ -85,7 +85,7 @@ impl Sandbox {
     }
   }
 
-  pub async fn run(
+  pub async fn handle_request(
     &self,
     service: RunningService,
     path: &str,
@@ -118,7 +118,7 @@ impl Sandbox {
       if path == matcher.as_str() {
         let handler = f.raw_get::<u8, Function>(2)?;
         let req = LuaRequest::new(req, params);
-        let resp = self.pcall(handler, req).await?;
+        let resp = self.call_extract_error(handler, req).await?;
         return Ok(resp);
       }
     }
@@ -126,7 +126,7 @@ impl Sandbox {
   }
 
   /// Extracts information from the code, but does not create the service yet
-  pub(crate) async fn pre_create_service(
+  pub(crate) async fn prepare_service(
     &self,
     name: &str,
     source: DirSource,
@@ -151,7 +151,7 @@ impl Sandbox {
     Ok((paths, local_env, internal_key))
   }
 
-  pub(crate) async fn finish_create_service(
+  pub(crate) async fn create_service(
     &self,
     name: &str,
     service: RunningService,
@@ -205,16 +205,13 @@ impl Sandbox {
     let service = loaded.service.try_upgrade()?;
     let service_name = service.name();
     remove_service_shared_stores(service_name);
-    // if destroy {
-    //   remove_service_local_storage(&self.state, service_name).await?;
-    // }
     Ok(())
   }
 
   async fn run_source<'a>(
     &'a self,
     name: &str,
-    source: DirSource,
+    source: impl Source,
     permissions: Arc<PermissionSet>,
   ) -> Result<(RegistryKey, RegistryKey, Table<'a>)> {
     let (local_env, internal) =

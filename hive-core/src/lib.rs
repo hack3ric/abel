@@ -126,7 +126,9 @@ impl Hive {
     req: Request<Body>,
   ) -> Result<Response<Body>> {
     (self.sandbox_pool)
-      .scope(move |sandbox| async move { Ok(sandbox.run(service, &path, req).await?.into()) })
+      .scope(
+        move |sandbox| async move { Ok(sandbox.handle_request(service, &path, req).await?.into()) },
+      )
       .await
   }
 

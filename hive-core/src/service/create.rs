@@ -42,7 +42,7 @@ async fn prepare_service(
   } = config;
   let permissions = Arc::new(permissions);
   let (paths, local_env, internal) = sandbox
-    .pre_create_service(&name, source.clone(), permissions.clone())
+    .prepare_service(&name, source.clone(), permissions.clone())
     .await?;
   let service_impl = ServiceImpl {
     name,
@@ -122,7 +122,7 @@ impl ServicePool {
 
         let service_impl = Arc::new(service_impl);
         let result = sandbox
-          .finish_create_service(
+          .create_service(
             service_impl.name(),
             service_impl.downgrade(),
             local_env,
@@ -193,7 +193,7 @@ impl ServicePool {
           prepare_service(&sandbox, name2, uuid, source, config).await?;
         let service_impl = Arc::new(service_impl);
         sandbox
-          .finish_create_service(
+          .create_service(
             service_impl.name(),
             service_impl.downgrade(),
             local_env,
