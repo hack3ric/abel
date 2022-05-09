@@ -29,7 +29,7 @@ $ cargo run
 
 In another shell, upload the source code and run the service:
 ```console
-$ curl localhost:3000/services/hello -X PUT -F source=@hello.lua | jq
+$ curl localhost:3000/services/hello -X PUT -F single=@hello.lua | jq
 {
   "new_service": {
     "name": "hello"
