@@ -1,4 +1,4 @@
-use mlua::{Function, Lua, UserData};
+use mlua::{ExternalError, Function, Lua, UserData};
 use rand::{thread_rng, Rng, RngCore};
 
 struct LuaRng(Box<dyn RngCore>);
@@ -8,7 +8,11 @@ impl UserData for LuaRng {
     methods.add_method_mut("random", |_lua, this, ()| Ok(this.0.gen::<f64>()));
 
     methods.add_method_mut("gen_range", |_lua, this, (low, high): (i64, i64)| {
-      Ok(this.0.gen_range(low..=high))
+      if low >= high {
+        Err("range is empty".to_lua_err())
+      } else {
+        Ok(this.0.gen_range(low..=high))
+      }
     })
   }
 }
