@@ -39,7 +39,8 @@ async fn run() -> anyhow::Result<()> {
   pretty_env_logger::init();
   let args = Args::parse();
 
-  let (hive_path, local_storage_path) = init_paths().await;
+  let hive_path = args.hive_path;
+  let local_storage_path = init_paths(&hive_path).await;
 
   let config_path = hive_path.join("config.json");
   let config = Config::get(config_path, args.config).await?;
@@ -82,7 +83,7 @@ async fn run() -> anyhow::Result<()> {
   Ok(())
 }
 
-async fn init_paths() -> (PathBuf, PathBuf) {
+async fn init_paths(hive_path: &Path) -> PathBuf {
   async fn create_dir_path(path: impl AsRef<Path>) -> io::Result<()> {
     if !(&path).as_ref().exists() {
       fs::create_dir(&path).await?;
@@ -90,12 +91,8 @@ async fn init_paths() -> (PathBuf, PathBuf) {
     Ok(())
   }
 
-  // TODO: read hive path from env
-  let mut hive_path = home::home_dir().expect("no home directory found");
-  hive_path.push(".hive");
-
   let local_storage_path = async {
-    create_dir_path(&hive_path).await?;
+    create_dir_path(hive_path).await?;
     create_dir_path(hive_path.join("services")).await?;
     create_dir_path(hive_path.join("tmp")).await?;
 
@@ -106,7 +103,7 @@ async fn init_paths() -> (PathBuf, PathBuf) {
   .await
   .expect("failed to create Hive config directory");
 
-  (hive_path, local_storage_path)
+  local_storage_path
 }
 
 async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<()> {

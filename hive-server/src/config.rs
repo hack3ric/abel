@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 use uuid::Uuid;
 
@@ -14,21 +14,30 @@ pub static HALF_NUM_CPUS: Lazy<usize> = Lazy::new(|| 1.max(num_cpus::get() / 2))
 pub struct Args {
   #[clap(flatten)]
   pub config: ConfigArgs,
+
+  /// Hive's working path.
+  #[clap(long, default_value_os_t = get_default_hive_path())]
+  pub hive_path: PathBuf,
+}
+
+fn get_default_hive_path() -> PathBuf {
+  let mut hive_path = home::home_dir().expect("no home directory found");
+  hive_path.push(".hive");
+  hive_path
 }
 
 #[derive(Debug, Clone, Parser)]
 #[clap(author, version, about)]
 pub struct ConfigArgs {
-  /// Listening address. Default to `127.0.0.1:3000` (explicitly written in
-  /// config).
+  /// Listening address [overrides config]
   #[clap(short, long)]
   pub listen: Option<SocketAddr>,
 
-  /// Authentication token.
+  /// Authentication token [overrides config]
   #[clap(long)]
   pub auth_token: Option<Uuid>,
 
-  /// Hive executor pool size. Default to `max(half_of_cpu_count, 1)`.
+  /// Hive executor pool size [overrides config]
   #[clap(long)]
   pub pool_size: Option<usize>,
 }
