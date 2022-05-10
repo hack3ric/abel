@@ -50,8 +50,7 @@ async fn run() -> anyhow::Result<()> {
       local_storage_path,
     })?,
     hive_path: hive_path.clone(),
-    // auth_token: Some(config.auth_token),
-    auth_token: None,
+    auth_token: Some(config.auth_token),
   });
 
   if let Some(auth_token) = &state.auth_token {
@@ -84,20 +83,25 @@ async fn run() -> anyhow::Result<()> {
 }
 
 async fn init_paths() -> (PathBuf, PathBuf) {
-  async fn create_dir_path<T: AsRef<Path>>(path: T) -> io::Result<T> {
+  async fn create_dir_path(path: impl AsRef<Path>) -> io::Result<()> {
     if !(&path).as_ref().exists() {
       fs::create_dir(&path).await?;
     }
-    Ok(path)
+    Ok(())
   }
 
+  // TODO: read hive path from env
   let mut hive_path = home::home_dir().expect("no home directory found");
   hive_path.push(".hive");
 
   let local_storage_path = async {
     create_dir_path(&hive_path).await?;
     create_dir_path(hive_path.join("services")).await?;
-    create_dir_path(hive_path.join("storage")).await
+    create_dir_path(hive_path.join("tmp")).await?;
+
+    let local_storage_path = hive_path.join("storage");
+    create_dir_path(&local_storage_path).await?;
+    io::Result::Ok(local_storage_path)
   }
   .await
   .expect("failed to create Hive config directory");
