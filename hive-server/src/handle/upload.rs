@@ -14,7 +14,7 @@ use multer::{Constraints, Field, Multipart, SizeLimit};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::Path;
-use tempfile::{tempdir, tempfile};
+use tempfile::{tempdir_in, tempfile};
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncWrite};
 use tokio_util::io::StreamReader;
@@ -59,7 +59,10 @@ pub(crate) async fn upload(
     "no source uploaded",
     "specify either `single` or `multi` field in multipart",
   ))?;
-  let tmp = asyncify(tempdir).await?;
+
+  // See https://github.com/hackerer1c/hive/issues/4
+  let hive_tmp = state.hive_path.join("tmp");
+  let tmp = asyncify(|| tempdir_in(hive_tmp)).await?;
 
   let config = match source_field.name() {
     Some("single") => read_single(tmp.path(), multipart, source_field).await?,
@@ -205,8 +208,7 @@ async fn create_service(
         .await?
     }
     UploadMode::Load => {
-      let (service, replaced, error_payload) = state
-        .hive
+      let (service, replaced, error_payload) = (state.hive)
         .load_service(name, None, source.clone(), config)
         .await?;
       (Service::Stopped(service), replaced, error_payload)

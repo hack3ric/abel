@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::fs::{canonicalize, copy, remove_dir_all, rename, File};
+use tokio::fs::{canonicalize, rename, File};
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncSeek, AsyncWrite};
 use tokio::sync::RwLock;
 
@@ -27,10 +27,7 @@ impl DirSource {
 
   pub async fn rename_base(&self, new_path: PathBuf) -> Result<()> {
     let mut base = self.base.write().await;
-    if let Err(error) = rename(&*base, &new_path).await {
-      copy(&*base, &new_path).await?;
-      remove_dir_all(&*base).await?;
-    }
+    rename(&*base, &new_path).await?;
     *base = new_path;
     Ok(())
   }
