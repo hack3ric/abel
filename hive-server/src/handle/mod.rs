@@ -40,7 +40,7 @@ pub(crate) async fn handle(
     (_, ["services", ..]) => match (method, &segments[1..]) {
       _ if !auth => Err(Unauthorized.into()),
       (GET, []) => list(&state),
-      (POST, []) => upload(&state, None, req).await,
+      (POST, []) => upload(&state, None, req).await, // TODO: maybe deprecate this?
       (_, []) => Err(method_not_allowed(&["GET", "POST"], method)),
 
       (GET, [name]) => get(&state, name),

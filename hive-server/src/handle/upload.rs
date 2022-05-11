@@ -11,6 +11,7 @@ use hive_core::{Config, ServiceImpl};
 use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 use log::{info, warn};
 use multer::{Constraints, Field, Multipart, SizeLimit};
+use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::Path;
@@ -247,14 +248,17 @@ async fn response(
 
   if let Some(replaced) = replaced {
     info!(
-      "Updated service '{}' ({} -> {})",
+      "Updated service '{}' {}",
       service.name(),
-      replaced.uuid(),
-      service.uuid()
+      format!("({} -> {})", replaced.uuid(), service.uuid()).dimmed(),
     );
     body.insert("replaced_service".into(), json!(replaced));
   } else {
-    info!("Created service '{}' ({})", service.name(), service.uuid());
+    info!(
+      "Created service '{}' {}",
+      service.name(),
+      format!("({})", service.uuid()).dimmed(),
+    );
   }
 
   if !error_payload.is_empty() {

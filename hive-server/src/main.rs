@@ -17,6 +17,7 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use log::{error, info, warn};
 use metadata::Metadata;
+use owo_colors::OwoColorize;
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -37,13 +38,15 @@ async fn run() -> anyhow::Result<()> {
     std::env::set_var("RUST_LOG", "INFO");
   }
   pretty_env_logger::init();
-  let args = Args::parse();
+  info!("Starting hive-server v{}", env!("CARGO_PKG_VERSION"));
 
-  let hive_path = args.hive_path;
+  let Args { config, hive_path } = Args::parse();
+
+  info!("Hive working path: {}", hive_path.display().underline());
   let local_storage_path = init_paths(&hive_path).await;
 
   let config_path = hive_path.join("config.json");
-  let config = Config::get(config_path, args.config).await?;
+  let config = Config::get(config_path, config).await?;
 
   let state = Arc::new(MainState {
     hive: Hive::new(HiveOptions {
@@ -72,7 +75,7 @@ async fn run() -> anyhow::Result<()> {
     .serve(make_svc)
     .with_graceful_shutdown(shutdown_signal());
 
-  info!("Hive is listening to {}", config.listen);
+  info!("Hive is listening to {}", config.listen.underline());
 
   if let Err(error) = server.await {
     error!("fatal server error: {}", error);
@@ -137,13 +140,17 @@ async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<
         let service = service.upgrade();
         if !error_payload.is_empty() {
           warn!(
-            "Loaded service '{}' with error ({})",
+            "Loaded service '{}' with error {}",
             service.name(),
-            service.uuid()
+            format!("({})", service.uuid()).dimmed(),
           );
           warn!("error payload: {error_payload:?}");
         } else {
-          info!("Loaded service '{}' ({})", service.name(), service.uuid());
+          info!(
+            "Loaded service '{}' {}",
+            service.name(),
+            format!("({})", service.uuid()).dimmed()
+          );
         }
 
         Ok::<_, crate::Error>(())
