@@ -1,5 +1,5 @@
 use crate::lua::byte_stream::ByteStream;
-use crate::lua::BadArgument;
+use crate::lua::{extract_error_async, BadArgument};
 use crate::path::{normalize_path, normalize_path_str};
 use crate::permission::{Permission, PermissionSet};
 use crate::source::{GenericFile, Source};
@@ -202,72 +202,85 @@ impl UserData for LuaFile {
       "read",
       |lua, (this, modes): (AnyUserData, MultiValue)| async move {
         let mut this = this.borrow_mut::<Self>()?;
-        let mut results = Vec::new();
-        if modes.is_empty() {
-          results.push(read_once(&mut this, lua, ReadMode::Line).await?);
-        } else {
-          for (i, mode) in modes.into_iter().enumerate() {
-            let mode = ReadMode::from_lua(mode)
-              .map_err(|error| BadArgument::new("read", i as u8 + 1, error.to_string()))?;
-            let result = read_once(&mut this, lua, mode).await?;
-            if let mlua::Value::Nil = result {
-              results.push(result);
-              break;
-            } else {
-              results.push(result);
+        extract_error_async(lua, async {
+          let mut results = Vec::new();
+          if modes.is_empty() {
+            results.push(read_once(&mut this, lua, ReadMode::Line).await?);
+          } else {
+            for (i, mode) in modes.into_iter().enumerate() {
+              let mode = ReadMode::from_lua(mode)
+                .map_err(|error| BadArgument::new("read", i as u8 + 1, error.to_string()))?;
+              let result = read_once(&mut this, lua, mode).await?;
+              if let mlua::Value::Nil = result {
+                results.push(result);
+                break;
+              } else {
+                results.push(result);
+              }
             }
           }
-        }
-        Ok(MultiValue::from_vec(results))
+          Ok(MultiValue::from_vec(results))
+        })
+        .await
       },
     );
 
     methods.add_async_function(
       "write",
-      |_lua, (this, content): (AnyUserData, Variadic<mlua::String>)| async move {
+      |lua, (this, content): (AnyUserData, Variadic<mlua::String>)| async move {
         let mut this = this.borrow_mut::<Self>()?;
-        for x in content {
-          this.0.write_all(x.as_bytes()).await?;
-        }
-        Ok(())
+        extract_error_async(lua, async {
+          for x in content {
+            this.0.write_all(x.as_bytes()).await?;
+          }
+          Ok(())
+        })
+        .await
       },
     );
 
     methods.add_async_function(
       "seek",
-      |_lua, (this, whence, offset): (AnyUserData, Option<mlua::String>, Option<i64>)| async move {
+      |lua, (this, whence, offset): (AnyUserData, Option<mlua::String>, Option<i64>)| async move {
         let mut this = this.borrow_mut::<Self>()?;
-        let offset = offset.unwrap_or(0);
-        let seekfrom = if let Some(whence) = whence {
-          match whence.as_bytes() {
-            b"set" => SeekFrom::Start(offset.try_into().to_lua_err()?),
-            b"cur" => SeekFrom::Current(offset),
-            b"end" => SeekFrom::End(offset),
-            x => {
-              return Err(format!("invalid seek base: {}", String::from_utf8_lossy(x)).to_lua_err())
+        extract_error_async(lua, async {
+          let offset = offset.unwrap_or(0);
+          let seekfrom = if let Some(whence) = whence {
+            match whence.as_bytes() {
+              b"set" => SeekFrom::Start(offset.try_into().to_lua_err()?),
+              b"cur" => SeekFrom::Current(offset),
+              b"end" => SeekFrom::End(offset),
+              x => {
+                return Err(
+                  format!("invalid seek base: {}", String::from_utf8_lossy(x)).to_lua_err(),
+                )
+              }
             }
-          }
-        } else {
-          SeekFrom::Current(0)
-        };
-        Ok(this.0.seek(seekfrom).await?)
+          } else {
+            SeekFrom::Current(0)
+          };
+          Ok(this.0.seek(seekfrom).await?)
+        })
+        .await
       },
     );
 
     methods.add_function("lines", |lua, this: AnyUserData| {
       let iter = lua.create_async_function(|lua, this: AnyUserData| async move {
         let mut this = this.borrow_mut::<Self>()?;
-        let mut buf = Vec::new();
-        this.0.read_until(b'\n', &mut buf).await?;
-        lua.create_string(&buf)
+        extract_error_async(lua, async {
+          let mut buf = Vec::new();
+          this.0.read_until(b'\n', &mut buf).await?;
+          lua.create_string(&buf)
+        })
+        .await
       })?;
       iter.bind(this)
     });
 
-    methods.add_async_function("flush", |_lua, this: AnyUserData| async move {
+    methods.add_async_function("flush", |lua, this: AnyUserData| async move {
       let mut this = this.borrow_mut::<Self>()?;
-      this.0.flush().await?;
-      Ok(())
+      extract_error_async(lua, async { Ok(this.0.flush().await?) }).await
     });
 
     methods.add_async_function("into_stream", |_lua, this: AnyUserData| async move {
@@ -284,7 +297,7 @@ fn create_fn_fs_open(
   permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function<'_>> {
   lua.create_async_function(
-    move |_lua, (path, mode): (mlua::String, Option<mlua::String>)| {
+    move |lua, (path, mode): (mlua::String, Option<mlua::String>)| {
       use OpenMode::*;
       let source = source.clone();
       let local_storage_path = local_storage_path.clone();
@@ -292,41 +305,44 @@ fn create_fn_fs_open(
       async move {
         let (scheme, path) = parse_path(&path)?;
         let mode = OpenMode::from_lua(mode)?;
-        let file = match scheme {
-          "local" => {
-            let path = normalize_path_str(path);
-            Box::pin(
-              mode
-                .to_open_options()
-                .open(local_storage_path.join(path))
-                .await?,
-            )
-          }
-          "external" => {
-            let path = normalize_path(path);
-            let read = Permission::Read {
-              path: Cow::Borrowed(&path),
-            };
-            let write = Permission::Write {
-              path: Cow::Borrowed(&path),
-            };
-            match mode {
-              Read => permissions.check(&read)?,
-              Write | Append => permissions.check(&write)?,
-              ReadWrite | ReadWriteNew | ReadAppend => {
-                permissions.check(&read)?;
-                permissions.check(&write)?;
-              }
+        extract_error_async(lua, async {
+          let file = match scheme {
+            "local" => {
+              let path = normalize_path_str(path);
+              Box::pin(
+                mode
+                  .to_open_options()
+                  .open(local_storage_path.join(path))
+                  .await?,
+              )
             }
-            Box::pin(mode.to_open_options().open(path).await?)
-          }
-          "source" => {
-            // For `source:`, the only open mode is "read"
-            source.get(path).await?
-          }
-          _ => return scheme_not_supported(scheme),
-        };
-        Ok(LuaFile(BufReader::new(file)))
+            "external" => {
+              let path = normalize_path(path);
+              let read = Permission::Read {
+                path: Cow::Borrowed(&path),
+              };
+              let write = Permission::Write {
+                path: Cow::Borrowed(&path),
+              };
+              match mode {
+                Read => permissions.check(&read)?,
+                Write | Append => permissions.check(&write)?,
+                ReadWrite | ReadWriteNew | ReadAppend => {
+                  permissions.check(&read)?;
+                  permissions.check(&write)?;
+                }
+              }
+              Box::pin(mode.to_open_options().open(path).await?)
+            }
+            "source" => {
+              // For `source:`, the only open mode is "read"
+              source.get(path).await?
+            }
+            _ => return scheme_not_supported(scheme),
+          };
+          Ok(LuaFile(BufReader::new(file)))
+        })
+        .await
       }
     },
   )
@@ -337,10 +353,10 @@ fn create_fn_fs_mkdir(
   local_storage_path: Arc<Path>,
   permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function> {
-  lua.create_async_function(move |_lua, (path, all): (mlua::String, bool)| {
+  lua.create_async_function(move |lua, (path, all): (mlua::String, bool)| {
     let local_storage_path = local_storage_path.clone();
     let permissions = permissions.clone();
-    async move {
+    extract_error_async(lua, async move {
       let (scheme, path) = parse_path(&path)?;
 
       let path: Cow<Path> = match scheme {
@@ -361,7 +377,7 @@ fn create_fn_fs_mkdir(
         fs::create_dir(path).await?;
       }
       Ok(())
-    }
+    })
   })
 }
 
@@ -370,10 +386,10 @@ fn create_fn_fs_remove(
   local_storage_path: Arc<Path>,
   permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function> {
-  lua.create_async_function(move |_lua, (path, all): (mlua::String, bool)| {
+  lua.create_async_function(move |lua, (path, all): (mlua::String, bool)| {
     let local_storage_path = local_storage_path.clone();
     let permissions = permissions.clone();
-    async move {
+    extract_error_async(lua, async move {
       let (scheme, path) = parse_path(&path)?;
 
       let path: Cow<Path> = match scheme {
@@ -398,7 +414,7 @@ fn create_fn_fs_remove(
         fs::remove_file(path).await?;
       }
       Ok(())
-    }
+    })
   })
 }
 

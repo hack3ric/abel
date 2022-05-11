@@ -1,3 +1,4 @@
+use super::extract_error_async;
 use crate::Result;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
@@ -33,14 +34,17 @@ impl UserData for ByteStream {
   fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_async_function("to_string", |lua, this: AnyUserData| async move {
       let mut this = this.borrow_mut::<Self>()?;
-      lua.create_string(&this.aggregate().await?)
+      extract_error_async(lua, async { lua.create_string(&this.aggregate().await?) }).await
     });
 
     methods.add_async_function("parse_json", |lua, this: AnyUserData| async move {
       let mut this = this.borrow_mut::<Self>()?;
-      let bytes = this.aggregate().await?;
-      let v: serde_json::Value = serde_json::from_slice(&bytes).to_lua_err()?;
-      lua.to_value(&v)
+      extract_error_async(lua, async {
+        let bytes = this.aggregate().await?;
+        let v: serde_json::Value = serde_json::from_slice(&bytes).to_lua_err()?;
+        lua.to_value(&v)
+      })
+      .await
     });
   }
 }

@@ -14,7 +14,8 @@ pub use fs::remove_service_local_storage;
 pub use sandbox::Sandbox;
 
 use crate::Result;
-use mlua::{ExternalError, FromLua, Table};
+use futures::Future;
+use mlua::{ExternalError, FromLua, Lua, MultiValue, Table, ToLuaMulti};
 use std::sync::Arc;
 
 pub trait LuaTableExt<'a> {
@@ -69,5 +70,30 @@ impl BadArgument {
 impl From<BadArgument> for mlua::Error {
   fn from(x: BadArgument) -> mlua::Error {
     x.to_lua_err()
+  }
+}
+
+pub(super) fn extract_error<'lua, R, F>(lua: &'lua Lua, func: F) -> mlua::Result<MultiValue<'lua>>
+where
+  R: ToLuaMulti<'lua>,
+  F: FnOnce() -> mlua::Result<R>,
+{
+  match func() {
+    Ok(result) => lua.pack_multi(result),
+    Err(error) => lua.pack_multi((mlua::Value::Nil, error.to_string())),
+  }
+}
+
+pub(super) async fn extract_error_async<'lua, R, Fut>(
+  lua: &'lua Lua,
+  future: Fut,
+) -> mlua::Result<MultiValue<'lua>>
+where
+  R: ToLuaMulti<'lua>,
+  Fut: Future<Output = mlua::Result<R>>,
+{
+  match future.await {
+    Ok(result) => lua.pack_multi(result),
+    Err(error) => lua.pack_multi((mlua::Value::Nil, error.to_string())),
   }
 }

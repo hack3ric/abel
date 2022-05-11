@@ -1,3 +1,4 @@
+use super::extract_error;
 use super::shared::SharedTable;
 use mlua::{ExternalError, ExternalResult, Function, Lua, LuaSerdeExt};
 
@@ -15,19 +16,23 @@ pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
 
 fn create_fn_json_parse(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, string: mlua::String| {
-    let result: serde_json::Value = serde_json::from_slice(string.as_bytes()).to_lua_err()?;
-    lua.to_value(&result)
+    extract_error(lua, || {
+      let result: serde_json::Value = serde_json::from_slice(string.as_bytes()).to_lua_err()?;
+      lua.to_value(&result)
+    })
   })
 }
 
 fn create_fn_json_stringify(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|_lua, (value, pretty): (mlua::Value, Option<bool>)| {
-    let string = if pretty.unwrap_or_default() {
-      serde_json::to_string_pretty(&value).to_lua_err()?
-    } else {
-      serde_json::to_string(&value).to_lua_err()?
-    };
-    Ok(string)
+  lua.create_function(|lua, (value, pretty): (mlua::Value, Option<bool>)| {
+    extract_error(lua, || {
+      let string = if pretty.unwrap_or_default() {
+        serde_json::to_string_pretty(&value).to_lua_err()?
+      } else {
+        serde_json::to_string(&value).to_lua_err()?
+      };
+      Ok(string)
+    })
   })
 }
 
