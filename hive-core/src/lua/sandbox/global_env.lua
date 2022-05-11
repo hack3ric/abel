@@ -24,13 +24,7 @@ local lua_error = error
 function error(msg, level)
   if type(msg) == "table" then
     local type_detail = type(msg.detail)
-    if type_detail == "nil" or type_detail == "string" or type_detail == "table" then
-      return {
-        status = status,
-        error = error,
-        detail = detail,
-      }
-    else
+    if type_detail ~= "nil" and type_detail ~= "string" and type_detail ~= "table" then
       lua_error "error detail must be nil, string or table"
     end
   end
