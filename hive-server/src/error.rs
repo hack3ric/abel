@@ -242,6 +242,13 @@ impl ErrorKind {
       _ => self.get_str("status").unwrap().parse().unwrap(),
     }
   }
+
+  pub fn internal(&self) -> bool {
+    match self {
+      ErrorKind::Hive(error) => error.kind().internal(),
+      _ => self.status().is_server_error(),
+    }
+  }
 }
 
 pub fn method_not_allowed(expected: &[&'static str], got: &Method) -> Error {
@@ -260,9 +267,8 @@ pub struct ErrorAuthWrapper {
 
 impl ErrorAuthWrapper {
   pub fn new(auth: bool, error: impl Into<Error>) -> Self {
-    // let uuid = if auth { Some(Uuid::new_v4()) } else { None };
     let inner = error.into();
-    let uuid = if !auth && inner.kind.status().is_server_error() {
+    let uuid = if !auth && inner.kind.internal() {
       Some(Uuid::new_v4())
     } else {
       None

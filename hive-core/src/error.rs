@@ -183,4 +183,11 @@ impl ErrorKind {
       _ => serde_json::to_value(self).unwrap(),
     }
   }
+
+  pub fn internal(&self) -> bool {
+    match self {
+      Self::LuaCustom { .. } => false,
+      _ => self.status().is_server_error(),
+    }
+  }
 }
