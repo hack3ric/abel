@@ -63,21 +63,22 @@ impl Sandbox {
     } else {
       let error_obj = obj.into_vec().remove(0);
       if let mlua::Value::Table(custom_error) = error_obj {
-        Err(
-          crate::ErrorKind::LuaCustom {
-            status: custom_error
-              .raw_get::<_, u16>("status")?
-              .try_into()
-              .to_lua_err()?,
-            error: std::str::from_utf8(
-              custom_error.raw_get::<_, mlua::String>("error")?.as_bytes(),
-            )
-            .to_lua_err()?
-            .into(),
-            detail: (self.lua).from_value(custom_error.raw_get::<_, mlua::Value>("detail")?)?,
-          }
-          .into(),
-        )
+        let status = custom_error
+          .raw_get::<_, u16>("status")?
+          .try_into()
+          .to_lua_err()?;
+        let error_str = custom_error.raw_get::<_, mlua::String>("error")?;
+        let error = std::str::from_utf8(error_str.as_bytes())
+          .to_lua_err()?
+          .into();
+        let detail = custom_error.raw_get::<_, mlua::Value>("detail")?;
+        let result = crate::ErrorKind::LuaCustom {
+          status,
+          error,
+          detail: self.lua.from_value(detail)?,
+        }
+        .into();
+        Err(result)
       } else {
         error.call(error_obj)?;
         unreachable!()

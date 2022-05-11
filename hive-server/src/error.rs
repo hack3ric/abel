@@ -41,9 +41,9 @@ impl Error {
       }
       Custom {
         status,
-        error: msg,
+        error,
         detail,
-      } => (status, msg, detail, self.backtrace),
+      } => (status, error, detail, self.backtrace),
       _ => (
         self.kind.get_str("status").unwrap().parse().unwrap(),
         self.kind.get_str("error").unwrap().into(),
@@ -60,7 +60,15 @@ impl Error {
         }
         Some(o)
       }
-      _ => panic!("expected null or object as error detail"),
+      serde_json::Value::String(s) => {
+        let mut o = serde_json::Map::new();
+        o.insert("msg".into(), s.into());
+        if let Some(d) = self.detail {
+          o.extend(d);
+        }
+        Some(o)
+      }
+      _ => panic!("expected null, string or object as error detail"),
     };
 
     let mut body = serde_json::Map::<String, serde_json::Value>::new();

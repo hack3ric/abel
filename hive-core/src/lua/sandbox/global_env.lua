@@ -1,20 +1,40 @@
-function Error(obj)
+function hive_Error(obj)
   local status = obj.status
   local error = obj.error
-  return function(detail)
-    local new_detail
-    if type(detail) == "table" then
-      new_detail = detail
-    else
-      new_detail = { msg = tostring(detail) }
-    end
 
-    return {
-      status = status,
-      error = error,
-      detail = new_detail,
-    }
+  local result = {
+    status = status,
+    error = error,
+  }
+  local result_mt = {
+    __call = function(detail)
+      return {
+        status = status,
+        error = error,
+        detail = detail,
+      }
+    end
+  }
+
+  return setmetatable(result, result_mt)
+end
+
+local lua_error = error
+
+function error(msg, level)
+  if type(msg) == "table" then
+    local type_detail = type(msg.detail)
+    if type_detail == "nil" or type_detail == "string" or type_detail == "table" then
+      return {
+        status = status,
+        error = error,
+        detail = detail,
+      }
+    else
+      lua_error "error detail must be nil, string or table"
+    end
   end
+  lua_error(msg, level)
 end
 
 function safe_getmetatable(t)
