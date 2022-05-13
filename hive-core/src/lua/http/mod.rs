@@ -8,6 +8,7 @@ pub use request::LuaRequest;
 pub use response::LuaResponse;
 
 use self::uri::create_fn_create_uri;
+use super::extract_error_async;
 use crate::permission::{Permission, PermissionSet};
 use hyper::client::HttpConnector;
 use hyper::Client;
@@ -35,9 +36,9 @@ pub fn create_preload_http(lua: &Lua, permissions: Arc<PermissionSet>) -> mlua::
 }
 
 fn create_fn_request(lua: &Lua, permissions: Arc<PermissionSet>) -> mlua::Result<Function> {
-  lua.create_async_function(move |_lua, req: LuaRequest| {
+  lua.create_async_function(move |lua, req: LuaRequest| {
     let permissions = permissions.clone();
-    async move {
+    extract_error_async(lua, async move {
       if let Some(auth) = req.uri.authority() {
         let host = auth.host();
         let port = (auth.port())
@@ -62,6 +63,6 @@ fn create_fn_request(lua: &Lua, permissions: Arc<PermissionSet>) -> mlua::Result
       let resp = CLIENT.request(req.into()).await.to_lua_err()?;
       let resp = LuaResponse::from_hyper(resp);
       Ok(resp)
-    }
+    })
   })
 }
