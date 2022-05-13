@@ -22,6 +22,8 @@ use tokio_util::io::StreamReader;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum UploadMode {
+  #[serde(rename = "create")]
+  Create,
   #[serde(rename = "hot")]
   Hot,
   #[serde(rename = "cold")]
@@ -193,6 +195,9 @@ async fn create_service(
 ) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
   let source = DirSource::new(source_path.as_ref()).await?;
   let (service, replaced, error_payload) = match mode {
+    UploadMode::Create if state.hive.get_service(&name).is_ok() => {
+      return Err(hive_core::ErrorKind::ServiceExists { name: name.into() }.into())
+    }
     UploadMode::Hot if state.hive.get_running_service(&name).is_ok() => {
       let (service, replaced) = (state.hive)
         .hot_update_service(name, None, source.clone(), config)
@@ -203,7 +208,7 @@ async fn create_service(
         Default::default(),
       )
     }
-    UploadMode::Hot | UploadMode::Cold => {
+    UploadMode::Hot | UploadMode::Cold | UploadMode::Create => {
       (state.hive)
         .cold_update_or_create_service(name, None, source.clone(), config)
         .await?
