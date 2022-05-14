@@ -1,3 +1,4 @@
+use super::async_bind_temp;
 use crate::lua::byte_stream::ByteStream;
 use crate::lua::{extract_error_async, BadArgument};
 use crate::path::{normalize_path, normalize_path_str};
@@ -266,7 +267,7 @@ impl UserData for LuaFile {
     );
 
     methods.add_function("lines", |lua, this: AnyUserData| {
-      let iter = lua.create_async_function(|lua, this: AnyUserData| async move {
+      let iter = lua.create_async_function(move |lua, this: AnyUserData| async move {
         let mut this = this.borrow_mut::<Self>()?;
         extract_error_async(lua, async {
           let mut buf = Vec::new();
@@ -275,7 +276,7 @@ impl UserData for LuaFile {
         })
         .await
       })?;
-      iter.bind(this)
+      async_bind_temp(lua, iter, this)
     });
 
     methods.add_async_function("flush", |lua, this: AnyUserData| async move {

@@ -15,7 +15,7 @@ pub use sandbox::Sandbox;
 
 use crate::Result;
 use futures::Future;
-use mlua::{ExternalError, FromLua, Lua, MultiValue, Table, ToLuaMulti};
+use mlua::{ExternalError, FromLua, Function, Lua, MultiValue, Table, ToLuaMulti};
 use std::sync::Arc;
 
 pub trait LuaTableExt<'a> {
@@ -96,4 +96,20 @@ where
     Ok(result) => lua.pack_multi(result),
     Err(error) => lua.pack_multi((mlua::Value::Nil, error.to_string())),
   }
+}
+
+/// Temporary solution to https://github.com/khvzak/mlua/issues/161
+pub(super) fn async_bind_temp<'lua, T: ToLuaMulti<'lua>>(
+  lua: &'lua Lua,
+  f: Function<'lua>,
+  t: T,
+) -> mlua::Result<Function<'lua>> {
+  lua
+    .load(mlua::chunk! {
+      local args = { ... }
+      return function(...)
+        return $f(table.unpack(args), ...)
+      end
+    })
+    .call::<_, Function>(t)
 }
