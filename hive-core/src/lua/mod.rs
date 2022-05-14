@@ -9,6 +9,7 @@ mod permission;
 mod print;
 mod sandbox;
 mod shared;
+mod context;
 
 pub use fs::remove_service_local_storage;
 pub use sandbox::Sandbox;

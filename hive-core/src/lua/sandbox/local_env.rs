@@ -22,6 +22,7 @@ pub(super) async fn create_local_env<'a, 'b>(
 ) -> Result<(Table<'a>, Table<'a>)> {
   let local_env_fn = lua.named_registry_value::<_, Function>("local_env_fn")?;
   let (local_env, internal): (Table, Table) = local_env_fn.call(())?;
+  let context: Table = internal.raw_get("context")?;
 
   local_env.raw_set("print", create_fn_print(lua, service_name)?)?;
 
@@ -38,7 +39,15 @@ pub(super) async fn create_local_env<'a, 'b>(
   internal.raw_set("source", SourceUserData(source.clone()))?;
 
   let preload: Table = internal.raw_get_path("<internal>", &["package", "preload"])?;
-  let fs_preload = create_preload_fs(lua, state, service_name, source, permissions.clone()).await?;
+  let fs_preload = create_preload_fs(
+    lua,
+    state,
+    context,
+    service_name,
+    source,
+    permissions.clone(),
+  )
+  .await?;
   preload.raw_set("fs", fs_preload)?;
   preload.raw_set("http", create_preload_http(lua, permissions.clone())?)?;
   preload.raw_set("json", create_preload_json(lua)?)?;
