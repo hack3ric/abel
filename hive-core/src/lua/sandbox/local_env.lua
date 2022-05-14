@@ -26,7 +26,7 @@ internal.context = {
     local items = context_stack[#context_stack]
     if not items then return end
     for _, item in pairs(items) do
-      local item <close> = item
+      pcall(function() local item <close> = item end)
     end
   end,
   register = function(item)
