@@ -1,4 +1,7 @@
-use mlua::{ExternalError, ExternalResult, FromLua, Function, Lua, LuaSerdeExt, UserData};
+use crate::lua::extract_error;
+use mlua::{
+  AnyUserData, ExternalError, ExternalResult, FromLua, Function, Lua, LuaSerdeExt, UserData,
+};
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -11,28 +14,30 @@ impl UserData for LuaUri {
     fields.add_field_method_get("port", |_lua, this| Ok(this.0.port_u16()));
     fields.add_field_method_get("path", |lua, this| lua.pack(this.0.path()));
     fields.add_field_method_get("query_string", |lua, this| lua.pack(this.0.query()));
-
-    // TODO: support more complex QS structure (e.g. multiple queries with the same
-    // name)
-    fields.add_field_function_get("query", |lua, this| {
-      let this_ = this.borrow::<Self>()?;
-      if let Some(q) = this.get_named_user_value::<_, Option<mlua::Value>>("query")? {
-        Ok(q)
-      } else {
-        let x = (this_.0.query())
-          .map(serde_qs::from_str::<HashMap<String, String>>)
-          .transpose()
-          .to_lua_err()?
-          .unwrap_or_default();
-        let x = lua.to_value(&x)?;
-        lua.set_named_registry_value("query", x.clone())?;
-        Ok(x)
-      }
-    })
   }
 
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_meta_method("__tostring", |_lua, this, ()| Ok(this.0.to_string()));
+
+    // TODO: support more complex QS structure (e.g. multiple queries with the same
+    // name)
+    methods.add_function("query", |lua, this: AnyUserData| {
+      extract_error(lua, || {
+        let this_ = this.borrow::<Self>()?;
+        if let Some(q) = this.get_named_user_value::<_, Option<mlua::Value>>("query")? {
+          Ok(q)
+        } else {
+          let x = (this_.0.query())
+            .map(serde_qs::from_str::<HashMap<String, String>>)
+            .transpose()
+            .to_lua_err()?
+            .unwrap_or_default();
+          let x = lua.to_value(&x)?;
+          lua.set_named_registry_value("query", x.clone())?;
+          Ok(x)
+        }
+      })
+    })
   }
 }
 
