@@ -125,10 +125,10 @@ internal.package.searchers = { preload_searcher, source_searcher }
 
 local whitelist = {
   [false] = {
-    "assert", "error", "ipairs", "next",
-    "pairs", "pcall", "print", "rawequal",
-    "select", "setmetatable", "tonumber", "tostring",
-    "type", "warn", "xpcall", "_VERSION",
+    "assert", "ipairs", "next", "pairs",
+    "pcall", "print", "rawequal", "select",
+    "setmetatable", "tonumber", "tostring", "type",
+    "warn", "xpcall", "_VERSION",
   },
   math = {
     "abs", "acos", "asin", "atan",
@@ -159,21 +159,34 @@ local whitelist = {
 }
 
 local monkey_patch = {
+  [false] = {
+    "error",
+  },
   table = {
     "insert", "dump", "scope"
   },
+  routing = "*"
 }
 
 local function apply_whitelist(whitelist)
   for module, fields in pairs(whitelist) do
+    local from_module, to_module
     if module then
-      local_env[module] = {}
-      for _, field in ipairs(fields) do
-        local_env[module][field] = _G[module][field]
+      from_module = _G[module]
+      to_module = {}
+      local_env[module] = to_module
+    else
+      from_module = _G
+      to_module = local_env
+    end
+
+    if fields == "*" then
+      for k, v in pairs(from_module) do
+        to_module[k] = v
       end
     else
       for _, field in ipairs(fields) do
-        local_env[field] = _G[field]
+        to_module[field] = from_module[field]
       end
     end
   end

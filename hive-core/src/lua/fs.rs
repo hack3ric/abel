@@ -1,13 +1,14 @@
 use super::async_bind_temp;
 use crate::lua::byte_stream::ByteStream;
+use crate::lua::context::context_register;
 use crate::lua::{extract_error_async, BadArgument};
 use crate::path::{normalize_path, normalize_path_str};
 use crate::permission::{Permission, PermissionSet};
 use crate::source::{GenericFile, Source};
 use crate::{HiveState, Result};
 use mlua::{
-  AnyUserData, ExternalError, ExternalResult, Function, Lua, MultiValue, ToLua, UserData,
-  UserDataMethods, Variadic, Table,
+  AnyUserData, ExternalError, ExternalResult, Function, Lua, MultiValue, Table, ToLua, UserData,
+  UserDataMethods, Variadic,
 };
 use std::borrow::Cow;
 use std::io::SeekFrom;
@@ -15,7 +16,6 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::fs::{self, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
-use crate::lua::context::context_register;
 
 pub async fn create_preload_fs<'lua>(
   lua: &'lua Lua,

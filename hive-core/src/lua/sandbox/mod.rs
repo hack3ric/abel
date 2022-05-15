@@ -51,7 +51,7 @@ impl Sandbox {
 }
 
 impl Sandbox {
-  async fn call_extract_error<'a, T, R>(&'a self, f: Function<'a>, v: T) -> Result<R>
+  async fn call_extract_error<'a, T, R>(&'a self, f: mlua::Value<'a>, v: T) -> Result<R>
   where
     T: ToLuaMulti<'a>,
     R: FromLuaMulti<'a>,
@@ -119,7 +119,7 @@ impl Sandbox {
       let f = f?;
       let path = f.raw_get::<u8, String>(1)?;
       if path == matcher.as_str() {
-        let handler = f.raw_get::<u8, Function>(2)?;
+        let handler = f.raw_get::<u8, mlua::Value>(2)?;
         let req = LuaRequest::new(req, params);
         context_enter(&context)?;
         let resp = self.call_extract_error(handler, req).await?;
