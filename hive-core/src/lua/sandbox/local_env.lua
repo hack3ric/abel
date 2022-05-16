@@ -11,29 +11,6 @@ local internal = {
     preload = {},
     searchers = nil,
   },
-  context = nil,
-}
-
--- Context --
-
-local context_stack = {}
-internal.context = {
-  stack = context_stack,
-  enter = function()
-    context_stack[#context_stack + 1] = {}
-  end,
-  exit = function()
-    local items = context_stack[#context_stack]
-    if not items then return end
-    for _, item in pairs(items) do
-      pcall(function() local item <close> = item end)
-    end
-  end,
-  register = function(item)
-    local items = context_stack[#context_stack]
-    if not items then return end
-    items[#items + 1] = item
-  end,
 }
 
 -- Hive table --

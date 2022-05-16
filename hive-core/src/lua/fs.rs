@@ -1,13 +1,12 @@
 use super::async_bind_temp;
 use crate::lua::byte_stream::ByteStream;
-use crate::lua::context::context_register;
 use crate::lua::{extract_error_async, BadArgument};
 use crate::path::{normalize_path, normalize_path_str};
 use crate::permission::{Permission, PermissionSet};
 use crate::source::{GenericFile, Source};
 use crate::{HiveState, Result};
 use mlua::{
-  AnyUserData, ExternalError, ExternalResult, Function, Lua, MultiValue, Table, ToLua, UserData,
+  AnyUserData, ExternalError, ExternalResult, Function, Lua, MultiValue, ToLua, UserData,
   UserDataMethods, Variadic,
 };
 use std::borrow::Cow;
@@ -20,7 +19,6 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufR
 pub async fn create_preload_fs<'lua>(
   lua: &'lua Lua,
   state: &HiveState,
-  context: Table<'lua>,
   service_name: &str,
   source: impl Source,
   permissions: Arc<PermissionSet>,
@@ -29,17 +27,16 @@ pub async fn create_preload_fs<'lua>(
   if !local_storage_path.exists() {
     tokio::fs::create_dir(&local_storage_path).await?;
   }
-  _create_preload_fs(lua, local_storage_path, context, source, permissions)
+  _create_preload_fs(lua, local_storage_path, source, permissions)
 }
 
-fn _create_preload_fs<'lua>(
-  lua: &'lua Lua,
+fn _create_preload_fs(
+  lua: &Lua,
   local_storage_path: Arc<Path>,
-  context: Table<'lua>,
   source: impl Source,
   permissions: Arc<PermissionSet>,
-) -> mlua::Result<Function<'lua>> {
-  let f = lua.create_function(move |lua, context: Table| {
+) -> mlua::Result<Function<'_>> {
+  lua.create_function(move |lua, ()| {
     let fs_table = lua.create_table()?;
     fs_table.raw_set(
       "open",
@@ -47,7 +44,6 @@ fn _create_preload_fs<'lua>(
         lua,
         source.clone(),
         local_storage_path.clone(),
-        context,
         permissions.clone(),
       )?,
     )?;
@@ -60,8 +56,7 @@ fn _create_preload_fs<'lua>(
       create_fn_fs_remove(lua, local_storage_path.clone(), permissions.clone())?,
     )?;
     Ok(fs_table)
-  })?;
-  f.bind(context)
+  })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -296,15 +291,14 @@ impl UserData for LuaFile {
   }
 }
 
-fn create_fn_fs_open<'lua>(
-  lua: &'lua Lua,
+fn create_fn_fs_open(
+  lua: &Lua,
   source: impl Source,
   local_storage_path: Arc<Path>,
-  context: Table<'lua>,
   permissions: Arc<PermissionSet>,
-) -> mlua::Result<Function<'lua>> {
-  let f = lua.create_async_function(
-    move |lua, (context, path, mode): (Table, mlua::String, Option<mlua::String>)| {
+) -> mlua::Result<Function<'_>> {
+  lua.create_async_function(
+    move |lua, (path, mode): (mlua::String, Option<mlua::String>)| {
       use OpenMode::*;
       let source = source.clone();
       let local_storage_path = local_storage_path.clone();
@@ -347,16 +341,12 @@ fn create_fn_fs_open<'lua>(
             }
             _ => return scheme_not_supported(scheme),
           };
-          let file = LuaFile(BufReader::new(file));
-          let file = lua.create_userdata(file)?;
-          context_register(&context, file.clone())?;
-          Ok(file)
+          Ok(LuaFile(BufReader::new(file)))
         })
         .await
       }
     },
-  )?;
-  async_bind_temp(lua, f, context)
+  )
 }
 
 fn create_fn_fs_mkdir(

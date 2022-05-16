@@ -1,7 +1,6 @@
 pub mod http;
 
 mod byte_stream;
-mod context;
 mod crypto;
 mod env;
 mod fs;

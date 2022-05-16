@@ -1,7 +1,6 @@
 mod global_env;
 mod local_env;
 
-use super::context::{context_enter, context_exit};
 use super::http::LuaResponse;
 use super::shared::remove_service_shared_stores;
 use super::LuaTableExt;
@@ -105,7 +104,6 @@ impl Sandbox {
 
     let loaded = self.load_service(service.clone()).await?;
     let internal: Table = self.lua.registry_value(&loaded.internal)?;
-    let context: Table = internal.raw_get("context")?;
 
     // `loaded` is a mapped, immutable, checked-at-runtime borrow from
     // `self.loaded`. Dropping it manually here prevents `self.loaded` being
@@ -121,9 +119,7 @@ impl Sandbox {
       if path == matcher.as_str() {
         let handler = f.raw_get::<u8, mlua::Value>(2)?;
         let req = LuaRequest::new(req, params);
-        context_enter(&context)?;
         let resp = self.call_extract_error(handler, req).await?;
-        context_exit(&context)?;
         return Ok(resp);
       }
     }
@@ -193,12 +189,7 @@ impl Sandbox {
       .registry_value::<Table>(&loaded.local_env)?
       .raw_get_path("<local_env>", &["hive", "start"])?;
     if let Some(f) = start_fn {
-      let context = (self.lua)
-        .registry_value::<Table>(&loaded.internal)?
-        .raw_get("context")?;
-      context_enter(&context)?;
       f.call_async(()).await?;
-      context_exit(&context)?;
     }
     Ok(())
   }
@@ -209,12 +200,7 @@ impl Sandbox {
       .registry_value::<Table>(&loaded.local_env)?
       .raw_get_path("<local_env>", &["hive", "stop"])?;
     if let Some(f) = stop_fn {
-      let context = (self.lua)
-        .registry_value::<Table>(&loaded.internal)?
-        .raw_get("context")?;
-      context_enter(&context)?;
       f.call_async(()).await?;
-      context_exit(&context)?;
     }
     // Call modules' `stop`
     let service = loaded.service.try_upgrade()?;
