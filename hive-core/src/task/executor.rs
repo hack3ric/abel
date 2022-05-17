@@ -1,9 +1,10 @@
+use super::task_future::TaskFuture;
 use super::Task;
 use crate::lua::Sandbox;
 use crate::Result;
-use futures::future::{select, Either, LocalBoxFuture};
+use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
-use futures::{pin_mut, FutureExt, Stream};
+use futures::{pin_mut, Stream};
 use log::info;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -14,7 +15,7 @@ use std::task::{Context, Poll, Wake, Waker};
 use std::time::Duration;
 use tokio::runtime::Handle;
 use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::time::Instant;
 
 struct MyWaker {
@@ -57,6 +58,7 @@ impl Drop for PanicNotifier {
 pub struct Executor {
   pub task_count: Arc<AtomicU32>,
   panicked: Arc<AtomicBool>,
+  _stop_tx: oneshot::Sender<()>,
 }
 
 impl Executor {
@@ -68,6 +70,7 @@ impl Executor {
     let task_count = Arc::new(AtomicU32::new(0));
     let panicked = Arc::new(AtomicBool::new(false));
     let panic_notifier = PanicNotifier(panicked.clone());
+    let (_stop_tx, mut stop_rx) = oneshot::channel();
 
     let rt = Handle::current();
     let task_count2 = task_count.clone();
@@ -76,11 +79,10 @@ impl Executor {
       .spawn(move || {
         let _panic_notifier = panic_notifier;
         rt.block_on(async move {
-          let obj = f().unwrap();
-          let mut tasks = FuturesUnordered::<LocalBoxFuture<()>>::new();
+          let sandbox = Rc::new(f().unwrap());
+          let mut tasks = FuturesUnordered::<TaskFuture>::new();
           let (waker_tx, mut waker_rx) = mpsc::unbounded_channel();
           let mut waker = MyWaker::from_tx(waker_tx.clone());
-          let obj = Rc::new(obj);
 
           let dur = Duration::from_secs(600);
           let mut clean_interval = tokio::time::interval_at(Instant::now() + dur, dur);
@@ -89,10 +91,18 @@ impl Executor {
             let waker_recv = waker_rx.recv();
             let new_task_recv = task_rx.recv();
             let clean = clean_interval.tick();
+            let stop_rx_mut = Pin::new(&mut stop_rx);
             pin_mut!(waker_recv, new_task_recv, clean);
 
-            match select(select(waker_recv, clean), new_task_recv).await {
-              Either::Left((Either::Left(..), _)) => {
+            // match select(select(waker_recv, clean), select(new_task_recv,
+            // stop_rx_mut)).await {
+            match select(
+              select(stop_rx_mut, waker_recv),
+              select(clean, new_task_recv),
+            )
+            .await
+            {
+              Either::Left((Either::Right(_), _)) => {
                 waker = MyWaker::from_tx(waker_tx.clone());
                 let tasks = Pin::new(&mut tasks);
                 let mut context = Context::from_waker(&waker);
@@ -100,31 +110,28 @@ impl Executor {
                   waker.wake_by_ref();
                 }
               }
-              Either::Left((Either::Right(..), _)) => {
+              Either::Right((Either::Left(_), _)) => {
                 // TODO: better cleaning trigger
-                let count = obj.clean_loaded().await;
+                let count = sandbox.clean_loaded().await;
                 if count > 0 {
                   info!("successfully cleaned {count} dropped services");
                 }
               }
-              Either::Right((Ok(msg), _)) => {
-                if let Some((task, tx)) = msg.try_lock().ok().and_then(|mut x| x.take()) {
+              Either::Right((Either::Right((Ok(msg), _)), _)) => {
+                if let Some((task_fn, tx)) = msg.try_lock().ok().and_then(|mut x| x.take()) {
                   let task_count = task_count2.clone();
                   task_count.fetch_add(1, Ordering::AcqRel);
-                  let obj = obj.clone();
-                  tasks.push(Box::pin(
-                    async move {
-                      let result = task(obj).await;
-                      let _ = tx.send(result);
-                      task_count.fetch_sub(1, Ordering::AcqRel);
-                    }
-                    .boxed_local(),
-                  ));
+                  let task = TaskFuture::new(sandbox.clone(), task_fn, tx).unwrap();
+                  tasks.push(task);
                   waker.wake_by_ref();
                 }
               }
-              Either::Right((Err(RecvError::Lagged(_n)), _)) => {}
-              Either::Right((Err(RecvError::Closed), _)) => break,
+              Either::Right((Either::Right((Err(RecvError::Lagged(_n)), _)), _)) => {}
+              Either::Right((Either::Right((Err(RecvError::Closed), _)), _)) => break,
+              Either::Left((Either::Left(_), _)) => {
+                println!("{} stopping", std::thread::current().name().unwrap());
+                break;
+              }
             }
           }
         })
@@ -134,12 +141,9 @@ impl Executor {
     Self {
       task_count,
       panicked,
+      _stop_tx,
     }
   }
-
-  // pub(crate) fn push<R: Send + 'static>(&self, task: Task<Sandbox>) {
-  //   let _ = self.task_tx.send(task);
-  // }
 
   pub fn is_panicked(&self) -> bool {
     self.panicked.load(Ordering::Acquire)
