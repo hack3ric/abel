@@ -5,7 +5,6 @@ use futures::future::{select, Either, LocalBoxFuture};
 use futures::stream::FuturesUnordered;
 use futures::{pin_mut, FutureExt, Stream};
 use log::info;
-use std::marker::PhantomData;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Relaxed;
@@ -55,19 +54,14 @@ impl Drop for PanicNotifier {
   }
 }
 
-pub struct Executor<T: 'static> {
+pub struct Executor {
   pub task_count: Arc<AtomicU32>,
   panicked: Arc<AtomicBool>,
-  _p: PhantomData<UnsafeSendSyncPtr<T>>,
 }
 
-struct UnsafeSendSyncPtr<T>(*const T);
-unsafe impl<T> Send for UnsafeSendSyncPtr<T> {}
-unsafe impl<T> Sync for UnsafeSendSyncPtr<T> {}
-
-impl Executor<Sandbox> {
+impl Executor {
   pub fn new(
-    mut task_rx: broadcast::Receiver<Task<Sandbox>>,
+    mut task_rx: broadcast::Receiver<Task>,
     f: impl FnOnce() -> Result<Sandbox> + Send + 'static,
     name: String,
   ) -> Self {
@@ -93,7 +87,6 @@ impl Executor<Sandbox> {
 
           loop {
             let waker_recv = waker_rx.recv();
-            // let new_task_recv = task_rx.recv();
             let new_task_recv = task_rx.recv();
             let clean = clean_interval.tick();
             pin_mut!(waker_recv, new_task_recv, clean);
@@ -141,7 +134,6 @@ impl Executor<Sandbox> {
     Self {
       task_count,
       panicked,
-      _p: PhantomData,
     }
   }
 

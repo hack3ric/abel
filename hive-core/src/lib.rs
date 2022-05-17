@@ -21,11 +21,11 @@ use service::{ErrorPayload, Service, ServiceName, ServicePool, StoppedService};
 use source::DirSource;
 use std::path::PathBuf;
 use std::sync::Arc;
-use task::Pool;
+use task::SandboxPool;
 use uuid::Uuid;
 
 pub struct Hive {
-  sandbox_pool: Pool<Sandbox>,
+  sandbox_pool: SandboxPool,
   service_pool: ServicePool,
   state: Arc<HiveState>,
 }
@@ -47,7 +47,7 @@ impl Hive {
     });
     let state2 = state.clone();
     Ok(Self {
-      sandbox_pool: Pool::new(
+      sandbox_pool: SandboxPool::new(
         "hive-worker".to_string(),
         options.sandbox_pool_size,
         move || Sandbox::new(state2.clone()),

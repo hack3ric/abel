@@ -3,7 +3,7 @@ use super::{
 };
 use crate::lua::Sandbox;
 use crate::source::DirSource;
-use crate::task::Pool;
+use crate::task::SandboxPool;
 use crate::ErrorKind::{self, ServiceNotFound, ServiceStopped};
 use crate::{Config, Error, Result};
 use mlua::RegistryKey;
@@ -59,7 +59,7 @@ async fn prepare_service(
 impl ServicePool {
   pub async fn load(
     &self,
-    sandbox_pool: &Pool<Sandbox>,
+    sandbox_pool: &SandboxPool,
     name: ServiceName,
     uuid: Option<Uuid>,
     source: DirSource,
@@ -99,7 +99,7 @@ impl ServicePool {
 
   pub async fn cold_update_or_create(
     &self,
-    sandbox_pool: &Pool<Sandbox>,
+    sandbox_pool: &SandboxPool,
     name: ServiceName,
     uuid: Option<Uuid>,
     source: DirSource,
@@ -174,7 +174,7 @@ impl ServicePool {
 
   pub async fn hot_update(
     &self,
-    sandbox_pool: &Pool<Sandbox>,
+    sandbox_pool: &SandboxPool,
     name: ServiceName,
     uuid: Option<Uuid>,
     source: DirSource,
