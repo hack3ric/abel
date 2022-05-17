@@ -8,17 +8,17 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::{broadcast, oneshot, Mutex, RwLock};
 
-pub struct Pool<T: 'static> {
+pub struct SandboxPool {
   name: String,
-  executors: Vec<RwLock<Executor<T>>>,
-  task_tx: broadcast::Sender<Task<T>>,
-  init: Arc<dyn Fn() -> Result<T> + Send + Sync + 'static>,
+  executors: Vec<RwLock<Executor>>,
+  task_tx: broadcast::Sender<Task>,
+  init: Arc<dyn Fn() -> Result<Sandbox> + Send + Sync + 'static>,
 }
 
 // Since `Arc<dyn Fn> does not implement `Fn{,Mut,Once}`, we need to stop clippy
 // from complaining us to wrap it in another closure.
 #[allow(clippy::redundant_closure)]
-impl Pool<Sandbox> {
+impl SandboxPool {
   pub fn new(
     name: String,
     size: usize,

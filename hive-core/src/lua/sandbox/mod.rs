@@ -28,7 +28,7 @@ static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}
 
 #[derive(Debug)]
 pub struct Sandbox {
-  lua: Lua,
+  pub(crate) lua: Lua,
   loaded: RefCell<HashMap<Box<str>, LoadedService>>,
   state: Arc<HiveState>,
 }

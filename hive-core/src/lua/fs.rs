@@ -1,6 +1,6 @@
 use super::async_bind_temp;
 use crate::lua::byte_stream::ByteStream;
-use crate::lua::{extract_error_async, BadArgument};
+use crate::lua::{context, extract_error_async, BadArgument};
 use crate::path::{normalize_path, normalize_path_str};
 use crate::permission::{Permission, PermissionSet};
 use crate::source::{GenericFile, Source};
@@ -195,6 +195,7 @@ async fn read_once<'lua>(
 impl UserData for LuaFile {
   fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_meta_function("__close", |_lua, this: AnyUserData| {
+      println!("closing!");
       drop(this.take::<Self>());
       Ok(())
     });
@@ -341,7 +342,10 @@ fn create_fn_fs_open(
             }
             _ => return scheme_not_supported(scheme),
           };
-          Ok(LuaFile(BufReader::new(file)))
+          let file = LuaFile(BufReader::new(file));
+          let file = lua.create_userdata(file)?;
+          context::register(lua, file.clone())?;
+          Ok(file)
         })
         .await
       }

@@ -5,7 +5,7 @@ pub use create::ErrorPayload;
 pub use impls::*;
 
 use crate::lua::{remove_service_local_storage, Sandbox};
-use crate::task::Pool;
+use crate::task::SandboxPool;
 use crate::ErrorKind::*;
 use crate::{HiveState, Result};
 use dashmap::DashMap;
@@ -50,7 +50,7 @@ impl ServicePool {
     })
   }
 
-  pub async fn stop(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<StoppedService<'_>> {
+  pub async fn stop(&self, sandbox_pool: &SandboxPool, name: &str) -> Result<StoppedService<'_>> {
     if let Some(mut service) = self.services.get_mut(name) {
       let state = service.value_mut();
       if let ServiceState::Running(service2) = state {
@@ -87,7 +87,7 @@ impl ServicePool {
     }
   }
 
-  pub async fn stop_all(&self, sandbox_pool: &Pool<Sandbox>) {
+  pub async fn stop_all(&self, sandbox_pool: &SandboxPool) {
     for mut service in self.services.iter_mut() {
       let state = service.value_mut();
       if let ServiceState::Running(service2) = state {
@@ -109,7 +109,7 @@ impl ServicePool {
     }
   }
 
-  pub async fn start(&self, sandbox_pool: &Pool<Sandbox>, name: &str) -> Result<RunningService> {
+  pub async fn start(&self, sandbox_pool: &SandboxPool, name: &str) -> Result<RunningService> {
     if let Some(mut service) = self.services.get_mut(name) {
       if let state @ ServiceState::Stopped(_) = service.value_mut() {
         let running = replace_with_or_abort_and_return(state, |x| {
