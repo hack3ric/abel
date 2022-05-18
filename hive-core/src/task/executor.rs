@@ -5,7 +5,7 @@ use crate::Result;
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::{pin_mut, Stream};
-use log::info;
+use log::{error, info};
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Relaxed;
@@ -94,19 +94,24 @@ impl Executor {
             let stop_rx_mut = Pin::new(&mut stop_rx);
             pin_mut!(waker_recv, new_task_recv, clean);
 
-            // match select(select(waker_recv, clean), select(new_task_recv,
-            // stop_rx_mut)).await {
             match select(
               select(stop_rx_mut, waker_recv),
               select(clean, new_task_recv),
             )
             .await
             {
+              Either::Left((Either::Left(_), _)) => {
+                println!("{} stopping", std::thread::current().name().unwrap());
+                break;
+              }
               Either::Left((Either::Right(_), _)) => {
                 waker = MyWaker::from_tx(waker_tx.clone());
                 let tasks = Pin::new(&mut tasks);
                 let mut context = Context::from_waker(&waker);
-                if let Poll::Ready(Some(_)) = tasks.poll_next(&mut context) {
+                if let Poll::Ready(Some(result)) = tasks.poll_next(&mut context) {
+                  if let Err(error) = result {
+                    error!("polling task failed: {error}");
+                  }
                   waker.wake_by_ref();
                 }
               }
@@ -121,17 +126,13 @@ impl Executor {
                 if let Some((task_fn, tx)) = msg.try_lock().ok().and_then(|mut x| x.take()) {
                   let task_count = task_count2.clone();
                   task_count.fetch_add(1, Ordering::AcqRel);
-                  let task = TaskFuture::new(sandbox.clone(), task_fn, tx).unwrap();
+                  let task = TaskFuture::new_with_context(sandbox.clone(), task_fn, tx).unwrap();
                   tasks.push(task);
                   waker.wake_by_ref();
                 }
               }
               Either::Right((Either::Right((Err(RecvError::Lagged(_n)), _)), _)) => {}
-              Either::Right((Either::Right((Err(RecvError::Closed), _)), _)) => break,
-              Either::Left((Either::Left(_), _)) => {
-                println!("{} stopping", std::thread::current().name().unwrap());
-                break;
-              }
+              Either::Right((Either::Right((Err(RecvError::Closed), _)), _)) => break, // TODO
             }
           }
         })

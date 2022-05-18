@@ -1,3 +1,9 @@
+local methods = {
+  "get", "post", "put",
+  "patch", "head", "delete",
+  "trace",
+}
+
 local function bind_one(f, arg)
   return function(...)
     return f(arg, ...)
@@ -12,13 +18,6 @@ end
 local mt = {
   __index = {
     any = bind_one(add_method_route, "_"),
-    get = bind_one(add_method_route, "GET"),
-    post = bind_one(add_method_route, "POST"),
-    put = bind_one(add_method_route, "PUT"),
-    patch = bind_one(add_method_route, "PATCH"),
-    head = bind_one(add_method_route, "HEAD"),
-    delete = bind_one(add_method_route, "DELETE"),
-    trace = bind_one(add_method_route, "TRACE"),
   },
   __call = function(self, req)
     local handler = self["$" .. req.method]
@@ -54,13 +53,12 @@ end
 
 local routing = {
   any = bind_one(init_method_route, "_"),
-  get = bind_one(init_method_route, "GET"),
-  post = bind_one(init_method_route, "POST"),
-  put = bind_one(init_method_route, "PUT"),
-  patch = bind_one(init_method_route, "PATCH"),
-  head = bind_one(init_method_route, "HEAD"),
-  delete = bind_one(init_method_route, "DELETE"),
-  trace = bind_one(init_method_route, "TRACE"),
 }
+
+for _, v in ipairs(methods) do
+  local method_upper = v:upper()
+  mt.__index[v] = bind_one(add_method_route, method_upper)
+  routing[v] = bind_one(init_method_route, method_upper)
+end
 
 return routing

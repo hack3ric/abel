@@ -195,7 +195,6 @@ async fn read_once<'lua>(
 impl UserData for LuaFile {
   fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_meta_function("__close", |_lua, this: AnyUserData| {
-      println!("closing!");
       drop(this.take::<Self>());
       Ok(())
     });

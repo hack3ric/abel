@@ -14,6 +14,7 @@ use crate::{HiveState, Result};
 use global_env::modify_global_env;
 use hyper::{Body, Request};
 use local_env::create_local_env;
+use log::debug;
 use mlua::{
   ExternalResult, FromLuaMulti, Function, Lua, LuaSerdeExt, MultiValue, RegistryKey, Table,
   ToLuaMulti,
@@ -234,6 +235,7 @@ impl Sandbox {
     let mut self_loaded = self.loaded.borrow_mut();
     if let Some((name_owned, loaded)) = self_loaded.remove_entry(name) {
       if !loaded.service.is_dropped() && loaded.service.ptr_eq(&service) {
+        debug!("service {name} cache hit");
         self_loaded.insert(name_owned, loaded);
         drop(self_loaded);
         return Ok(Ref::map(self.loaded.borrow(), |x| x.get(name).unwrap()));
@@ -242,6 +244,7 @@ impl Sandbox {
         self.lua.remove_registry_value(loaded.local_env)?;
       }
     }
+    debug!("service {name} cache miss");
     drop(self_loaded);
     let source = service_guard.source();
     let (local_env, internal, _) = self
