@@ -14,8 +14,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll, Wake, Waker};
 use std::time::Duration;
 use tokio::runtime::Handle;
-use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
 struct MyWaker {
@@ -58,18 +57,16 @@ impl Drop for PanicNotifier {
 pub struct Executor {
   pub task_count: Arc<AtomicU32>,
   panicked: Arc<AtomicBool>,
+  task_tx: mpsc::Sender<Task>,
   _stop_tx: oneshot::Sender<()>,
 }
 
 impl Executor {
-  pub fn new(
-    mut task_rx: broadcast::Receiver<Task>,
-    f: impl FnOnce() -> Result<Sandbox> + Send + 'static,
-    name: String,
-  ) -> Self {
+  pub fn new(f: impl FnOnce() -> Result<Sandbox> + Send + 'static, name: String) -> Self {
     let task_count = Arc::new(AtomicU32::new(0));
     let panicked = Arc::new(AtomicBool::new(false));
     let panic_notifier = PanicNotifier(panicked.clone());
+    let (task_tx, mut task_rx) = mpsc::channel::<Task>(16);
     let (_stop_tx, mut stop_rx) = oneshot::channel();
 
     let rt = Handle::current();
@@ -122,7 +119,7 @@ impl Executor {
                   info!("successfully cleaned {count} dropped services");
                 }
               }
-              Either::Right((Either::Right((Ok(msg), _)), _)) => {
+              Either::Right((Either::Right((Some(msg), _)), _)) => {
                 if let Some((task_fn, tx)) = msg.try_lock().ok().and_then(|mut x| x.take()) {
                   let task_count = task_count2.clone();
                   task_count.fetch_add(1, Ordering::AcqRel);
@@ -131,8 +128,7 @@ impl Executor {
                   waker.wake_by_ref();
                 }
               }
-              Either::Right((Either::Right((Err(RecvError::Lagged(_n)), _)), _)) => {}
-              Either::Right((Either::Right((Err(RecvError::Closed), _)), _)) => break, // TODO
+              Either::Right((Either::Right((None, _)), _)) => break, // TODO
             }
           }
         })
@@ -142,8 +138,13 @@ impl Executor {
     Self {
       task_count,
       panicked,
+      task_tx,
       _stop_tx,
     }
+  }
+
+  pub async fn send(&self, task: Task) -> Result<(), mpsc::error::SendError<Task>> {
+    self.task_tx.send(task).await
   }
 
   pub fn is_panicked(&self) -> bool {

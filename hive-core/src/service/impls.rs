@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 #[derive(Serialize)]
 #[serde(untagged)]
-pub enum ServiceState {
+pub(super) enum ServiceState {
   Running(#[serde(serialize_with = "crate::util::serialize_arc")] Arc<ServiceImpl>),
   Stopped(ServiceImpl),
 }
@@ -180,12 +180,12 @@ enum StoppedServiceInner<'a> {
 }
 
 impl<'a> StoppedService<'a> {
-  pub(crate) fn from_ref(x: Ref<'a, ServiceName, ServiceState>) -> Self {
+  pub(super) fn from_ref(x: Ref<'a, ServiceName, ServiceState>) -> Self {
     assert!(matches!(x.value(), ServiceState::Stopped(_)));
     Self(StoppedServiceInner::Ref(x))
   }
 
-  pub(crate) fn from_ref_multi(x: RefMulti<'a, ServiceName, ServiceState>) -> Self {
+  pub(super) fn from_ref_multi(x: RefMulti<'a, ServiceName, ServiceState>) -> Self {
     assert!(matches!(x.value(), ServiceState::Stopped(_)));
     Self(StoppedServiceInner::RefMulti(x))
   }

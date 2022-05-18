@@ -11,6 +11,7 @@ use crate::service::RunningService;
 use crate::source::{DirSource, Source};
 use crate::ErrorKind::*;
 use crate::{HiveState, Result};
+use clru::CLruCache;
 use global_env::modify_global_env;
 use hyper::{Body, Request};
 use local_env::create_local_env;
@@ -19,10 +20,10 @@ use mlua::{
   ExternalResult, FromLuaMulti, Function, Lua, LuaSerdeExt, MultiValue, RegistryKey, Table,
   ToLuaMulti,
 };
+use nonzero_ext::nonzero;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cell::{Ref, RefCell};
-use std::collections::HashMap;
 use std::sync::Arc;
 
 static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}$").unwrap());
@@ -30,7 +31,7 @@ static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}
 #[derive(Debug)]
 pub struct Sandbox {
   pub(crate) lua: Lua,
-  loaded: RefCell<HashMap<Box<str>, LoadedService>>,
+  loaded: RefCell<CLruCache<Box<str>, LoadedService>>,
   state: Arc<HiveState>,
 }
 
@@ -44,7 +45,7 @@ struct LoadedService {
 impl Sandbox {
   pub fn new(state: Arc<HiveState>) -> Result<Self> {
     let lua = Lua::new();
-    let loaded = RefCell::new(HashMap::new());
+    let loaded = RefCell::new(CLruCache::new(nonzero!(16usize)));
     modify_global_env(&lua)?;
     Ok(Self { lua, loaded, state })
   }
@@ -169,7 +170,7 @@ impl Sandbox {
       local_env,
       internal,
     };
-    self.loaded.borrow_mut().insert(name.into(), loaded);
+    self.loaded.borrow_mut().put(name.into(), loaded);
     if !hot_update {
       self.run_start(service).await?;
     }
@@ -233,18 +234,25 @@ impl Sandbox {
     let service_guard = service.try_upgrade()?;
     let name = service_guard.name();
     let mut self_loaded = self.loaded.borrow_mut();
-    if let Some((name_owned, loaded)) = self_loaded.remove_entry(name) {
+    if let Some(loaded) = self_loaded.pop(name) {
       if !loaded.service.is_dropped() && loaded.service.ptr_eq(&service) {
-        debug!("service {name} cache hit");
-        self_loaded.insert(name_owned, loaded);
+        debug!(
+          "service {name} cache hit on '{}'",
+          std::thread::current().name().unwrap_or("<unnamed>")
+        );
+        self_loaded.put(name.into(), loaded);
         drop(self_loaded);
-        return Ok(Ref::map(self.loaded.borrow(), |x| x.get(name).unwrap()));
+        self.loaded.borrow_mut().get(name);
+        return Ok(Ref::map(self.loaded.borrow(), |x| x.peek(name).unwrap()));
       } else {
         self.lua.remove_registry_value(loaded.internal)?;
         self.lua.remove_registry_value(loaded.local_env)?;
       }
     }
-    debug!("service {name} cache miss");
+    debug!(
+      "service {name} cache miss on '{}'",
+      std::thread::current().name().unwrap_or("<unnamed>")
+    );
     drop(self_loaded);
     let source = service_guard.source();
     let (local_env, internal, _) = self
@@ -257,9 +265,20 @@ impl Sandbox {
       internal,
     };
     let mut self_loaded = self.loaded.borrow_mut();
-    self_loaded.insert(name.into(), loaded);
+    self_loaded.put(name.into(), loaded);
     drop(self_loaded);
-    Ok(Ref::map(self.loaded.borrow(), |x| x.get(name).unwrap()))
+    self.loaded.borrow_mut().get(name);
+    Ok(Ref::map(self.loaded.borrow(), |x| x.peek(name).unwrap()))
+  }
+
+  pub(crate) fn is_loaded(&self, service: &RunningService) -> bool {
+    let loaded = self.loaded.borrow();
+    service
+      .try_upgrade()
+      .ok()
+      .and_then(|guard| loaded.peek(guard.name()))
+      .map(|loaded| loaded.service.ptr_eq(service))
+      .unwrap_or(false)
   }
 
   pub(crate) async fn clean_loaded(&self) -> u32 {
