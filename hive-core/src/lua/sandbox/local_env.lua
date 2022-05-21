@@ -16,22 +16,35 @@ local internal = {
 -- Hive table --
 
 local function register(path, handler)
-  if internal.sealed then
-    error "cannot call `hive.register` from places other than the top level of `main.lua`"
+  assert(
+    not internal.sealed,
+    "cannot call `hive.register` from places other than the top level of `main.lua`"
+  )
+  local type_handler = type(handler)
+  if type_handler ~= "function" then
+    if type_handler == "table" then
+      local mt = getmetatable(handler)
+      if type(mt) == "table" and type(mt.__call) == "function" then
+        goto ok
+      end
+    end
+    error "handler must either be a function or a callable table"
   end
+
+  ::ok::
   table.insert(internal.paths, { path, handler })
 end
 
 local function require(modname)
   local modname_type = type(modname)
-  if modname_type ~= "string" then
-    error("bad argument #1 to 'require' (string expected, got " .. modname_type .. ")")
-  end
+  assert(
+    modname_type == "string",
+    "bad argument #1 to 'require' (string expected, got " .. modname_type .. ")"
+  )
 
   local package = internal.package;
   local error_msgs = {}
   if package.loaded[modname] then
-    print "loaded"
     return table.unpack(package.loaded[modname])
   else
     for _, searcher in ipairs(package.searchers) do

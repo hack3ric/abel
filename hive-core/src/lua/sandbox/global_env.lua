@@ -24,18 +24,19 @@ local lua_error = error
 function error(msg, level)
   if type(msg) == "table" then
     local type_detail = type(msg.detail)
-    if type_detail ~= "nil" and type_detail ~= "string" and type_detail ~= "table" then
-      lua_error "error detail must be nil, string or table"
-    end
+    assert(
+      type_detail == "nil" or type_detail == "string" or type_detail == "table",
+      "error detail must be nil, string or table"
+    )
   end
   lua_error(msg, level)
 end
 
 function safe_getmetatable(t)
-  local typet = type(t)
-  if typet == "table" then
-    getmetatable(t)
-  else
-    error("bad argument #1 to 'getmetatable' (table expected, got" .. typet .. ")")
-  end
+  local type_t = type(t)
+  assert(
+    type_t == "table",
+    "bad argument #1 to 'getmetatable' (table expected, got" .. type_t .. ")"
+  )
+  getmetatable(t)
 end
