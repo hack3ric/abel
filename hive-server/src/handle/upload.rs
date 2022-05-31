@@ -200,7 +200,7 @@ async fn create_service(
     }
     UploadMode::Hot if state.hive.get_running_service(&name).is_ok() => {
       let (service, replaced) = (state.hive)
-        .hot_update_service(name, None, source.clone(), config)
+        .hot_update_service(name, None, source.clone().into(), config)
         .await?;
       (
         Service::Running(service),
@@ -210,12 +210,12 @@ async fn create_service(
     }
     UploadMode::Hot | UploadMode::Cold | UploadMode::Create => {
       (state.hive)
-        .cold_update_or_create_service(name, None, source.clone(), config)
+        .cold_update_or_create_service(name, None, source.clone().into(), config)
         .await?
     }
     UploadMode::Load => {
       let (service, replaced, error_payload) = (state.hive)
-        .load_service(name, None, source.clone(), config)
+        .load_service(name, None, source.clone().into(), config)
         .await?;
       (Service::Stopped(service), replaced, error_payload)
     }

@@ -18,7 +18,7 @@ pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 use hyper::{Body, Request, Response};
 use lua::Sandbox;
 use service::{ErrorPayload, Service, ServiceName, ServicePool, StoppedService};
-use source::DirSource;
+use source::Source;
 use std::path::PathBuf;
 use std::sync::Arc;
 use task::SandboxPool;
@@ -61,7 +61,7 @@ impl Hive {
     &self,
     name: impl Into<ServiceName>,
     uuid: Option<Uuid>,
-    source: DirSource,
+    source: Source,
     config: Config,
   ) -> Result<(StoppedService<'_>, Option<ServiceImpl>, ErrorPayload)> {
     (self.service_pool)
@@ -73,7 +73,7 @@ impl Hive {
     &self,
     name: impl Into<ServiceName>,
     uuid: Option<Uuid>,
-    source: DirSource,
+    source: Source,
     config: Config,
   ) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
     (self.service_pool)
@@ -85,7 +85,7 @@ impl Hive {
     &self,
     name: impl Into<ServiceName>,
     uuid: Option<Uuid>,
-    source: DirSource,
+    source: Source,
     config: Config,
   ) -> Result<(RunningService, ServiceImpl)> {
     (self.service_pool)
@@ -97,7 +97,7 @@ impl Hive {
     &self,
     name: impl Into<ServiceName>,
     uuid: Uuid,
-    source: DirSource,
+    source: Source,
     config: Config,
   ) -> Result<(StoppedService<'_>, ErrorPayload)> {
     let (service, replaced, error_payload) = (self.service_pool)

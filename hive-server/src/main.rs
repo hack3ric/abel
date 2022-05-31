@@ -11,7 +11,7 @@ use config::{Args, HALF_NUM_CPUS};
 use error::Error;
 use handle::handle;
 use hive_core::service::Service;
-use hive_core::source::{DirSource, Source};
+use hive_core::source::DirSource;
 use hive_core::{Hive, HiveOptions};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
@@ -127,12 +127,12 @@ async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<
 
         let (service, error_payload) = if metadata.started {
           let (service, _, error_payload) = (state.hive)
-            .cold_update_or_create_service(name.clone(), Some(metadata.uuid), source, config)
+            .cold_update_or_create_service(name.clone(), Some(metadata.uuid), source.into(), config)
             .await?;
           (service, error_payload)
         } else {
           let (service, error_payload) = (state.hive)
-            .preload_service(name.clone(), metadata.uuid, source, config)
+            .preload_service(name.clone(), metadata.uuid, source.into(), config)
             .await?;
           (Service::Stopped(service), error_payload)
         };

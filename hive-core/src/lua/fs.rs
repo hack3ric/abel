@@ -20,7 +20,7 @@ pub async fn create_preload_fs<'lua>(
   lua: &'lua Lua,
   state: &HiveState,
   service_name: &str,
-  source: impl Source,
+  source: Source,
   permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function<'lua>> {
   let local_storage_path: Arc<Path> = state.local_storage_path.join(service_name).into();
@@ -33,7 +33,7 @@ pub async fn create_preload_fs<'lua>(
 fn _create_preload_fs(
   lua: &Lua,
   local_storage_path: Arc<Path>,
-  source: impl Source,
+  source: Source,
   permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function<'_>> {
   lua.create_function(move |lua, ()| {
@@ -293,7 +293,7 @@ impl UserData for LuaFile {
 
 fn create_fn_fs_open(
   lua: &Lua,
-  source: impl Source,
+  source: Source,
   local_storage_path: Arc<Path>,
   permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function<'_>> {
@@ -310,7 +310,7 @@ fn create_fn_fs_open(
           let file = match scheme {
             "local" => {
               let path = normalize_path_str(path);
-              Box::pin(
+              GenericFile::File(
                 mode
                   .to_open_options()
                   .open(local_storage_path.join(path))
@@ -333,7 +333,7 @@ fn create_fn_fs_open(
                   permissions.check(&write)?;
                 }
               }
-              Box::pin(mode.to_open_options().open(path).await?)
+              GenericFile::File(mode.to_open_options().open(path).await?)
             }
             "source" => {
               // For `source:`, the only open mode is "read"

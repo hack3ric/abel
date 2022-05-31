@@ -17,7 +17,7 @@ pub(super) async fn create_local_env<'a, 'b>(
   lua: &'a Lua,
   state: &HiveState,
   service_name: &'b str,
-  source: impl Source,
+  source: Source,
   permissions: Arc<PermissionSet>,
 ) -> Result<(Table<'a>, Table<'a>)> {
   let local_env_fn = lua.named_registry_value::<_, Function>("local_env_fn")?;

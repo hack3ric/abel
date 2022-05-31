@@ -37,5 +37,7 @@ tokio-util = { version = "0.7.0", features = ["io"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
 
 [dev-dependencies]
+anyhow = "1.0.57"
 hyper = { version = "0.14.16", features = ["full"] }
+tempfile = "3.3.0"
 test-case = "2.0.0"
