@@ -1,8 +1,8 @@
-mod archive;
-mod header;
-mod writer;
+pub mod archive;
+pub mod header;
+pub mod writer;
 
-pub use archive::{Archive, File};
+pub use archive::{Archive, File, FileArchive};
 pub use header::{Algorithm, Directory, Entry, FileMetadata, Integrity};
 pub use writer::Writer;
 

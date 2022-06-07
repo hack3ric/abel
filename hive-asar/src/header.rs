@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Entry {
   File(FileMetadata),
@@ -29,7 +29,7 @@ pub struct FileMetadata {
   pub integrity: Option<Integrity>,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Directory {
   pub files: HashMap<Box<str>, Entry>,
 }
