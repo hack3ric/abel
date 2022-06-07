@@ -142,9 +142,9 @@ mod tests {
     });
   }
 
-  #[test_case("/hello/:name", "/hello/world" => some_map!("name" => "world"))]
-  #[test_case("/hello/:name", "/hello/world/" => None)]
-  #[test_case("/files/*", "/files/path/to/secret/file" => some_map!("*" => "path/to/secret/file"))]
+  #[test_case("/hello/:name", "/hello/world" => some_map!("name" => "world"); "single param")]
+  #[test_case("/hello/:name", "/hello/world/" => None; "trailing slash")]
+  #[test_case("/files/*", "/files/path/to/secret/file" => some_map!("*" => "path/to/secret/file"); "asterisk")]
   fn test_path_matcher(matcher: &str, path: &str) -> Option<Params> {
     PathMatcher::new(matcher).unwrap().gen_params(path)
   }
