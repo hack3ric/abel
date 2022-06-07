@@ -46,11 +46,16 @@ impl<F: AsyncRead + Unpin> Writer<F> {
   ///
   /// `size` should correspond with `content`. If `size` is smaller, exactly
   /// `size` bytes will be written. If `size` is bigger, the
-  /// [`write`](Writer::write()) method will fail. For convenience, you may want
+  /// [`Writer::write`] method will fail. For convenience, you may want
   /// to use `add_sized`.
+  ///
+  /// # Panic
+  ///
+  /// The method panics if normalised `path` contains no filename, or if the
+  /// path is already occupied by a previously inserted file.
   pub fn add(&mut self, path: &str, content: F, size: u64) {
     let mut segments = split_path(path);
-    let filename = segments.pop().unwrap(); // TODO: handle unwrap
+    let filename = segments.pop().unwrap();
     let file_entry = FileMetadata {
       offset: self.file_offset,
       size,
@@ -62,7 +67,7 @@ impl<F: AsyncRead + Unpin> Writer<F> {
       .files
       .insert(filename.into(), Entry::File(file_entry));
     dbg!(&result);
-    assert!(result.is_none()); // TODO: handle duplicate
+    assert!(result.is_none());
     self.file_offset += size;
     self.files.push(content.take(size))
   }
@@ -100,9 +105,11 @@ impl<F: AsyncRead + Unpin> Writer<F> {
 impl<F: AsyncRead + AsyncSeek + Unpin> Writer<F> {
   /// Add an entry to the archive.
   ///
-  /// Similar to [`add`](Writer::add()), but it uses
-  /// [`AsyncSeekExt::seek`](AsyncSeekExt::seek()) to determine the size of the
+  /// Similar to [`Writer::add`], but it uses
+  /// [`AsyncSeekExt::seek`] to determine the size of the
   /// content.
+  ///
+  /// For more information see [`Writer::add`].
   pub async fn add_sized(&mut self, path: &str, mut content: F) -> io::Result<()> {
     let size = content.seek(SeekFrom::End(0)).await? - content.stream_position().await?;
     self.add(path, content, size);
