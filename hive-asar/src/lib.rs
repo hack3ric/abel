@@ -1,10 +1,14 @@
-pub mod archive;
+//! Asynchronous parser and writer for Electron's asar archive format.
+//!
+//! Requires Tokio runtime.
+
 pub mod header;
-pub mod writer;
+
+mod archive;
+mod writer;
 
 pub use archive::{Archive, File, FileArchive};
-pub use header::{Algorithm, Directory, Entry, FileMetadata, Integrity};
-pub use writer::Writer;
+pub use writer::{pack_dir, Writer};
 
 pub(crate) fn split_path(path: &str) -> Vec<&str> {
   path

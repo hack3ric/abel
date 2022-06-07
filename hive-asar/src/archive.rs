@@ -9,7 +9,7 @@ use std::task::{Context, Poll};
 use tokio::fs::{self, File as TokioFile};
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt, Take};
 
-/// ASAR archive reader.
+/// asar archive reader.
 #[derive(Debug)]
 pub struct Archive<R: AsyncRead + AsyncSeek + Send + Sync + Unpin> {
   pub(crate) offset: u64,
@@ -18,7 +18,7 @@ pub struct Archive<R: AsyncRead + AsyncSeek + Send + Sync + Unpin> {
 }
 
 impl<R: AsyncRead + AsyncSeek + Send + Sync + Unpin> Archive<R> {
-  /// Parses an ASAR archive into `Archive`.
+  /// Parses an asar archive into `Archive`.
   pub async fn new(mut reader: R) -> io::Result<Self> {
     reader.seek(SeekFrom::Start(12)).await?;
     let header_size = reader.read_u32_le().await?;
@@ -68,7 +68,7 @@ impl<R: AsyncRead + AsyncSeek + Send + Sync + Unpin> Archive<R> {
   }
 }
 
-/// File-based ASAR archive reader, allowing multiple read access at a time
+/// File-based asar archive reader, allowing multiple read access at a time
 /// through `read_owned`.
 ///
 /// It implements `Deref<Target = Archive>`, so `Archive`'s methods can still be
@@ -80,7 +80,7 @@ pub struct FileArchive {
 }
 
 impl FileArchive {
-  /// Parses an ASAR archive into `FileArchive`.
+  /// Parses an asar archive into `FileArchive`.
   pub async fn new(path: impl Into<PathBuf>) -> io::Result<Self> {
     let path = path.into();
     let file = TokioFile::open(&path).await?;
@@ -171,7 +171,7 @@ async fn extract_dir<R: AsyncRead + AsyncSeek + Send + Sync + Unpin>(
   Ok(())
 }
 
-/// File from an ASAR archive.
+/// File from an asar archive.
 pub struct File<R: AsyncRead + AsyncSeek + Send + Sync + Unpin> {
   offset: u64,
   pub(crate) metadata: FileMetadata,

@@ -1,10 +1,19 @@
+//! Structures that describes asar's header.
+//!
+//! asar's header is represented using a single root [`Directory`], with tree
+//! structures similar to what the file system looks like.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Entry of either a file or a directory.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Entry {
+  /// A file.
   File(FileMetadata),
+
+  /// A directory.
   Directory(Directory),
 }
 
@@ -18,6 +27,7 @@ impl Entry {
   }
 }
 
+/// Metadata of a file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileMetadata {
   #[serde(with = "serde_offset")]
@@ -29,6 +39,7 @@ pub struct FileMetadata {
   pub integrity: Option<Integrity>,
 }
 
+/// A directory, containing files.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Directory {
   pub files: HashMap<Box<str>, Entry>,
@@ -42,6 +53,7 @@ impl Directory {
   }
 }
 
+/// Integrity information of a file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Integrity {
   pub algorithm: Algorithm,
@@ -51,6 +63,9 @@ pub struct Integrity {
   pub blocks: Vec<String>,
 }
 
+/// Hashing algorithm used to check files' integrity.
+///
+/// Currently only SHA256 is officially supported.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Algorithm {
   SHA256,
