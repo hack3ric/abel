@@ -1,2 +1,2 @@
 [workspace]
-members = ["hive-core", "hive-server", "hive-asar"]
+members = ["hive-core", "hive-server"]
