@@ -8,7 +8,7 @@ anyhow = { version = "1.0.52", features = ["backtrace"] }
 backtrace = "0.3.63"
 clap = { version = "3.1.8", features = ["derive"] }
 futures = "0.3.19"
-hive-asar = { git = "https://github.com/hack3ric/hive-asar.git" }
+hive-asar = "0.1.1"
 hive-core = { path = "../hive-core" }
 home = "0.5.3"
 hyper = { version = "0.14.16", features = ["full"] }
