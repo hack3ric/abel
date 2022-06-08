@@ -1,6 +1,7 @@
 use crate::path::normalize_path_str;
 use crate::Result;
 use mlua::{ExternalResult, Function, Lua, Table, UserData};
+use pin_project::pin_project;
 use std::fs::Metadata as FsMetadata;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -144,9 +145,10 @@ impl UserData for SourceUserData {
   }
 }
 
+#[pin_project(project = GenericFileProj)]
 pub enum GenericFile {
-  File(File),
-  ReadOnlyArcCursor(Cursor<Arc<[u8]>>),
+  File(#[pin] File),
+  ReadOnlyArcCursor(#[pin] Cursor<Arc<[u8]>>),
 }
 
 impl GenericFile {
@@ -162,52 +164,46 @@ impl GenericFile {
 
 impl AsyncRead for GenericFile {
   fn poll_read(
-    mut self: Pin<&mut Self>,
+    self: Pin<&mut Self>,
     cx: &mut Context<'_>,
     buf: &mut io::ReadBuf<'_>,
   ) -> Poll<std::io::Result<()>> {
-    match &mut *self {
-      Self::File(f) => Pin::new(f).poll_read(cx, buf),
-      Self::ReadOnlyArcCursor(f) => Pin::new(f).poll_read(cx, buf),
+    match self.project() {
+      GenericFileProj::File(f) => f.poll_read(cx, buf),
+      GenericFileProj::ReadOnlyArcCursor(f) => f.poll_read(cx, buf),
     }
   }
 }
 
 impl AsyncWrite for GenericFile {
   fn poll_write(
-    mut self: Pin<&mut Self>,
+    self: Pin<&mut Self>,
     cx: &mut Context<'_>,
     buf: &[u8],
   ) -> Poll<Result<usize, std::io::Error>> {
-    match &mut *self {
-      Self::File(f) => Pin::new(f).poll_write(cx, buf),
-      Self::ReadOnlyArcCursor(_) => Poll::Ready(Err(io::Error::new(
+    match self.project() {
+      GenericFileProj::File(f) => f.poll_write(cx, buf),
+      GenericFileProj::ReadOnlyArcCursor(_) => Poll::Ready(Err(io::Error::new(
         io::ErrorKind::Other,
         "bad file descriptor",
       ))),
     }
   }
 
-  fn poll_flush(
-    mut self: Pin<&mut Self>,
-    cx: &mut Context<'_>,
-  ) -> Poll<Result<(), std::io::Error>> {
-    match &mut *self {
-      Self::File(f) => Pin::new(f).poll_flush(cx),
-      Self::ReadOnlyArcCursor(_) => Poll::Ready(Err(io::Error::new(
+  fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+    match self.project() {
+      GenericFileProj::File(f) => f.poll_flush(cx),
+      GenericFileProj::ReadOnlyArcCursor(_) => Poll::Ready(Err(io::Error::new(
         io::ErrorKind::Other,
         "bad file descriptor",
       ))),
     }
   }
 
-  fn poll_shutdown(
-    mut self: Pin<&mut Self>,
-    cx: &mut Context<'_>,
-  ) -> Poll<Result<(), std::io::Error>> {
-    match &mut *self {
-      Self::File(f) => Pin::new(f).poll_shutdown(cx),
-      Self::ReadOnlyArcCursor(_) => Poll::Ready(Err(io::Error::new(
+  fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+    match self.project() {
+      GenericFileProj::File(f) => f.poll_shutdown(cx),
+      GenericFileProj::ReadOnlyArcCursor(_) => Poll::Ready(Err(io::Error::new(
         io::ErrorKind::Other,
         "bad file descriptor",
       ))),
@@ -216,17 +212,17 @@ impl AsyncWrite for GenericFile {
 }
 
 impl AsyncSeek for GenericFile {
-  fn start_seek(mut self: Pin<&mut Self>, position: io::SeekFrom) -> std::io::Result<()> {
-    match &mut *self {
-      Self::File(f) => Pin::new(f).start_seek(position),
-      Self::ReadOnlyArcCursor(f) => Pin::new(f).start_seek(position),
+  fn start_seek(self: Pin<&mut Self>, position: io::SeekFrom) -> std::io::Result<()> {
+    match self.project() {
+      GenericFileProj::File(f) => f.start_seek(position),
+      GenericFileProj::ReadOnlyArcCursor(f) => f.start_seek(position),
     }
   }
 
-  fn poll_complete(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<u64>> {
-    match &mut *self {
-      Self::File(f) => Pin::new(f).poll_complete(cx),
-      Self::ReadOnlyArcCursor(f) => Pin::new(f).poll_complete(cx),
+  fn poll_complete(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<u64>> {
+    match self.project() {
+      GenericFileProj::File(f) => f.poll_complete(cx),
+      GenericFileProj::ReadOnlyArcCursor(f) => f.poll_complete(cx),
     }
   }
 }
