@@ -1,4 +1,3 @@
-use crate::permission::Permission;
 use crate::service::ServiceName;
 use backtrace::Backtrace;
 use hyper::StatusCode;
@@ -98,18 +97,6 @@ pub enum ErrorKind {
   #[error("service is dropped")]
   #[strum(props(status = "500", error = "service is dropped"))]
   ServiceDropped,
-
-  // -- Permission --
-  #[error("permission '{permission}' not granted")]
-  #[strum(props(status = "500", error = "permission not granted"))]
-  PermissionNotGranted { permission: Permission<'static> },
-
-  #[error("invalid permission '{string}': {reason}")]
-  #[strum(props(status = "500", error = "invalid permission"))]
-  InvalidPermission {
-    string: SmallString<[u8; 8]>,
-    reason: SmallString<[u8; 32]>,
-  },
 
   // -- Vendor --
   #[error(transparent)]

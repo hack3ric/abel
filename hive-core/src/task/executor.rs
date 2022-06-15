@@ -5,7 +5,7 @@ use crate::Result;
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::{pin_mut, Stream};
-use log::{error, info};
+use log::{error, info, debug};
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Relaxed;
@@ -98,7 +98,7 @@ impl Executor {
             .await
             {
               Either::Left((Either::Left(_), _)) => {
-                println!("{} stopping", std::thread::current().name().unwrap());
+                debug!("{} stopping", std::thread::current().name().unwrap());
                 break;
               }
               Either::Left((Either::Right(_), _)) => {

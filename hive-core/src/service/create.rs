@@ -38,11 +38,9 @@ async fn prepare_service(
   let Config {
     pkg_name,
     description,
-    permissions,
   } = config;
-  let permissions = Arc::new(permissions);
   let (paths, local_env, internal) = sandbox
-    .prepare_service(&name, source.clone(), permissions.clone())
+    .prepare_service(&name, source.clone())
     .await?;
   let service_impl = ServiceImpl {
     name,
@@ -50,7 +48,6 @@ async fn prepare_service(
     description,
     paths,
     source,
-    permissions,
     uuid: uuid.unwrap_or_else(Uuid::new_v4),
   };
   Ok((service_impl, local_env, internal))

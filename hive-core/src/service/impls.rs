@@ -1,6 +1,5 @@
 use super::ServiceName;
 use crate::path::PathMatcher;
-use crate::permission::PermissionSet;
 use crate::source::Source;
 use crate::ErrorKind::ServiceDropped;
 use crate::Result;
@@ -50,8 +49,6 @@ pub struct ServiceImpl {
   pub(crate) paths: Vec<PathMatcher>,
   #[serde(skip)]
   pub(crate) source: Source,
-  #[serde(serialize_with = "crate::util::serialize_arc")]
-  pub(crate) permissions: Arc<PermissionSet>,
   pub(crate) uuid: Uuid,
 }
 
@@ -70,10 +67,7 @@ impl ServiceImpl {
   pub fn description(&self) -> Option<&str> { self.description.as_deref() }
   pub fn paths(&self) -> &[PathMatcher] { &self.paths }
   pub fn source(&self) -> &Source { &self.source }
-  pub fn permissions(&self) -> &PermissionSet { &self.permissions }
   pub fn uuid(&self) -> Uuid { self.uuid }
-
-  pub(crate) fn permissions_arc(&self) -> Arc<PermissionSet> { self.permissions.clone() }
 }
 
 pub enum Service<'a> {

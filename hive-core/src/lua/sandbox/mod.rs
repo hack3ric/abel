@@ -6,7 +6,6 @@ use super::shared::remove_service_shared_stores;
 use super::LuaTableExt;
 use crate::lua::http::LuaRequest;
 use crate::path::PathMatcher;
-use crate::permission::PermissionSet;
 use crate::service::RunningService;
 use crate::source::Source;
 use crate::ErrorKind::*;
@@ -133,13 +132,12 @@ impl Sandbox {
     &self,
     name: &str,
     source: Source,
-    permissions: Arc<PermissionSet>,
   ) -> Result<(Vec<PathMatcher>, RegistryKey, RegistryKey)> {
     if !NAME_CHECK_REGEX.is_match(name) {
       return Err(InvalidServiceName { name: name.into() }.into());
     }
 
-    let (local_env, internal_key, internal) = self.run_source(name, source, permissions).await?;
+    let (local_env, internal_key, internal) = self.run_source(name, source).await?;
 
     let mut paths = Vec::new();
     for f in internal
@@ -215,10 +213,9 @@ impl Sandbox {
     &'a self,
     name: &str,
     source: Source,
-    permissions: Arc<PermissionSet>,
   ) -> Result<(RegistryKey, RegistryKey, Table<'a>)> {
     let (local_env, internal) =
-      create_local_env(&self.lua, &self.state, name, source.clone(), permissions).await?;
+      create_local_env(&self.lua, &self.state, name, source.clone()).await?;
     source
       .load(&self.lua, "/main.lua", local_env.clone())
       .await?
@@ -256,7 +253,7 @@ impl Sandbox {
     drop(self_loaded);
     let source = service_guard.source();
     let (local_env, internal, _) = self
-      .run_source(name, source.clone(), service_guard.permissions_arc())
+      .run_source(name, source.clone())
       .await?;
 
     let loaded = LoadedService {

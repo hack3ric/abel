@@ -1,8 +1,7 @@
 use super::async_bind_temp;
 use crate::lua::byte_stream::ByteStream;
 use crate::lua::{context, extract_error_async, BadArgument};
-use crate::path::{normalize_path, normalize_path_str};
-use crate::permission::{Permission, PermissionSet};
+use crate::path::normalize_path_str;
 use crate::source::{GenericFile, Source};
 use crate::{HiveState, Result};
 use mlua::{
@@ -21,20 +20,18 @@ pub async fn create_preload_fs<'lua>(
   state: &HiveState,
   service_name: &str,
   source: Source,
-  permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function<'lua>> {
   let local_storage_path: Arc<Path> = state.local_storage_path.join(service_name).into();
   if !local_storage_path.exists() {
     tokio::fs::create_dir(&local_storage_path).await?;
   }
-  _create_preload_fs(lua, local_storage_path, source, permissions)
+  _create_preload_fs(lua, local_storage_path, source)
 }
 
 fn _create_preload_fs(
   lua: &Lua,
   local_storage_path: Arc<Path>,
   source: Source,
-  permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function<'_>> {
   lua.create_function(move |lua, ()| {
     let fs_table = lua.create_table()?;
@@ -44,16 +41,15 @@ fn _create_preload_fs(
         lua,
         source.clone(),
         local_storage_path.clone(),
-        permissions.clone(),
       )?,
     )?;
     fs_table.raw_set(
       "mkdir",
-      create_fn_fs_mkdir(lua, local_storage_path.clone(), permissions.clone())?,
+      create_fn_fs_mkdir(lua, local_storage_path.clone())?,
     )?;
     fs_table.raw_set(
       "remove",
-      create_fn_fs_remove(lua, local_storage_path.clone(), permissions.clone())?,
+      create_fn_fs_remove(lua, local_storage_path.clone())?,
     )?;
     Ok(fs_table)
   })
@@ -295,14 +291,11 @@ fn create_fn_fs_open(
   lua: &Lua,
   source: Source,
   local_storage_path: Arc<Path>,
-  permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function<'_>> {
   lua.create_async_function(
     move |lua, (path, mode): (mlua::String, Option<mlua::String>)| {
-      use OpenMode::*;
       let source = source.clone();
       let local_storage_path = local_storage_path.clone();
-      let permissions = permissions.clone();
       async move {
         let (scheme, path) = parse_path(&path)?;
         let mode = OpenMode::from_lua(mode)?;
@@ -316,24 +309,6 @@ fn create_fn_fs_open(
                   .open(local_storage_path.join(path))
                   .await?,
               )
-            }
-            "external" => {
-              let path = normalize_path(path);
-              let read = Permission::Read {
-                path: Cow::Borrowed(&path),
-              };
-              let write = Permission::Write {
-                path: Cow::Borrowed(&path),
-              };
-              match mode {
-                Read => permissions.check(&read)?,
-                Write | Append => permissions.check(&write)?,
-                ReadWrite | ReadWriteNew | ReadAppend => {
-                  permissions.check(&read)?;
-                  permissions.check(&write)?;
-                }
-              }
-              GenericFile::File(mode.to_open_options().open(path).await?)
             }
             "source" => {
               // For `source:`, the only open mode is "read"
@@ -355,22 +330,14 @@ fn create_fn_fs_open(
 fn create_fn_fs_mkdir(
   lua: &Lua,
   local_storage_path: Arc<Path>,
-  permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function> {
   lua.create_async_function(move |lua, (path, all): (mlua::String, bool)| {
     let local_storage_path = local_storage_path.clone();
-    let permissions = permissions.clone();
     extract_error_async(lua, async move {
       let (scheme, path) = parse_path(&path)?;
 
       let path: Cow<Path> = match scheme {
         "local" => local_storage_path.join(normalize_path_str(path)).into(),
-        "external" => {
-          permissions.check(&Permission::Write {
-            path: Cow::Borrowed(Path::new(path)),
-          })?;
-          Path::new(path).into()
-        }
         "source" => return Err("cannot modify service source".to_lua_err()),
         _ => return scheme_not_supported(scheme),
       };
@@ -388,21 +355,14 @@ fn create_fn_fs_mkdir(
 fn create_fn_fs_remove(
   lua: &Lua,
   local_storage_path: Arc<Path>,
-  permissions: Arc<PermissionSet>,
 ) -> mlua::Result<Function> {
   lua.create_async_function(move |lua, (path, all): (mlua::String, bool)| {
     let local_storage_path = local_storage_path.clone();
-    let permissions = permissions.clone();
     extract_error_async(lua, async move {
       let (scheme, path) = parse_path(&path)?;
 
       let path: Cow<Path> = match scheme {
         "local" => local_storage_path.join(normalize_path_str(path)).into(),
-        "external" => {
-          let path: Cow<_> = Path::new(path).into();
-          permissions.check(&Permission::Write { path: path.clone() })?;
-          path
-        }
         "source" => return Err("cannot modify service source".to_lua_err()),
         _ => return scheme_not_supported(scheme),
       };

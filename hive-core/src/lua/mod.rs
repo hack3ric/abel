@@ -6,7 +6,6 @@ mod crypto;
 mod env;
 mod fs;
 mod json;
-mod permission;
 mod print;
 mod sandbox;
 mod shared;
@@ -100,6 +99,7 @@ where
 }
 
 /// Temporary solution to https://github.com/khvzak/mlua/issues/161
+// TODO: Replace it with stable, fixed one
 pub(super) fn async_bind_temp<'lua, T: ToLua<'lua>>(
   lua: &'lua Lua,
   f: Function<'lua>,
