@@ -37,11 +37,7 @@ fn _create_preload_fs(
     let fs_table = lua.create_table()?;
     fs_table.raw_set(
       "open",
-      create_fn_fs_open(
-        lua,
-        source.clone(),
-        local_storage_path.clone(),
-      )?,
+      create_fn_fs_open(lua, source.clone(), local_storage_path.clone())?,
     )?;
     fs_table.raw_set(
       "mkdir",
@@ -327,10 +323,7 @@ fn create_fn_fs_open(
   )
 }
 
-fn create_fn_fs_mkdir(
-  lua: &Lua,
-  local_storage_path: Arc<Path>,
-) -> mlua::Result<Function> {
+fn create_fn_fs_mkdir(lua: &Lua, local_storage_path: Arc<Path>) -> mlua::Result<Function> {
   lua.create_async_function(move |lua, (path, all): (mlua::String, bool)| {
     let local_storage_path = local_storage_path.clone();
     extract_error_async(lua, async move {
@@ -352,10 +345,7 @@ fn create_fn_fs_mkdir(
   })
 }
 
-fn create_fn_fs_remove(
-  lua: &Lua,
-  local_storage_path: Arc<Path>,
-) -> mlua::Result<Function> {
+fn create_fn_fs_remove(lua: &Lua, local_storage_path: Arc<Path>) -> mlua::Result<Function> {
   lua.create_async_function(move |lua, (path, all): (mlua::String, bool)| {
     let local_storage_path = local_storage_path.clone();
     extract_error_async(lua, async move {

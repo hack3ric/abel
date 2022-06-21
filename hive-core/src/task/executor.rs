@@ -5,7 +5,7 @@ use crate::Result;
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::{pin_mut, Stream};
-use log::{error, info, debug};
+use log::{debug, error, info};
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Relaxed;

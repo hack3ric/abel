@@ -39,9 +39,7 @@ async fn prepare_service(
     pkg_name,
     description,
   } = config;
-  let (paths, local_env, internal) = sandbox
-    .prepare_service(&name, source.clone())
-    .await?;
+  let (paths, local_env, internal) = sandbox.prepare_service(&name, source.clone()).await?;
   let service_impl = ServiceImpl {
     name,
     pkg_name,

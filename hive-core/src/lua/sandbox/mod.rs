@@ -252,9 +252,7 @@ impl Sandbox {
     );
     drop(self_loaded);
     let source = service_guard.source();
-    let (local_env, internal, _) = self
-      .run_source(name, source.clone())
-      .await?;
+    let (local_env, internal, _) = self.run_source(name, source.clone()).await?;
 
     let loaded = LoadedService {
       service: service.clone(),

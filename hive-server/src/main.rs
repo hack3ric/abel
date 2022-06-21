@@ -167,15 +167,6 @@ async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<
   Ok(())
 }
 
-fn main() -> anyhow::Result<()> {
-  tokio::runtime::Builder::new_multi_thread()
-    .enable_all()
-    .worker_threads(*HALF_NUM_CPUS)
-    .build()
-    .unwrap()
-    .block_on(run())
-}
-
 #[cfg(unix)]
 async fn shutdown_signal() {
   use tokio::select;
@@ -196,4 +187,13 @@ async fn shutdown_signal() {
 async fn shutdown_signal() {
   tokio::signal::ctrl_c().await.unwrap();
   info!("gracefully shutting down");
+}
+
+fn main() -> anyhow::Result<()> {
+  tokio::runtime::Builder::new_multi_thread()
+    .enable_all()
+    .worker_threads(*HALF_NUM_CPUS)
+    .build()
+    .unwrap()
+    .block_on(run())
 }

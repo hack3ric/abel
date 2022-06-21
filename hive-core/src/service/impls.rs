@@ -1,6 +1,7 @@
 use super::ServiceName;
 use crate::path::PathMatcher;
 use crate::source::Source;
+use crate::util::serialize_arc;
 use crate::ErrorKind::ServiceDropped;
 use crate::Result;
 use dashmap::mapref::multiple::RefMulti;
@@ -14,7 +15,7 @@ use uuid::Uuid;
 #[derive(Serialize)]
 #[serde(untagged)]
 pub(super) enum ServiceState {
-  Running(#[serde(serialize_with = "crate::util::serialize_arc")] Arc<ServiceImpl>),
+  Running(#[serde(serialize_with = "serialize_arc")] Arc<ServiceImpl>),
   Stopped(ServiceImpl),
 }
 
