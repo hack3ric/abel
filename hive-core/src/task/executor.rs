@@ -128,7 +128,9 @@ impl Executor {
                   waker.wake_by_ref();
                 }
               }
-              Either::Right((Either::Right((None, _)), _)) => break, // TODO
+              // The new task channel is dropped, stopping the executor.
+              // TODO: graceful shutdown?
+              Either::Right((Either::Right((None, _)), _)) => break,
             }
           }
         })

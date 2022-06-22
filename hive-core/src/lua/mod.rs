@@ -97,20 +97,3 @@ where
     Err(error) => lua.pack_multi((mlua::Value::Nil, error.to_string())),
   }
 }
-
-/// Temporary solution to https://github.com/khvzak/mlua/issues/161
-// TODO: Replace it with stable, fixed one
-pub(super) fn async_bind_temp<'lua, T: ToLua<'lua>>(
-  lua: &'lua Lua,
-  f: Function<'lua>,
-  t: T,
-) -> mlua::Result<Function<'lua>> {
-  lua
-    .load(mlua::chunk! {
-      local arg = ...
-      return function(...)
-        return $f(arg, ...)
-      end
-    })
-    .call::<_, Function>(t)
-}

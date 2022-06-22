@@ -45,10 +45,6 @@ struct UploadQuery {
   mode: UploadMode,
 }
 
-// TODO: Add load, cold update, supporting general `Service` as response
-//
-// Loading isn't always going to succeed, and sometimes we only need to load it
-// without starting it.
 pub(crate) async fn upload(
   state: &MainState,
   name: Option<String>,

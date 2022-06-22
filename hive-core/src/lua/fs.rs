@@ -1,4 +1,3 @@
-use super::async_bind_temp;
 use crate::lua::byte_stream::ByteStream;
 use crate::lua::{context, extract_error_async, BadArgument};
 use crate::path::normalize_path_str;
@@ -250,9 +249,8 @@ impl UserData for LuaFile {
               b"cur" => SeekFrom::Current(offset),
               b"end" => SeekFrom::End(offset),
               x => {
-                return Err(
-                  format!("invalid seek base: {}", String::from_utf8_lossy(x)).to_lua_err(),
-                )
+                let error_msg = format!("invalid seek base: {}", String::from_utf8_lossy(x));
+                return Err(error_msg.to_lua_err());
               }
             }
           } else {
@@ -274,7 +272,7 @@ impl UserData for LuaFile {
         })
         .await
       })?;
-      async_bind_temp(lua, iter, this)
+      iter.bind(this)
     });
 
     methods.add_async_function("flush", |lua, this: AnyUserData| async move {
@@ -287,6 +285,10 @@ impl UserData for LuaFile {
       Ok(ByteStream::from_async_read(this.0))
     });
   }
+}
+
+fn bad_fd() -> io::Error {
+  io::Error::from_raw_os_error(libc::EBADF)
 }
 
 #[pin_project(project = GenericFileProj)]
@@ -322,51 +324,37 @@ impl AsyncRead for GenericFile {
 }
 
 impl AsyncWrite for GenericFile {
-  fn poll_write(
-    self: Pin<&mut Self>,
-    cx: &mut Context<'_>,
-    buf: &[u8],
-  ) -> Poll<Result<usize, std::io::Error>> {
+  fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
     match self.project() {
       GenericFileProj::File(f) => f.poll_write(cx, buf),
-      // TODO: use libc error code
-      GenericFileProj::ReadOnly(_) => Poll::Ready(Err(io::Error::new(
-        io::ErrorKind::Other,
-        "bad file descriptor",
-      ))),
+      GenericFileProj::ReadOnly(_) => Poll::Ready(Err(bad_fd())),
     }
   }
 
-  fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+  fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
     match self.project() {
       GenericFileProj::File(f) => f.poll_flush(cx),
-      GenericFileProj::ReadOnly(_) => Poll::Ready(Err(io::Error::new(
-        io::ErrorKind::Other,
-        "bad file descriptor",
-      ))),
+      GenericFileProj::ReadOnly(_) => Poll::Ready(Err(bad_fd())),
     }
   }
 
-  fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+  fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
     match self.project() {
       GenericFileProj::File(f) => f.poll_shutdown(cx),
-      GenericFileProj::ReadOnly(_) => Poll::Ready(Err(io::Error::new(
-        io::ErrorKind::Other,
-        "bad file descriptor",
-      ))),
+      GenericFileProj::ReadOnly(_) => Poll::Ready(Err(bad_fd())),
     }
   }
 }
 
 impl AsyncSeek for GenericFile {
-  fn start_seek(self: Pin<&mut Self>, position: io::SeekFrom) -> std::io::Result<()> {
+  fn start_seek(self: Pin<&mut Self>, position: io::SeekFrom) -> io::Result<()> {
     match self.project() {
       GenericFileProj::File(f) => f.start_seek(position),
       GenericFileProj::ReadOnly(f) => f.start_seek(position),
     }
   }
 
-  fn poll_complete(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<u64>> {
+  fn poll_complete(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<u64>> {
     match self.project() {
       GenericFileProj::File(f) => f.poll_complete(cx),
       GenericFileProj::ReadOnly(f) => f.poll_complete(cx),

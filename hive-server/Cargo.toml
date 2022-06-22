@@ -9,10 +9,11 @@ async-trait = "0.1.56"
 backtrace = "0.3.63"
 clap = { version = "3.2.5", features = ["derive"] }
 futures = "0.3.19"
-hive-asar = "0.1.1"
+hive-asar = "0.3.1"
 hive-core = { path = "../hive-core" }
 home = "0.5.3"
 hyper = { version = "0.14.16", features = ["full"] }
+libc = "0.2.126"
 log = "0.4.14"
 multer = "2.0.2"
 num_cpus = "1.13.1"
