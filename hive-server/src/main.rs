@@ -4,6 +4,7 @@ mod metadata;
 #[macro_use]
 mod util;
 mod config;
+mod source;
 
 use crate::config::Config;
 use clap::Parser;
@@ -11,13 +12,14 @@ use config::{Args, HALF_NUM_CPUS};
 use error::Error;
 use handle::handle;
 use hive_core::service::Service;
-use hive_core::source::DirSource;
+use hive_core::source::{Source, SourceVfs};
 use hive_core::{Hive, HiveOptions};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use log::{error, info, warn};
 use metadata::Metadata;
 use owo_colors::OwoColorize;
+use source::DirSource;
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -127,12 +129,17 @@ async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<
 
         let (service, error_payload) = if metadata.started {
           let (service, _, error_payload) = (state.hive)
-            .cold_update_or_create_service(name.clone(), Some(metadata.uuid), source.into(), config)
+            .cold_update_or_create_service(
+              name.clone(),
+              Some(metadata.uuid),
+              Source::new(source),
+              config,
+            )
             .await?;
           (service, error_payload)
         } else {
           let (service, error_payload) = (state.hive)
-            .preload_service(name.clone(), metadata.uuid, source.into(), config)
+            .preload_service(name.clone(), metadata.uuid, Source::new(source), config)
             .await?;
           (Service::Stopped(service), error_payload)
         };

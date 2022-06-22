@@ -1,10 +1,10 @@
+pub mod path;
 pub mod service;
 pub mod source;
 
 mod config;
 mod error;
 mod lua;
-mod path;
 mod task;
 mod util;
 

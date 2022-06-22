@@ -2,18 +2,24 @@ use super::async_bind_temp;
 use crate::lua::byte_stream::ByteStream;
 use crate::lua::{context, extract_error_async, BadArgument};
 use crate::path::normalize_path_str;
-use crate::source::{GenericFile, Source};
+use crate::source::{ReadOnlyFile, Source};
 use crate::{HiveState, Result};
 use mlua::{
   AnyUserData, ExternalError, ExternalResult, Function, Lua, MultiValue, ToLua, UserData,
   UserDataMethods, Variadic,
 };
+use pin_project::pin_project;
 use std::borrow::Cow;
 use std::io::SeekFrom;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
-use tokio::fs::{self, OpenOptions};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
+use std::task::{Context, Poll};
+use tokio::fs::{self, File, OpenOptions};
+use tokio::io::{
+  self, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt, AsyncWrite,
+  AsyncWriteExt, BufReader,
+};
 
 pub async fn create_preload_fs<'lua>(
   lua: &'lua Lua,
@@ -135,7 +141,7 @@ async fn read_once<'lua>(
   match mode {
     All => {
       let file_ref = this.0.get_mut();
-      let file_len = file_ref.metadata().await?.len();
+      let file_len = file_ref.len().await?;
       let pos = file_ref.seek(SeekFrom::Current(0)).await?;
       let len = file_len - pos;
       let mut buf = Vec::with_capacity(len as _);
@@ -146,7 +152,7 @@ async fn read_once<'lua>(
       if len == 0 {
         "".to_lua(lua)
       } else {
-        let len = len.min(this.0.get_ref().metadata().await?.len());
+        let len = len.min(this.0.get_mut().len().await?);
         let mut buf = vec![0; len as _];
         let actual_len = this.0.read_exact(&mut buf).await?;
         if actual_len == 0 {
@@ -283,6 +289,91 @@ impl UserData for LuaFile {
   }
 }
 
+#[pin_project(project = GenericFileProj)]
+pub enum GenericFile {
+  File(#[pin] File),
+  ReadOnly(#[pin] ReadOnlyFile),
+}
+
+impl GenericFile {
+  pub async fn len(&mut self) -> io::Result<u64> {
+    match self {
+      Self::File(f) => Ok(f.metadata().await?.len()),
+      _ => {
+        let len = self.seek(SeekFrom::End(0)).await?;
+        self.rewind().await?;
+        Ok(len)
+      }
+    }
+  }
+}
+
+impl AsyncRead for GenericFile {
+  fn poll_read(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    buf: &mut io::ReadBuf<'_>,
+  ) -> Poll<std::io::Result<()>> {
+    match self.project() {
+      GenericFileProj::File(f) => f.poll_read(cx, buf),
+      GenericFileProj::ReadOnly(f) => f.poll_read(cx, buf),
+    }
+  }
+}
+
+impl AsyncWrite for GenericFile {
+  fn poll_write(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    buf: &[u8],
+  ) -> Poll<Result<usize, std::io::Error>> {
+    match self.project() {
+      GenericFileProj::File(f) => f.poll_write(cx, buf),
+      // TODO: use libc error code
+      GenericFileProj::ReadOnly(_) => Poll::Ready(Err(io::Error::new(
+        io::ErrorKind::Other,
+        "bad file descriptor",
+      ))),
+    }
+  }
+
+  fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+    match self.project() {
+      GenericFileProj::File(f) => f.poll_flush(cx),
+      GenericFileProj::ReadOnly(_) => Poll::Ready(Err(io::Error::new(
+        io::ErrorKind::Other,
+        "bad file descriptor",
+      ))),
+    }
+  }
+
+  fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+    match self.project() {
+      GenericFileProj::File(f) => f.poll_shutdown(cx),
+      GenericFileProj::ReadOnly(_) => Poll::Ready(Err(io::Error::new(
+        io::ErrorKind::Other,
+        "bad file descriptor",
+      ))),
+    }
+  }
+}
+
+impl AsyncSeek for GenericFile {
+  fn start_seek(self: Pin<&mut Self>, position: io::SeekFrom) -> std::io::Result<()> {
+    match self.project() {
+      GenericFileProj::File(f) => f.start_seek(position),
+      GenericFileProj::ReadOnly(f) => f.start_seek(position),
+    }
+  }
+
+  fn poll_complete(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<u64>> {
+    match self.project() {
+      GenericFileProj::File(f) => f.poll_complete(cx),
+      GenericFileProj::ReadOnly(f) => f.poll_complete(cx),
+    }
+  }
+}
+
 fn create_fn_fs_open(
   lua: &Lua,
   source: Source,
@@ -308,7 +399,7 @@ fn create_fn_fs_open(
             }
             "source" => {
               // For `source:`, the only open mode is "read"
-              source.get(path).await?
+              GenericFile::ReadOnly(source.get(path).await?)
             }
             _ => return scheme_not_supported(scheme),
           };

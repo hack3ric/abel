@@ -1,59 +1,67 @@
-use crate::path::normalize_path_str;
 use crate::Result;
+use async_trait::async_trait;
 use mlua::{ExternalResult, Function, Lua, Table, UserData};
-use pin_project::pin_project;
-use std::fs::Metadata as FsMetadata;
-use std::io::Cursor;
-use std::path::{Path, PathBuf};
+use std::fmt::Debug;
+use std::io::SeekFrom;
+use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
-use tokio::fs::{canonicalize, rename, File};
-use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncSeek, AsyncWrite};
-use tokio::sync::RwLock;
+use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
 
-#[derive(Debug, Clone)]
-pub enum Source {
-  Dir(DirSource),
-  Dummy(DummySource),
+#[async_trait]
+pub trait SourceVfs {
+  type File: AsyncRead + AsyncSeek;
+  async fn get(&self, path: &str) -> io::Result<Self::File>;
+  async fn exists(&self, path: &str) -> io::Result<bool>;
 }
 
+pub trait AsyncReadSeek: AsyncRead + AsyncSeek {}
+impl<T: AsyncRead + AsyncSeek> AsyncReadSeek for T {}
+
+pub type ReadOnlyFile = Pin<Box<dyn AsyncReadSeek + Send + Sync>>;
+
+struct SourceInner<V>(V)
+where
+  V: SourceVfs + Send + Sync,
+  V::File: Send + Sync + 'static;
+
+#[async_trait]
+impl<V> SourceVfs for SourceInner<V>
+where
+  V: SourceVfs + Send + Sync,
+  V::File: Send + Sync + 'static,
+{
+  type File = ReadOnlyFile;
+
+  async fn get(&self, path: &str) -> io::Result<Self::File> {
+    let file = self.0.get(path).await?;
+    Ok(Box::pin(file) as _)
+  }
+
+  async fn exists(&self, path: &str) -> io::Result<bool> {
+    self.0.exists(path).await
+  }
+}
+
+#[derive(Clone)]
+pub struct Source(Arc<dyn SourceVfs<File = ReadOnlyFile> + Send + Sync>);
+
 impl Source {
-  pub async fn get(&self, path: &str) -> io::Result<GenericFile> {
-    match self {
-      Self::Dir(source) => source.get(path).await,
-      Self::Dummy(source) => {
-        if normalize_path_str(path) == "main.lua" {
-          let pseudo_file = Cursor::new(source.main.clone());
-          Ok(GenericFile::ReadOnlyArcCursor(pseudo_file))
-        } else {
-          Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("file {path} not found"),
-          ))
-        }
-      }
-    }
+  pub fn new<V>(vfs: V) -> Self
+  where
+    V: SourceVfs + Send + Sync + 'static,
+    V::File: Send + Sync + 'static,
+  {
+    Self(Arc::new(SourceInner(vfs)) as _)
   }
 
-  pub async fn exists(&self, path: &str) -> bool {
-    match self {
-      Self::Dir(source) => (source.base.read().await)
-        .join(normalize_path_str(path))
-        .exists(),
-      Self::Dummy(_) => normalize_path_str(path) == "main.lua",
-    }
-  }
-
-  pub async fn get_bytes(&self, path: &str) -> io::Result<Vec<u8>> {
-    let mut code_file = self.get(path).await?;
-    let mut code = if let Ok(metadata) = code_file.metadata().await {
-      Vec::with_capacity(metadata.len() as _)
-    } else {
-      Vec::new()
-    };
-    code_file.read_to_end(&mut code).await?;
-    Ok(code)
+  async fn get_bytes(&self, path: &str) -> io::Result<Vec<u8>> {
+    let mut file = self.get(path).await?;
+    let len = file.seek(SeekFrom::End(0)).await?;
+    file.rewind().await?;
+    let mut buf = Vec::with_capacity(len as _);
+    file.read_to_end(&mut buf).await?;
+    Ok(buf)
   }
 
   pub async fn load<'a, 'b>(
@@ -72,55 +80,17 @@ impl Source {
   }
 }
 
-impl From<DirSource> for Source {
-  fn from(x: DirSource) -> Self {
-    Self::Dir(x)
+impl Deref for Source {
+  type Target = dyn SourceVfs<File = ReadOnlyFile> + Send + Sync;
+
+  fn deref(&self) -> &Self::Target {
+    &*self.0
   }
 }
 
-impl From<DummySource> for Source {
-  fn from(x: DummySource) -> Self {
-    Self::Dummy(x)
-  }
-}
-
-#[derive(Debug, Clone)]
-pub struct DirSource {
-  base: Arc<RwLock<PathBuf>>,
-}
-
-impl DirSource {
-  pub async fn new(base: impl AsRef<Path>) -> Result<Self> {
-    let base = canonicalize(base).await?;
-    Ok(Self {
-      base: Arc::new(RwLock::new(base)),
-    })
-  }
-
-  pub async fn rename_base(&self, new_path: PathBuf) -> Result<()> {
-    let mut base = self.base.write().await;
-    rename(&*base, &new_path).await?;
-    *base = new_path;
-    Ok(())
-  }
-
-  pub async fn get(&self, path: &str) -> io::Result<GenericFile> {
-    let path = normalize_path_str(path);
-    let file = File::open(self.base.read().await.join(path)).await?;
-    Ok(GenericFile::File(file))
-  }
-}
-
-#[derive(Debug, Clone)]
-pub struct DummySource {
-  main: Arc<[u8]>,
-}
-
-impl DummySource {
-  pub fn new(source: impl Into<Arc<[u8]>>) -> Self {
-    Self {
-      main: source.into(),
-    }
+impl Debug for Source {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str("Source { ... }")
   }
 }
 
@@ -132,7 +102,7 @@ impl UserData for SourceUserData {
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_async_method("exists", |_lua, this, path: mlua::String| async move {
       let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
-      Ok(this.0.exists(path).await)
+      this.0.exists(path).await.to_lua_err()
     });
 
     methods.add_async_method(
@@ -142,105 +112,5 @@ impl UserData for SourceUserData {
         this.0.load(lua, path, env).await.to_lua_err()
       },
     )
-  }
-}
-
-#[pin_project(project = GenericFileProj)]
-pub enum GenericFile {
-  File(#[pin] File),
-  ReadOnlyArcCursor(#[pin] Cursor<Arc<[u8]>>),
-}
-
-impl GenericFile {
-  pub async fn metadata(&self) -> io::Result<Metadata> {
-    match self {
-      Self::File(f) => Ok(f.metadata().await?.into()),
-      Self::ReadOnlyArcCursor(f) => Ok(Metadata {
-        len: f.get_ref().len() as _,
-      }),
-    }
-  }
-}
-
-impl AsyncRead for GenericFile {
-  fn poll_read(
-    self: Pin<&mut Self>,
-    cx: &mut Context<'_>,
-    buf: &mut io::ReadBuf<'_>,
-  ) -> Poll<std::io::Result<()>> {
-    match self.project() {
-      GenericFileProj::File(f) => f.poll_read(cx, buf),
-      GenericFileProj::ReadOnlyArcCursor(f) => f.poll_read(cx, buf),
-    }
-  }
-}
-
-impl AsyncWrite for GenericFile {
-  fn poll_write(
-    self: Pin<&mut Self>,
-    cx: &mut Context<'_>,
-    buf: &[u8],
-  ) -> Poll<Result<usize, std::io::Error>> {
-    match self.project() {
-      GenericFileProj::File(f) => f.poll_write(cx, buf),
-      GenericFileProj::ReadOnlyArcCursor(_) => Poll::Ready(Err(io::Error::new(
-        io::ErrorKind::Other,
-        "bad file descriptor",
-      ))),
-    }
-  }
-
-  fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
-    match self.project() {
-      GenericFileProj::File(f) => f.poll_flush(cx),
-      GenericFileProj::ReadOnlyArcCursor(_) => Poll::Ready(Err(io::Error::new(
-        io::ErrorKind::Other,
-        "bad file descriptor",
-      ))),
-    }
-  }
-
-  fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
-    match self.project() {
-      GenericFileProj::File(f) => f.poll_shutdown(cx),
-      GenericFileProj::ReadOnlyArcCursor(_) => Poll::Ready(Err(io::Error::new(
-        io::ErrorKind::Other,
-        "bad file descriptor",
-      ))),
-    }
-  }
-}
-
-impl AsyncSeek for GenericFile {
-  fn start_seek(self: Pin<&mut Self>, position: io::SeekFrom) -> std::io::Result<()> {
-    match self.project() {
-      GenericFileProj::File(f) => f.start_seek(position),
-      GenericFileProj::ReadOnlyArcCursor(f) => f.start_seek(position),
-    }
-  }
-
-  fn poll_complete(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<u64>> {
-    match self.project() {
-      GenericFileProj::File(f) => f.poll_complete(cx),
-      GenericFileProj::ReadOnlyArcCursor(f) => f.poll_complete(cx),
-    }
-  }
-}
-
-#[derive(Debug, Clone)]
-pub struct Metadata {
-  len: u64,
-}
-
-impl Metadata {
-  #[allow(clippy::len_without_is_empty)]
-  pub fn len(&self) -> u64 {
-    self.len
-  }
-}
-
-impl From<FsMetadata> for Metadata {
-  fn from(x: FsMetadata) -> Self {
-    Self { len: x.len() }
   }
 }

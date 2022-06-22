@@ -1,11 +1,12 @@
 use crate::error::{Error, ErrorKind};
 use crate::metadata::Metadata;
+use crate::source::DirSource;
 use crate::util::{asyncify, json_response};
 use crate::{MainState, Result};
 use futures::TryStreamExt;
 use hive_asar::Archive;
 use hive_core::service::{ErrorPayload, Service};
-use hive_core::source::DirSource;
+use hive_core::source::Source;
 use hive_core::ErrorKind::ServiceExists;
 use hive_core::{Config, ServiceImpl};
 use hyper::{Body, HeaderMap, Request, Response, StatusCode};
@@ -196,11 +197,11 @@ async fn create_service(
   let source = DirSource::new(source_path.as_ref()).await?;
   let (service, replaced, error_payload) = match mode {
     UploadMode::Create if state.hive.get_service(&name).is_ok() => {
-      return Err(hive_core::ErrorKind::ServiceExists { name: name.into() }.into())
+      return Err(ServiceExists { name: name.into() }.into())
     }
     UploadMode::Hot if state.hive.get_running_service(&name).is_ok() => {
       let (service, replaced) = (state.hive)
-        .hot_update_service(name, None, source.clone().into(), config)
+        .hot_update_service(name, None, Source::new(source.clone()), config)
         .await?;
       (
         Service::Running(service),
@@ -210,12 +211,12 @@ async fn create_service(
     }
     UploadMode::Hot | UploadMode::Cold | UploadMode::Create => {
       (state.hive)
-        .cold_update_or_create_service(name, None, source.clone().into(), config)
+        .cold_update_or_create_service(name, None, Source::new(source.clone()), config)
         .await?
     }
     UploadMode::Load => {
       let (service, replaced, error_payload) = (state.hive)
-        .load_service(name, None, source.clone().into(), config)
+        .load_service(name, None, Source::new(source.clone()), config)
         .await?;
       (Service::Stopped(service), replaced, error_payload)
     }
