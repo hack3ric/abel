@@ -27,6 +27,10 @@ impl Error {
     }
   }
 
+  pub fn kind(&self) -> &ErrorKind {
+    &self.kind
+  }
+
   pub fn into_status_and_body(self) -> (StatusCode, serde_json::Map<String, serde_json::Value>) {
     use ErrorKind::*;
     let (status, error, detail, backtrace) = match self.kind {
@@ -290,11 +294,11 @@ impl Display for ErrorAuthWrapper {
 }
 
 impl From<ErrorAuthWrapper> for Response<Body> {
+  // Hide internal error here
   fn from(error: ErrorAuthWrapper) -> Self {
-    let status = error.inner.kind.status();
     if let Some(uuid) = error.uuid {
       json_response_raw(
-        status,
+        error.inner.kind.status(),
         json!({
           "error": "internal error",
           "detail": {

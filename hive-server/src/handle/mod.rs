@@ -6,6 +6,7 @@ use crate::metadata::modify_metadata;
 use crate::util::{authenticate, json_response};
 use crate::{MainState, Result};
 use hive_core::service::Service;
+use hive_core::ErrorKind::{ServiceDropped, ServiceNotFound};
 use hyper::{Body, Method, Request, Response, StatusCode};
 use log::{error, info};
 use serde::Deserialize;
@@ -58,12 +59,23 @@ pub(crate) async fn handle(
     // Service entry
     (_, [service_name, ..]) => {
       let sub_path = "/".to_string() + path[1..].split_once('/').unwrap_or(("", "")).1;
-      match state.hive.get_running_service(service_name) {
-        Ok(service) => (state.hive)
-          .run_service(service, sub_path, req)
-          .await
-          .map_err(From::from),
-        Err(err) => Err(err.into()),
+      let service_name: String = (*service_name).into();
+      match state.hive.get_running_service(&service_name) {
+        Ok(service) => {
+          let result = state.hive.run_service(service, sub_path, req).await;
+          match result {
+            Ok(resp) => Ok(resp),
+            // Hide `ServiceDropped` from normal users
+            Err(error) if matches!(error.kind(), ServiceDropped) && !auth => {
+              error!("{error}");
+              Err(From::from(ServiceNotFound {
+                name: service_name.into(),
+              }))
+            }
+            Err(error) => Err(error.into()),
+          }
+        }
+        Err(error) => Err(error.into()),
       }
     }
 
@@ -71,9 +83,10 @@ pub(crate) async fn handle(
   };
 
   Ok(result.unwrap_or_else(|error| {
-    let error = ErrorAuthWrapper::new(auth, error);
-    error!("{}", error);
-    error.into()
+    if error.kind().status().is_server_error() {
+      error!("{error}");
+    }
+    ErrorAuthWrapper::new(auth, error).into()
   }))
 }
 
