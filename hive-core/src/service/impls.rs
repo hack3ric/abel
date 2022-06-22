@@ -20,20 +20,6 @@ pub(super) enum ServiceState {
 }
 
 impl ServiceState {
-  pub fn name(&self) -> &str {
-    match self {
-      Self::Running(x) => &x.name,
-      Self::Stopped(x) => &x.name,
-    }
-  }
-
-  pub fn uuid(&self) -> Uuid {
-    match self {
-      Self::Running(x) => x.uuid,
-      Self::Stopped(x) => x.uuid,
-    }
-  }
-
   pub fn into_impl(self) -> ServiceImpl {
     match self {
       Self::Running(x) => Arc::try_unwrap(x).unwrap_or_else(|arc| arc.as_ref().clone()),

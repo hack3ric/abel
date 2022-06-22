@@ -266,16 +266,6 @@ impl Sandbox {
     Ok(Ref::map(self.loaded.borrow(), |x| x.peek(name).unwrap()))
   }
 
-  pub(crate) fn is_loaded(&self, service: &RunningService) -> bool {
-    let loaded = self.loaded.borrow();
-    service
-      .try_upgrade()
-      .ok()
-      .and_then(|guard| loaded.peek(guard.name()))
-      .map(|loaded| loaded.service.ptr_eq(service))
-      .unwrap_or(false)
-  }
-
   pub(crate) async fn clean_loaded(&self) -> u32 {
     self.lua.expire_registry_values();
     let mut x = self.loaded.borrow_mut();
