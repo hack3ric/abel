@@ -1,6 +1,6 @@
+use super::LuaResponse;
 use crate::lua::byte_stream::ByteStream;
 use crate::lua::shared::SharedTable;
-use crate::LuaResponse;
 use hyper::header::HeaderValue;
 use hyper::{Body, HeaderMap, StatusCode};
 use mlua::{ExternalError, ExternalResult, FromLua, Lua, LuaSerdeExt, ToLua};

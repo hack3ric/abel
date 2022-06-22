@@ -10,7 +10,6 @@ mod util;
 
 pub use config::Config;
 pub use error::{Error, ErrorKind, Result};
-pub use lua::http::{LuaRequest, LuaResponse};
 pub use mlua::Error as LuaError;
 pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 

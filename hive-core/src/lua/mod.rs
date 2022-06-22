@@ -3,7 +3,6 @@ pub mod http;
 
 mod byte_stream;
 mod crypto;
-mod env;
 mod fs;
 mod json;
 mod print;
@@ -15,7 +14,7 @@ pub use sandbox::Sandbox;
 
 use crate::Result;
 use futures::Future;
-use mlua::{ExternalError, FromLua, Function, Lua, MultiValue, Table, ToLua, ToLuaMulti};
+use mlua::{ExternalError, FromLua, Lua, MultiValue, Table, ToLuaMulti};
 use std::sync::Arc;
 
 pub trait LuaTableExt<'a> {
