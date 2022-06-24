@@ -7,7 +7,9 @@ pub fn set_current(lua: &Lua, context: Option<Table>) -> mlua::Result<()> {
 pub fn destroy(lua: &Lua, context: Table) -> mlua::Result<()> {
   let code = mlua::chunk! {
     for _, v in ipairs($context) do
-      pcall(function() local v2 <close> = v end)
+      pcall(function()
+        local _ <close> = v
+      end)
     end
   };
   lua.load(code).set_name("_hive_destroy_context")?.call(())

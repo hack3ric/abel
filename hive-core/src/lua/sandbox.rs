@@ -1,7 +1,6 @@
-mod global_env;
-mod local_env;
-
+use super::global_env::modify_global_env;
 use super::http::LuaResponse;
+use super::local_env::create_local_env;
 use super::shared::remove_service_shared_stores;
 use super::LuaTableExt;
 use crate::lua::http::LuaRequest;
@@ -11,9 +10,7 @@ use crate::source::Source;
 use crate::ErrorKind::*;
 use crate::{HiveState, Result};
 use clru::CLruCache;
-use global_env::modify_global_env;
 use hyper::{Body, Request};
-use local_env::create_local_env;
 use log::debug;
 use mlua::{
   ExternalResult, FromLuaMulti, Function, Lua, LuaSerdeExt, MultiValue, RegistryKey, Table,

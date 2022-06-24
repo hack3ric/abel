@@ -2,15 +2,19 @@
 
 -- Internal --
 
+local paths = {}
+
+local package = {
+  loaded = {},
+  preload = {},
+  searchers = nil,
+}
+
 local internal = {
-  paths = {},
+  paths = paths,
   sealed = false,
   source = nil,
-  package = {
-    loaded = {},
-    preload = {},
-    searchers = nil,
-  },
+  package = package,
 }
 
 -- Hive table --
@@ -32,8 +36,17 @@ local function register(path, handler)
   end
 
   ::ok::
-  table.insert(internal.paths, { path, handler })
+  table.insert(paths, { path, handler })
 end
+
+local hive = {
+  register = register,
+  context = nil,
+  current_worker = current_worker,
+  Error = hive_Error,
+}
+
+-- Local env --
 
 local function require(modname)
   local modname_type = type(modname)
@@ -42,7 +55,6 @@ local function require(modname)
     "bad argument #1 to 'require' (string expected, got " .. modname_type .. ")"
   )
 
-  local package = internal.package;
   local error_msgs = {}
   if package.loaded[modname] then
     return table.unpack(package.loaded[modname])
@@ -61,24 +73,15 @@ local function require(modname)
   error("module '" .. modname .. "' not found:\n\t" .. table.concat(error_msgs, "\n"))
 end
 
--- Local env --
-
 local local_env = {
-  hive = {
-    register = register,
-    context = nil,
-    permission = nil,
-    current_worker = current_worker,
-    Error = hive_Error,
-  },
+  hive = hive,
   require = require,
 }
 
 -- Searchers --
 
-local preload = internal.package.preload
 local function preload_searcher(modname)
-  local loader = preload[modname]
+  local loader = package.preload[modname]
   if loader then
     return loader, "<preload>"
   else
@@ -109,7 +112,7 @@ local function source_searcher(modname)
   end
 end
 
-internal.package.searchers = { preload_searcher, source_searcher }
+package.searchers = { preload_searcher, source_searcher }
 
 -- Standard library whitelist --
 

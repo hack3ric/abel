@@ -17,12 +17,11 @@ pub(super) async fn create_local_env<'a, 'b>(
 ) -> Result<(Table<'a>, Table<'a>)> {
   let local_env_fn = lua.named_registry_value::<_, Function>("local_env_fn")?;
   let (local_env, internal): (Table, Table) = local_env_fn.call(())?;
+  let hive: Table = local_env.raw_get("hive")?;
 
   local_env.raw_set("print", create_fn_print(lua, service_name)?)?;
 
   let shared = lua.pack(create_module_shared(lua, service_name.into())?)?;
-
-  let hive: Table = local_env.raw_get("hive")?;
   hive.raw_set("shared", shared.clone())?;
   bind_local_env_to_shared(lua, local_env.clone(), shared)?;
 

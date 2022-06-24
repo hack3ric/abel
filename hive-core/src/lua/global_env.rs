@@ -10,7 +10,7 @@ pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
   let globals = lua.globals();
 
   let routing: Table = lua
-    .load(include_str!("../routing.lua"))
+    .load(include_str!("routing.lua"))
     .set_name("<routing>")?
     .call(())?;
   globals.raw_set("routing", routing)?;

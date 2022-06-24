@@ -38,5 +38,5 @@ function safe_getmetatable(t)
     type_t == "table",
     "bad argument #1 to 'getmetatable' (table expected, got" .. type_t .. ")"
   )
-  getmetatable(t)
+  return getmetatable(t)
 end
