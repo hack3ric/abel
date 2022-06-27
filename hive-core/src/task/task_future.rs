@@ -2,11 +2,13 @@ use super::AnyBox;
 use crate::lua::{context, Sandbox};
 use futures::future::LocalBoxFuture;
 use futures::Future;
-use mlua::{RegistryKey, Table};
+use mlua::{ExternalError, HookTriggers, RegistryKey};
 use pin_project::pin_project;
+use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::task::Poll;
+use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 
 #[pin_project]
@@ -16,6 +18,7 @@ pub struct TaskFuture {
   #[pin]
   task: LocalBoxFuture<'static, AnyBox>,
   tx: Option<oneshot::Sender<AnyBox>>,
+  cpu_time: Rc<RefCell<Duration>>,
 }
 
 impl TaskFuture {
@@ -24,52 +27,59 @@ impl TaskFuture {
     task_fn: impl FnOnce(Rc<Sandbox>) -> LocalBoxFuture<'static, AnyBox>,
     tx: oneshot::Sender<AnyBox>,
   ) -> mlua::Result<Self> {
-    let context = (sandbox.lua).create_registry_value(sandbox.lua.create_table().unwrap())?;
+    let context = context::create(&sandbox.lua)?;
     Ok(Self {
       sandbox: sandbox.clone(),
       context: Some(context),
       task: task_fn(sandbox),
       tx: Some(tx),
+      cpu_time: Rc::new(RefCell::new(Duration::new(0, 0))),
     })
   }
 }
 
-fn get_context_table<'lua>(
-  sandbox: &'lua Rc<Sandbox>,
-  context: &Option<RegistryKey>,
-) -> mlua::Result<Option<Table<'lua>>> {
-  context
-    .as_ref()
-    .map(|x| sandbox.lua.registry_value(x))
-    .transpose()
-}
-
+// TODO: implement CPU timeout
 impl Future for TaskFuture {
   type Output = mlua::Result<()>;
 
-  fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.project();
-    let tx = if let Some(tx) = this.tx.take() {
-      tx
-    } else {
-      return Poll::Ready(Ok(()));
-    };
 
-    let context = get_context_table(this.sandbox, this.context)?;
-    context::set_current(&this.sandbox.lua, context.clone())?;
-    drop(context);
+    context::set_current(&this.sandbox.lua, this.context.as_ref())?;
 
-    match this.task.poll(cx) {
+    let hook_triggers = HookTriggers::every_nth_instruction(1048576);
+    this.sandbox.lua.set_hook(hook_triggers, {
+      let t1 = RefCell::new(Instant::now());
+      let cpu_time = this.cpu_time.clone();
+      move |_lua, _| {
+        let t2 = Instant::now();
+        let dur = t2.duration_since(*t1.borrow());
+        *cpu_time.borrow_mut() += dur;
+
+        if *cpu_time.borrow() >= Duration::from_secs(1) {
+          Err("timeout".to_lua_err())
+        } else {
+          *t1.borrow_mut() = t2;
+          Ok(())
+        }
+      }
+    })?;
+
+    let poll = this.task.poll(cx);
+    this.sandbox.lua.remove_hook();
+
+    match poll {
       Poll::Ready(result) => {
-        let _ = tx.send(result);
-        if let Some(context) = get_context_table(this.sandbox, this.context)? {
-          context::destroy(&this.sandbox.lua, context)?;
+        if let Some(tx) = this.tx.take() {
+          let _ = tx.send(result);
+          if let Some(context) = this.context.take() {
+            context::destroy(&this.sandbox.lua, context)?;
+          }
         }
         Poll::Ready(Ok(()))
       }
       Poll::Pending => {
         context::set_current(&this.sandbox.lua, None)?;
-        *this.tx = Some(tx);
         Poll::Pending
       }
     }

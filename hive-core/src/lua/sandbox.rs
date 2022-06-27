@@ -45,9 +45,7 @@ impl Sandbox {
     modify_global_env(&lua)?;
     Ok(Self { lua, loaded, state })
   }
-}
 
-impl Sandbox {
   async fn call_extract_error<'a, T, R>(&'a self, f: mlua::Value<'a>, v: T) -> Result<R>
   where
     T: ToLuaMulti<'a>,

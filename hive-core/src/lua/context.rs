@@ -1,12 +1,21 @@
-use mlua::{Lua, Table, ToLua};
+use mlua::{Lua, RegistryKey, Table, ToLua};
 
-pub fn set_current(lua: &Lua, context: Option<Table>) -> mlua::Result<()> {
+pub fn create(lua: &Lua) -> mlua::Result<RegistryKey> {
+  lua.create_registry_value(lua.create_table()?)
+}
+
+pub fn set_current(lua: &Lua, context: Option<&RegistryKey>) -> mlua::Result<()> {
+  let context = context
+    .map(|x| lua.registry_value::<Table>(x))
+    .transpose()?;
   lua.set_named_registry_value("_hive_current_context", context)
 }
 
-pub fn destroy(lua: &Lua, context: Table) -> mlua::Result<()> {
+pub fn destroy(lua: &Lua, context: RegistryKey) -> mlua::Result<()> {
+  let context_table: Table = lua.registry_value(&context)?;
+  lua.remove_registry_value(context)?;
   let code = mlua::chunk! {
-    for _, v in ipairs($context) do
+    for _, v in ipairs($context_table) do
       pcall(function()
         local _ <close> = v
       end)
