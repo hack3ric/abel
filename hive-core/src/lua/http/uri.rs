@@ -22,8 +22,8 @@ impl UserData for LuaUri {
     // TODO: support more complex QS structure (e.g. multiple queries with the same
     // name)
     methods.add_function("query", |lua, this: AnyUserData| {
+      let this_ = this.borrow::<Self>()?;
       extract_error(lua, || {
-        let this_ = this.borrow::<Self>()?;
         if let Some(q) = this.get_named_user_value::<_, Option<mlua::Value>>("query")? {
           Ok(q)
         } else {
