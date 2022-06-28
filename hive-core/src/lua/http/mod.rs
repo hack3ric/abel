@@ -7,14 +7,14 @@ mod uri;
 pub use request::LuaRequest;
 pub use response::LuaResponse;
 
-use self::uri::create_fn_create_uri;
-use super::extract_error_async;
+use super::error::extract_error_async;
 use hyper::client::HttpConnector;
 use hyper::Client;
 use hyper_tls::HttpsConnector;
 use mlua::{ExternalResult, Function, Lua};
 use once_cell::sync::Lazy;
 use response::create_fn_create_response;
+use uri::create_fn_create_uri;
 
 static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> =
   Lazy::new(|| Client::builder().build(HttpsConnector::new()));

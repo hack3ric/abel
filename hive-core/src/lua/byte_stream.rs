@@ -1,4 +1,4 @@
-use super::extract_error_async;
+use super::error::extract_error_async;
 use crate::Result;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};

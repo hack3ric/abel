@@ -1,4 +1,4 @@
-use super::extract_error;
+use super::error::extract_error;
 use super::shared::SharedTable;
 use mlua::{ExternalError, ExternalResult, Function, Lua, LuaSerdeExt};
 

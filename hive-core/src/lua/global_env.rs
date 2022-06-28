@@ -1,13 +1,17 @@
+use super::error::create_fn_error;
 use crate::lua::shared::apply_table_module_patch;
 use mlua::{Function, Lua, Table, ToLua};
 
 pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
+  let globals = lua.globals();
+
+  lua.set_named_registry_value("lua_error", globals.raw_get::<_, Function>("error")?)?;
+  lua.set_named_registry_value("lua_pcall", globals.raw_get::<_, Function>("pcall")?)?;
+
   lua
     .load(include_str!("global_env.lua"))
     .set_name("<global_env>")?
     .exec()?;
-
-  let globals = lua.globals();
 
   let routing: Table = lua
     .load(include_str!("routing.lua"))
@@ -24,6 +28,8 @@ pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
   )?;
 
   globals.raw_set("current_worker", create_fn_current_worker(lua)?)?;
+
+  globals.raw_set("error", create_fn_error(lua)?)?;
 
   let table_module: Table = globals.raw_get("table")?;
   apply_table_module_patch(lua, table_module)?;

@@ -1,4 +1,4 @@
-use crate::lua::extract_error;
+use crate::lua::error::extract_error;
 use mlua::{
   AnyUserData, ExternalError, ExternalResult, FromLua, Function, Lua, LuaSerdeExt, UserData,
 };

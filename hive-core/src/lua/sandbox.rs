@@ -1,3 +1,4 @@
+use super::error::sanitize_error;
 use super::global_env::modify_global_env;
 use super::http::LuaResponse;
 use super::local_env::create_local_env;
@@ -12,10 +13,7 @@ use crate::{HiveState, Result};
 use clru::CLruCache;
 use hyper::{Body, Request};
 use log::debug;
-use mlua::{
-  ExternalResult, FromLuaMulti, Function, Lua, LuaSerdeExt, MultiValue, RegistryKey, Table,
-  ToLuaMulti,
-};
+use mlua::{FromLuaMulti, Function, Lua, RegistryKey, Table, TableExt, ToLuaMulti};
 use nonzero_ext::nonzero;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -51,35 +49,12 @@ impl Sandbox {
     T: ToLuaMulti<'a>,
     R: FromLuaMulti<'a>,
   {
-    let pcall: Function = self.lua.globals().raw_get("pcall")?;
-    let error: Function = self.lua.globals().raw_get("error")?;
-    let (succeeded, obj) = pcall.call_async::<_, (bool, MultiValue)>((f, v)).await?;
-    if succeeded {
-      Ok(FromLuaMulti::from_lua_multi(obj, &self.lua)?)
-    } else {
-      let error_obj = obj.into_vec().remove(0);
-      if let mlua::Value::Table(custom_error) = error_obj {
-        let status = custom_error
-          .raw_get::<_, u16>("status")?
-          .try_into()
-          .to_lua_err()?;
-        let error_str = custom_error.raw_get::<_, mlua::String>("error")?;
-        let error = std::str::from_utf8(error_str.as_bytes())
-          .to_lua_err()?
-          .into();
-        let detail = custom_error.raw_get::<_, mlua::Value>("detail")?;
-        let result = crate::ErrorKind::LuaCustom {
-          status,
-          error,
-          detail: self.lua.from_value(detail)?,
-        }
-        .into();
-        Err(result)
-      } else {
-        error.call(error_obj)?;
-        unreachable!()
-      }
-    }
+    let result = match f {
+      mlua::Value::Function(f) => f.call_async(v).await,
+      mlua::Value::Table(f) => f.call_async(v).await,
+      _ => todo!(),
+    };
+    result.map_err(sanitize_error)
   }
 
   pub async fn handle_request(

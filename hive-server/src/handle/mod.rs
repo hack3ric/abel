@@ -9,6 +9,7 @@ use hive_core::service::Service;
 use hive_core::ErrorKind::{ServiceDropped, ServiceNotFound};
 use hyper::{Body, Method, Request, Response, StatusCode};
 use log::{error, info};
+use owo_colors::OwoColorize;
 use serde::Deserialize;
 use serde_json::json;
 use std::convert::Infallible;
@@ -83,10 +84,16 @@ pub(crate) async fn handle(
   };
 
   Ok(result.unwrap_or_else(|error| {
-    if error.kind().status().is_server_error() {
-      error!("{error}");
+    let server_error = error.kind().status().is_server_error();
+    let error = ErrorAuthWrapper::new(auth, error);
+    if server_error {
+      if let Some(uuid) = error.uuid() {
+        error!("{error} {}", format!("({})", uuid).dimmed());
+      } else {
+        error!("error");
+      }
     }
-    ErrorAuthWrapper::new(auth, error).into()
+    error.into()
   }))
 }
 

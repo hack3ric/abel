@@ -4,13 +4,13 @@ use hyper::StatusCode;
 use serde::{Serialize, Serializer};
 use serde_json::json;
 use smallstr::SmallString;
-use std::fmt::{self, Debug, Formatter};
+use std::fmt::Debug;
 use strum::EnumProperty;
 use thiserror::Error;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-#[derive(Error)]
+#[derive(Debug, Error)]
 #[error("{kind}")]
 pub struct Error {
   kind: ErrorKind,
@@ -27,25 +27,13 @@ impl Error {
   }
 }
 
-impl Debug for Error {
-  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-    Debug::fmt(&self.kind, f)
-  }
-}
-
 impl<E: Into<ErrorKind>> From<E> for Error {
   fn from(x: E) -> Self {
-    // use ErrorKind::*;
     let kind = x.into();
-    // let backtrace = match kind {
-    //   InvalidServiceName { .. }
-    //   | ServiceNotFound { .. }
-    //   | ServicePathNotFound { .. }
-    //   | ServiceExists { .. }
-    //   | ServiceRunning { .. }
-    //   | ServiceStopped { .. }
-    //   | LuaCustom { .. } => None,
-    //   _ => Some(Backtrace::new()),
+    // let backtrace = if kind.internal() {
+    //   Some(Backtrace::new())
+    // } else {
+    //   None
     // };
     let backtrace = None;
     Self { kind, backtrace }
@@ -134,7 +122,7 @@ pub enum ErrorKind {
   // -- Custom --
   #[error("{error} ({detail:?})")]
   #[serde(skip)]
-  LuaCustom {
+  Custom {
     status: StatusCode,
     error: SmallString<[u8; 32]>,
     detail: serde_json::Value,
@@ -152,28 +140,28 @@ where
 impl ErrorKind {
   pub fn status(&self) -> StatusCode {
     match self {
-      Self::LuaCustom { status, .. } => *status,
+      Self::Custom { status, .. } => *status,
       _ => self.get_str("status").unwrap().parse().unwrap(),
     }
   }
 
   pub fn error(&self) -> &str {
     match self {
-      Self::LuaCustom { error, .. } => error,
+      Self::Custom { error, .. } => error,
       _ => self.get_str("error").unwrap(),
     }
   }
 
   pub fn detail(&self) -> serde_json::Value {
     match self {
-      Self::LuaCustom { detail, .. } => detail.clone(),
+      Self::Custom { detail, .. } => detail.clone(),
       _ => serde_json::to_value(self).unwrap(),
     }
   }
 
   pub fn internal(&self) -> bool {
     match self {
-      Self::LuaCustom { .. } => false,
+      Self::Custom { .. } => false,
       _ => self.status().is_server_error(),
     }
   }

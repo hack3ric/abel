@@ -1,5 +1,6 @@
 use super::{len, SharedTable, SharedTableScope};
-use crate::lua::{BadArgument, LuaTableExt};
+use crate::lua::error::BadArgument;
+use crate::lua::LuaTableExt;
 use mlua::{AnyUserData, ExternalError, Function, Lua, MultiValue, Table};
 
 pub fn apply_table_module_patch(lua: &Lua, table_module: Table) -> mlua::Result<()> {

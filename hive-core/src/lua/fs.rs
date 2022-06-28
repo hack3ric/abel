@@ -1,5 +1,6 @@
+use super::error::{extract_error_async, BadArgument};
 use crate::lua::byte_stream::ByteStream;
-use crate::lua::{context, extract_error_async, BadArgument};
+use crate::lua::context;
 use crate::path::normalize_path_str;
 use crate::source::{ReadOnlyFile, Source};
 use crate::{HiveState, Result};

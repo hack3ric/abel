@@ -4,7 +4,7 @@ use hyper::{Body, Method, Response, StatusCode};
 use serde::{Serialize, Serializer};
 use serde_json::json;
 use std::borrow::Cow;
-use std::fmt::{self, Display, Formatter, Write};
+use std::fmt::{self, Display, Formatter};
 use strum::EnumProperty;
 use uuid::Uuid;
 
@@ -279,17 +279,15 @@ impl ErrorAuthWrapper {
     };
     Self { inner, uuid }
   }
+
+  pub fn uuid(&self) -> Option<Uuid> {
+    self.uuid
+  }
 }
 
 impl Display for ErrorAuthWrapper {
   fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-    write!(f, "{}", self.inner)?;
-    if let Some(uuid) = &self.uuid {
-      f.write_str(" (uuid: ")?;
-      write!(f, "{uuid}")?;
-      f.write_char(')')?;
-    }
-    Ok(())
+    self.inner.fmt(f)
   }
 }
 
