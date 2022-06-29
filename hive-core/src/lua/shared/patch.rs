@@ -1,7 +1,7 @@
 use super::{len, SharedTable, SharedTableScope};
-use crate::lua::error::BadArgument;
+use crate::lua::error::{arg_error, lua_error, tag_error};
 use crate::lua::LuaTableExt;
-use mlua::{AnyUserData, ExternalError, Function, Lua, MultiValue, Table};
+use mlua::{AnyUserData, Function, Lua, MultiValue, Table};
 
 pub fn apply_table_module_patch(lua: &Lua, table_module: Table) -> mlua::Result<()> {
   table_module.raw_set("dump", create_fn_table_dump(lua)?)?;
@@ -19,10 +19,10 @@ fn create_fn_table_dump(lua: &Lua) -> mlua::Result<Function> {
       } else if let Ok(x) = x.borrow::<SharedTableScope>() {
         x.deep_dump(lua)
       } else {
-        Err(userdata_not_shared_table("dump", 1))
+        Err(userdata_not_shared_table(lua, 1))
       }
     }
-    _ => Err(expected_table("dump", 1, table.type_name())),
+    _ => Err(expected_table(lua, 1, table.type_name())),
   })
 }
 
@@ -40,10 +40,10 @@ fn create_fn_table_scope(lua: &Lua) -> mlua::Result<Function> {
         if x.borrow::<SharedTableScope>().is_ok() {
           f.call_async::<_, mlua::Value>(x).await
         } else {
-          Err(userdata_not_shared_table("scope", 1))
+          Err(userdata_not_shared_table(lua, 1))
         }
       }
-      _ => Err(expected_table("scope", 1, table.type_name())),
+      _ => Err(expected_table(lua, 1, table.type_name())),
     }
   })
 }
@@ -57,7 +57,7 @@ fn table_insert_shared_2(lua: &Lua, table: AnyUserData, value: mlua::Value) -> m
     borrowed = table;
     &borrowed
   } else {
-    return Err(userdata_not_shared_table("insert", 1));
+    return Err(userdata_not_shared_table(lua, 1));
   };
 
   table.push(lua.unpack(value)?);
@@ -71,7 +71,7 @@ fn table_insert_shared_3(
   value: mlua::Value,
 ) -> mlua::Result<()> {
   if pos < 1 {
-    return Err(out_of_bounds("insert", 2));
+    return Err(out_of_bounds(lua, 2));
   }
   let (borrowed, owned);
   let table = if let Ok(table) = table.borrow::<SharedTable>() {
@@ -81,12 +81,12 @@ fn table_insert_shared_3(
     borrowed = table;
     &borrowed
   } else {
-    return Err(userdata_not_shared_table("insert", 1));
+    return Err(userdata_not_shared_table(lua, 1));
   };
 
   let mut guard = table.0.borrow_mut();
   if pos > len(&guard) + 1 {
-    return Err(out_of_bounds("insert", 2));
+    return Err(out_of_bounds(lua, 2));
   }
   let right = guard.int.split_off(&pos);
   let iter = right.into_iter().map(|(i, v)| (i + 1, v));
@@ -113,30 +113,25 @@ fn create_fn_table_insert(lua: &Lua) -> mlua::Result<Function> {
             lua.unpack(args.next().unwrap())?,
             args.next().unwrap(),
           ),
-          _ => Err("wrong number of arguments".to_lua_err()),
+          _ => Err(lua_error("wrong number of arguments")),
         }
       }
-      _ => Err(format!("expected table or shared table, got {}", table.type_name()).to_lua_err()),
+      _ => Err(expected_table(lua, 1, table.type_name())),
     },
   )?;
   f.bind(old)
 }
 
-// Exceptions
+// Error utilities
 
-fn userdata_not_shared_table(fn_name: &'static str, pos: u8) -> mlua::Error {
-  BadArgument::new(fn_name, pos, "failed to borrow userdata as shared table").into()
+fn userdata_not_shared_table(lua: &Lua, pos: usize) -> mlua::Error {
+  arg_error(lua, pos, "failed to borrow userdata as shared table", 0)
 }
 
-fn expected_table(fn_name: &'static str, pos: u8, found: &str) -> mlua::Error {
-  BadArgument::new(
-    fn_name,
-    pos,
-    format!("expected table or shared table, found {found}"),
-  )
-  .into()
+fn expected_table(lua: &Lua, pos: usize, found: &str) -> mlua::Error {
+  tag_error(lua, pos, "table or shared table", found, 0)
 }
 
-fn out_of_bounds(fn_name: &'static str, pos: u8) -> mlua::Error {
-  BadArgument::new(fn_name, pos, "out of bounds").into()
+fn out_of_bounds(lua: &Lua, pos: usize) -> mlua::Error {
+  arg_error(lua, pos, "out of bounds", 0)
 }

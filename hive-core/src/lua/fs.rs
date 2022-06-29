@@ -1,4 +1,4 @@
-use super::error::{extract_error_async, BadArgument};
+use super::error::{arg_error, extract_error_async};
 use crate::lua::byte_stream::ByteStream;
 use crate::lua::context;
 use crate::path::normalize_path_str;
@@ -208,7 +208,7 @@ impl UserData for LuaFile {
           } else {
             for (i, mode) in modes.into_iter().enumerate() {
               let mode = ReadMode::from_lua(mode)
-                .map_err(|error| BadArgument::new("read", i as u8 + 1, error.to_string()))?;
+                .map_err(|error| arg_error(lua, i + 2, &error.to_string(), 1))?;
               let result = read_once(&mut this, lua, mode).await?;
               if let mlua::Value::Nil = result {
                 results.push(result);

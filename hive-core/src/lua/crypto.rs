@@ -1,19 +1,27 @@
-use mlua::{ExternalError, Function, Lua, UserData};
+use super::error::{arg_error, check_arg, check_userdata_mut};
+use mlua::{Function, Lua, MultiValue, UserData};
 use rand::{thread_rng, Rng, RngCore};
 
 struct LuaRng(Box<dyn RngCore>);
 
 impl UserData for LuaRng {
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-    methods.add_method_mut("random", |_lua, this, ()| Ok(this.0.gen::<f64>()));
+    methods.add_function("random", |lua, args: MultiValue| {
+      let mut this = check_userdata_mut::<Self>(lua, &args, 1, "LuaRng", 0)?;
+      Ok(this.0.gen::<f64>())
+    });
 
-    methods.add_method_mut("gen_range", |_lua, this, (low, high): (i64, i64)| {
+    methods.add_function("gen_range", |lua, args: MultiValue| {
+      let mut this = check_userdata_mut::<Self>(lua, &args, 1, "LuaRng", 0)?;
+      let low: i64 = check_arg(lua, &args, 2, "integer", 0)?;
+      let high: i64 = check_arg(lua, &args, 3, "integer", 0)?;
+
       if low >= high {
-        Err("range is empty".to_lua_err())
+        Err(arg_error(lua, 3, "range is empty", 0))
       } else {
         Ok(this.0.gen_range(low..=high))
       }
-    })
+    });
   }
 }
 
