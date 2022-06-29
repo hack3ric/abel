@@ -10,7 +10,6 @@ mod json;
 mod local_env;
 mod print;
 mod sandbox;
-mod shared;
 
 pub use fs::remove_service_local_storage;
 pub use sandbox::Sandbox;

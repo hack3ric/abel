@@ -2,7 +2,6 @@ use super::error::sanitize_error;
 use super::global_env::modify_global_env;
 use super::http::LuaResponse;
 use super::local_env::create_local_env;
-use super::shared::remove_service_shared_stores;
 use super::LuaTableExt;
 use crate::lua::http::LuaRequest;
 use crate::path::PathMatcher;
@@ -173,9 +172,6 @@ impl Sandbox {
       f.call_async(()).await?;
     }
     // Call modules' `stop`
-    let service = loaded.service.try_upgrade()?;
-    let service_name = service.name();
-    remove_service_shared_stores(service_name);
     Ok(())
   }
 

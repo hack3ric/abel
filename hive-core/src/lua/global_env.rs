@@ -1,5 +1,4 @@
 use super::error::create_fn_error;
-use crate::lua::shared::apply_table_module_patch;
 use mlua::{Function, Lua, Table, ToLua};
 
 pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
@@ -28,11 +27,7 @@ pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
   )?;
 
   globals.raw_set("current_worker", create_fn_current_worker(lua)?)?;
-
   globals.raw_set("error", create_fn_error(lua)?)?;
-
-  let table_module: Table = globals.raw_get("table")?;
-  apply_table_module_patch(lua, table_module)?;
 
   Ok(())
 }

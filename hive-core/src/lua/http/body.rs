@@ -1,6 +1,5 @@
 use super::LuaResponse;
 use crate::lua::byte_stream::ByteStream;
-use crate::lua::shared::SharedTable;
 use hyper::header::HeaderValue;
 use hyper::{Body, HeaderMap, StatusCode};
 use mlua::{ExternalError, ExternalResult, FromLua, Lua, LuaSerdeExt, ToLua};
@@ -59,8 +58,6 @@ impl<'lua> FromLua<'lua> for LuaBody {
       mlua::Value::UserData(u) => {
         if let Ok(s) = u.take::<ByteStream>() {
           Self::ByteStream(s)
-        } else if let Ok(x) = u.borrow::<SharedTable>() {
-          Self::Json(serde_json::to_value(&*x).to_lua_err()?)
         } else {
           return Err("failed to turn object into body".to_lua_err());
         }

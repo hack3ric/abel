@@ -1,5 +1,4 @@
 use super::error::extract_error;
-use super::shared::SharedTable;
 use mlua::{ExternalError, ExternalResult, Function, Lua, LuaSerdeExt};
 
 pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
@@ -40,11 +39,7 @@ fn create_fn_json_array(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, table: mlua::Value| {
     match &table {
       mlua::Value::Table(table) => table.set_metatable(Some(lua.array_metatable())),
-      mlua::Value::UserData(table) => {
-        let table = table.borrow_mut::<SharedTable>()?;
-        table.set_array(true);
-      }
-      _ => return Err("expected table or shared table".to_lua_err()),
+      _ => return Err("expected table".to_lua_err()),
     }
     Ok(table)
   })
@@ -62,11 +57,7 @@ fn create_fn_json_undo_array(lua: &Lua) -> mlua::Result<Function> {
           table.set_metatable(None);
         }
       }
-      mlua::Value::UserData(table) => {
-        let table = table.borrow_mut::<SharedTable>()?;
-        table.set_array(false);
-      }
-      _ => return Err("expected table or shared table".to_lua_err()),
+      _ => return Err("expected table".to_lua_err()),
     }
     Ok(table)
   })
