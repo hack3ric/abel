@@ -1,6 +1,0 @@
-{
-  "name": "request",
-  "permissions": [
-    { "type": "net", "host": "httpbin.org" }
-  ]
-}
