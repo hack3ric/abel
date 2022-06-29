@@ -1,11 +1,13 @@
 use super::body::LuaBody;
 use super::header_map::LuaHeaderMap;
 use super::uri::LuaUri;
+use crate::lua::error::{arg_error, check_arg, rt_error_fmt, TableCheckExt};
+use crate::lua::http::check_headers;
+use crate::lua::LuaEither;
 use crate::path::Params;
-use hyper::header::{HeaderName, HeaderValue};
 use hyper::http::request::Parts;
 use hyper::{Body, HeaderMap, Method, Request};
-use mlua::{ExternalError, ExternalResult, FromLua, Lua, Table, UserData};
+use mlua::{AnyUserData, Lua, MultiValue, Table, UserData};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -85,69 +87,6 @@ impl UserData for LuaRequest {
   }
 }
 
-impl<'lua> FromLua<'lua> for LuaRequest {
-  fn from_lua(lua_value: mlua::Value<'lua>, _lua: &'lua Lua) -> mlua::Result<Self> {
-    match lua_value {
-      mlua::Value::String(uri) => Ok(Self {
-        uri: hyper::Uri::try_from(uri.as_bytes()).to_lua_err()?,
-        ..Default::default()
-      }),
-      mlua::Value::Table(table) => {
-        let method = table
-          .raw_get::<_, Option<mlua::String>>("method")?
-          .map(|x| Method::from_bytes(x.as_bytes()))
-          .transpose()
-          .to_lua_err()?
-          .unwrap_or(Method::GET);
-
-        let uri: hyper::Uri = table
-          .raw_get::<_, mlua::String>("uri")?
-          .as_bytes()
-          .try_into()
-          .to_lua_err()?;
-
-        let headers_table: Option<Table> = table.raw_get("headers")?;
-        let mut headers = HeaderMap::new();
-        if let Some(headers_table) = headers_table {
-          for entry in headers_table.pairs::<mlua::String, mlua::Value>() {
-            let (k, v) = entry?;
-            let k = HeaderName::from_bytes(k.as_bytes()).to_lua_err()?;
-            match v {
-              mlua::Value::String(v) => {
-                headers.append(k, HeaderValue::from_bytes(v.as_bytes()).to_lua_err()?);
-              }
-              mlua::Value::Table(vs) => {
-                for v in vs.sequence_values::<mlua::String>() {
-                  let v = v?;
-                  headers.append(&k, HeaderValue::from_bytes(v.as_bytes()).to_lua_err()?);
-                }
-              }
-              _ => return Err("expected string or table".to_lua_err()),
-            }
-          }
-        }
-
-        Ok(Self {
-          method,
-          uri,
-          headers: Rc::new(RefCell::new(headers)),
-          body: Some(table.raw_get("body")?),
-          ..Default::default()
-        })
-      }
-      mlua::Value::UserData(x) => {
-        let mut u = x.take::<Self>()?;
-        if u.body.is_none() {
-          let t = x.get_named_user_value::<_, LuaBody>("body")?;
-          u.body = Some(t);
-        }
-        Ok(u)
-      }
-      _ => Err("expected string or table".to_lua_err()),
-    }
-  }
-}
-
 impl From<LuaRequest> for Request<Body> {
   fn from(x: LuaRequest) -> Self {
     let headers = Rc::try_unwrap(x.headers)
@@ -157,5 +96,69 @@ impl From<LuaRequest> for Request<Body> {
     let mut builder = Request::builder().method(x.method).uri(x.uri);
     *builder.headers_mut().unwrap() = headers;
     builder.body(x.body.unwrap().into()).unwrap()
+  }
+}
+
+pub fn check_request(
+  lua: &Lua,
+  args: &MultiValue,
+  pos: usize,
+  level: usize,
+) -> mlua::Result<LuaRequest> {
+  use LuaEither::*;
+  type RequestMeta<'a> = LuaEither<LuaEither<mlua::String<'a>, Table<'a>>, AnyUserData<'a>>;
+  const EXPECTED: &str = "string, table or request userdata";
+
+  let either = check_arg::<RequestMeta>(lua, args, pos, EXPECTED, level)?;
+  match either {
+    Left(Left(uri)) => Ok(LuaRequest {
+      uri: hyper::Uri::try_from(uri.as_bytes())
+        .map_err(|error| arg_error(lua, pos, &error.to_string(), level))?,
+      ..Default::default()
+    }),
+    Left(Right(table)) => {
+      let method = table
+        .check_raw_get::<Option<mlua::String>>(lua, "method", "string")?
+        .map(|x| {
+          let x = x.as_bytes();
+          Method::from_bytes(x)
+            .map_err(|_| rt_error_fmt!("invalid HTTP method: {}", String::from_utf8_lossy(x)))
+        })
+        .transpose()?
+        .unwrap_or(Method::GET);
+
+      let uri: hyper::Uri = table
+        .check_raw_get::<mlua::String>(lua, "uri", "string")?
+        .as_bytes()
+        .try_into()
+        .map_err(|error| rt_error_fmt!("invalid URI ({error})"))?;
+
+      let headers_table: Option<Table> = table.check_raw_get(lua, "headers", "table")?;
+      let headers = headers_table
+        .map(|t| check_headers(lua, t))
+        .transpose()?
+        .unwrap_or_else(HeaderMap::new);
+
+      let body = LuaBody::from_value(table.raw_get::<_, mlua::Value>("body")?)
+        .map_err(|error| rt_error_fmt!("bad field 'body' ({})", error))?;
+
+      Ok(LuaRequest {
+        method,
+        uri,
+        headers: Rc::new(RefCell::new(headers)),
+        body: Some(body),
+        ..Default::default()
+      })
+    }
+    Right(userdata) => {
+      let mut u: LuaRequest = userdata.take()?;
+      if u.body.is_none() {
+        let t = userdata.get_named_user_value::<_, mlua::Value>("body")?;
+        let body = LuaBody::from_value(t)
+          .map_err(|error| rt_error_fmt!("failed to get body from request ({error})"))?;
+        u.body = Some(body);
+      }
+      Ok(u)
+    }
   }
 }

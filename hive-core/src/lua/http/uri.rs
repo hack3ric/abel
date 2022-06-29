@@ -1,7 +1,5 @@
-use crate::lua::error::extract_error;
-use mlua::{
-  AnyUserData, ExternalError, ExternalResult, FromLua, Function, Lua, LuaSerdeExt, UserData,
-};
+use crate::lua::error::{check_arg, extract_error};
+use mlua::{ExternalError, ExternalResult, FromLua, Function, Lua, MultiValue, UserData};
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -21,23 +19,17 @@ impl UserData for LuaUri {
 
     // TODO: support more complex QS structure (e.g. multiple queries with the same
     // name)
-    methods.add_function("query", |lua, this: AnyUserData| {
-      let this_ = this.borrow::<Self>()?;
+    methods.add_function("query", |lua, args: MultiValue| {
+      let this = check_arg::<Self>(lua, &args, 1, "URI", 0)?;
       extract_error(lua, || {
-        if let Some(q) = this.get_named_user_value::<_, Option<mlua::Value>>("query")? {
-          Ok(q)
-        } else {
-          let x = (this_.0.query())
-            .map(serde_qs::from_str::<HashMap<String, String>>)
-            .transpose()
-            .to_lua_err()?
-            .unwrap_or_default();
-          let x = lua.to_value(&x)?;
-          lua.set_named_registry_value("query", x.clone())?;
-          Ok(x)
-        }
+        let query_map = (this.0.query())
+          .map(serde_qs::from_str::<HashMap<String, String>>)
+          .transpose()
+          .to_lua_err()?
+          .unwrap_or_default();
+        Ok(query_map)
       })
-    })
+    });
   }
 }
 
@@ -55,7 +47,8 @@ impl<'lua> FromLua<'lua> for LuaUri {
 }
 
 pub fn create_fn_create_uri(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|_lua, s: mlua::String| {
+  lua.create_function(|lua, args: MultiValue| {
+    let s: mlua::String = check_arg(lua, &args, 1, "string", 0)?;
     Ok(LuaUri(hyper::Uri::try_from(s.as_bytes()).to_lua_err()?))
   })
 }

@@ -15,7 +15,7 @@ pub use fs::remove_service_local_storage;
 pub use sandbox::Sandbox;
 
 use crate::Result;
-use mlua::{FromLua, Table};
+use mlua::{ExternalError, FromLua, Table};
 
 pub trait LuaTableExt<'a> {
   fn raw_get_path<T: FromLua<'a>>(&self, base: &str, path: &[&str]) -> Result<T>;
@@ -44,5 +44,20 @@ impl<'a> LuaTableExt<'a> for Table<'a> {
       error
     })?;
     Ok(result)
+  }
+}
+
+pub enum LuaEither<T, U> {
+  Left(T),
+  Right(U),
+}
+
+impl<'lua, T: FromLua<'lua>, U: FromLua<'lua>> FromLua<'lua> for LuaEither<T, U> {
+  fn from_lua(lua_value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+    lua
+      .unpack::<T>(lua_value.clone())
+      .map(Self::Left)
+      .or_else(|_| lua.unpack::<U>(lua_value).map(Self::Right))
+      .map_err(|_| "failed to convert Lua value to LuaEither".to_lua_err())
   }
 }

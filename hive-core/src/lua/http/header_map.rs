@@ -1,6 +1,8 @@
-use hyper::header::{HeaderName, HeaderValue};
+use super::header_name;
+use crate::lua::error::{arg_error, check_arg, check_userdata, rt_error_fmt};
+use hyper::header::HeaderValue;
 use hyper::HeaderMap;
-use mlua::{AnyUserData, ExternalResult, UserData, UserDataMethods, Variadic};
+use mlua::{AnyUserData, MultiValue, UserData, UserDataMethods, Variadic};
 use ouroboros::self_referencing;
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
@@ -9,20 +11,23 @@ pub struct LuaHeaderMap(pub(crate) Rc<RefCell<HeaderMap>>);
 
 impl UserData for LuaHeaderMap {
   fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-    fn header_name(name: mlua::String) -> mlua::Result<HeaderName> {
-      HeaderName::from_bytes(name.as_bytes()).to_lua_err()
-    }
-
-    methods.add_method("get", |lua, this, name: mlua::String| {
-      (this.0)
-        .borrow()
-        .get_all(header_name(name)?)
+    methods.add_function("get", |lua, args: MultiValue| {
+      let this = check_userdata::<Self>(lua, &args, 1, "header map", 0)?;
+      let name: mlua::String = check_arg(lua, &args, 2, "string", 0)?;
+      let name = header_name(name).map_err(|_| arg_error(lua, 2, "invalid header name", 0))?;
+      let header_map = this.0.borrow();
+      header_map
+        .get_all(name)
         .into_iter()
         .map(|x| lua.create_string(x.as_bytes()))
         .collect::<mlua::Result<Variadic<_>>>()
     });
 
-    methods.add_meta_method("__index", |lua, this, name: mlua::String| {
+    methods.add_meta_method("__index", |lua, this, name: mlua::Value| {
+      let type_name = name.type_name();
+      let name: mlua::String = lua
+        .unpack(name)
+        .map_err(|_| rt_error_fmt!("cannot index header map with {type_name}"))?;
       (this.0)
         .borrow()
         .get(header_name(name)?)

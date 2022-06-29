@@ -2,20 +2,34 @@ use crate::{Error, ErrorKind};
 use futures::Future;
 use mlua::{
   DebugNames, ExternalError, ExternalResult, FromLua, Function, Lua, LuaSerdeExt, MultiValue,
-  ToLuaMulti, UserData,
+  Table, ToLuaMulti, UserData,
 };
 use std::borrow::Cow;
 use std::cell::{Ref, RefMut};
+use std::fmt::Display;
 use std::sync::Arc;
 
-pub(super) fn extract_error<'lua, R, F>(lua: &'lua Lua, func: F) -> mlua::Result<MultiValue<'lua>>
+pub fn get_error_msg(error: mlua::Error) -> String {
+  use mlua::Error::*;
+  match error {
+    RuntimeError(x) => x,
+    SyntaxError {
+      message,
+      incomplete_input: _,
+    } => message,
+    MemoryError(x) => x,
+    _ => error.to_string(),
+  }
+}
+
+pub fn extract_error<'lua, R, F>(lua: &'lua Lua, func: F) -> mlua::Result<MultiValue<'lua>>
 where
   R: ToLuaMulti<'lua>,
   F: FnOnce() -> mlua::Result<R>,
 {
   match func() {
     Ok(result) => lua.pack_multi(result),
-    Err(error) => lua.pack_multi((mlua::Value::Nil, error.to_string())),
+    Err(error) => lua.pack_multi((mlua::Value::Nil, get_error_msg(error))),
   }
 }
 
@@ -29,7 +43,7 @@ where
 {
   match future.await {
     Ok(result) => lua.pack_multi(result),
-    Err(error) => lua.pack_multi((mlua::Value::Nil, error.to_string())),
+    Err(error) => lua.pack_multi((mlua::Value::Nil, get_error_msg(error))),
   }
 }
 
@@ -85,7 +99,7 @@ pub fn create_fn_error(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, error: mlua::Value| -> mlua::Result<()> {
     use mlua::Value::*;
     match error {
-      Error(error) => Err(error),
+      // Error(error) => Err(error),
       Table(custom_error) => {
         let status = custom_error
           .raw_get::<_, u16>("status")?
@@ -110,7 +124,7 @@ pub fn create_fn_error(lua: &Lua) -> mlua::Result<Function> {
         } else {
           format!("(error object is a {type_name} value)")
         };
-        Err(lua_error(msg))
+        Err(rt_error(msg))
       }
     }
   })
@@ -118,8 +132,8 @@ pub fn create_fn_error(lua: &Lua) -> mlua::Result<Function> {
 
 // Error utilities
 
-pub fn lua_error(s: impl Into<String>) -> mlua::Error {
-  mlua::Error::RuntimeError(s.into())
+pub fn rt_error(s: impl ToString) -> mlua::Error {
+  mlua::Error::RuntimeError(s.to_string())
 }
 
 fn arg_error_msg(lua: &Lua, mut pos: usize, msg: &str, level: usize) -> String {
@@ -141,20 +155,20 @@ fn arg_error_msg(lua: &Lua, mut pos: usize, msg: &str, level: usize) -> String {
 }
 
 pub fn arg_error(lua: &Lua, pos: usize, msg: &str, level: usize) -> mlua::Error {
-  lua_error(arg_error_msg(lua, pos, msg, level))
+  rt_error(arg_error_msg(lua, pos, msg, level))
 }
 
 pub fn tag_error(lua: &Lua, pos: usize, expected: &str, got: &str, level: usize) -> mlua::Error {
   arg_error(lua, pos, &format!("{expected} expected, got {got}"), level)
 }
 
-pub fn check_userdata<'lua, T: UserData + 'static>(
+pub fn check_userdata<'a, 'lua, T: UserData + 'static>(
   lua: &'lua Lua,
-  args: &'lua MultiValue<'lua>,
+  args: &'a MultiValue<'lua>,
   pos: usize,
   expected: &str,
   level: usize,
-) -> mlua::Result<Ref<'lua, T>> {
+) -> mlua::Result<Ref<'a, T>> {
   match args.iter().nth(pos - 1) {
     Some(mlua::Value::UserData(u)) => u
       .borrow::<T>()
@@ -196,4 +210,58 @@ pub fn check_arg<'lua, T: FromLua<'lua>>(
         .map_err(|_| tag_error(lua, pos, expected, value.type_name(), level))
     })
     .unwrap_or_else(|| Err(tag_error(lua, pos, expected, "no value", level)))
+}
+
+pub trait TableCheckExt<'lua> {
+  fn check_raw_get<T: FromLua<'lua>>(
+    &self,
+    lua: &'lua Lua,
+    field: &str,
+    expected: &str,
+  ) -> mlua::Result<T>;
+}
+
+impl<'lua> TableCheckExt<'lua> for Table<'lua> {
+  fn check_raw_get<T: FromLua<'lua>>(
+    &self,
+    lua: &'lua Lua,
+    field: &str,
+    expected: &str,
+  ) -> mlua::Result<T> {
+    let val: mlua::Value = self.raw_get(field)?;
+    let type_name = val.type_name();
+    lua.unpack(val).map_err(|_| {
+      rt_error(format!(
+        "bad field '{field}' ({expected} expected, got {type_name})"
+      ))
+    })
+  }
+}
+
+macro_rules! rt_error_fmt {
+  ($($args:tt)*) => {
+    $crate::lua::error::rt_error(format!($($args)*))
+  };
+}
+
+pub(crate) use rt_error_fmt;
+
+pub trait ExternalResultExt<T> {
+  fn to_rt_error(self) -> mlua::Result<T>;
+}
+
+impl<T, E: Display> ExternalResultExt<T> for Result<T, E> {
+  fn to_rt_error(self) -> mlua::Result<T> {
+    self.map_err(rt_error)
+  }
+}
+
+pub trait ExternalErrorExt {
+  fn to_rt_error(self) -> mlua::Error;
+}
+
+impl<E: Display> ExternalErrorExt for E {
+  fn to_rt_error(self) -> mlua::Error {
+    rt_error(self)
+  }
 }

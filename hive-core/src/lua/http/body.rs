@@ -2,7 +2,7 @@ use super::LuaResponse;
 use crate::lua::byte_stream::ByteStream;
 use hyper::header::HeaderValue;
 use hyper::{Body, HeaderMap, StatusCode};
-use mlua::{ExternalError, ExternalResult, FromLua, Lua, LuaSerdeExt, ToLua};
+use mlua::{Lua, LuaSerdeExt, ToLua};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -30,6 +30,25 @@ impl LuaBody {
       body: Some(self),
     }
   }
+
+  pub(crate) fn from_value(value: mlua::Value) -> Result<Self, String> {
+    let result = match value {
+      mlua::Value::Nil => Self::Empty,
+      x @ mlua::Value::Table(_) => Self::Json(serde_json::to_value(&x).map_err(|x| x.to_string())?),
+      mlua::Value::String(s) => Self::Bytes(s.as_bytes().into()),
+      mlua::Value::UserData(u) => u
+        .take::<ByteStream>()
+        .map(Self::ByteStream)
+        .map_err(|_| "byte stream expected, got other userdata")?,
+      _ => {
+        return Err(format!(
+          "string, JSON table or byte stream expected, got {}",
+          value.type_name()
+        ))
+      }
+    };
+    Ok(result)
+  }
 }
 
 impl From<Body> for LuaBody {
@@ -46,25 +65,6 @@ impl From<LuaBody> for Body {
       LuaBody::Bytes(x) => x.into(),
       LuaBody::ByteStream(x) => Body::wrap_stream(x.0),
     }
-  }
-}
-
-impl<'lua> FromLua<'lua> for LuaBody {
-  fn from_lua(lua_value: mlua::Value<'lua>, _lua: &'lua Lua) -> mlua::Result<Self> {
-    let result = match lua_value {
-      mlua::Value::Nil => Self::Empty,
-      x @ mlua::Value::Table(_) => Self::Json(serde_json::to_value(&x).to_lua_err()?),
-      mlua::Value::String(s) => Self::Bytes(s.as_bytes().into()),
-      mlua::Value::UserData(u) => {
-        if let Ok(s) = u.take::<ByteStream>() {
-          Self::ByteStream(s)
-        } else {
-          return Err("failed to turn object into body".to_lua_err());
-        }
-      }
-      _ => return Err("failed to turn object into body".to_lua_err()),
-    };
-    Ok(result)
   }
 }
 

@@ -1,10 +1,10 @@
-use super::error::extract_error_async;
+use super::error::{check_userdata_mut, extract_error_async};
 use crate::Result;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
 use hyper::body::Bytes;
 use hyper::Body;
-use mlua::{AnyUserData, ExternalResult, LuaSerdeExt, UserData, UserDataMethods};
+use mlua::{ExternalResult, LuaSerdeExt, MultiValue, UserData, UserDataMethods};
 use tokio::io::AsyncRead;
 use tokio_util::io::ReaderStream;
 
@@ -32,13 +32,13 @@ impl From<Body> for ByteStream {
 
 impl UserData for ByteStream {
   fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-    methods.add_async_function("to_string", |lua, this: AnyUserData| async move {
-      let mut this = this.borrow_mut::<Self>()?;
+    methods.add_async_function("to_string", |lua, args: MultiValue| async move {
+      let mut this = check_userdata_mut::<Self>(lua, &args, 1, "byte stream", 1)?;
       extract_error_async(lua, async { lua.create_string(&this.aggregate().await?) }).await
     });
 
-    methods.add_async_function("parse_json", |lua, this: AnyUserData| async move {
-      let mut this = this.borrow_mut::<Self>()?;
+    methods.add_async_function("parse_json", |lua, args: MultiValue| async move {
+      let mut this = check_userdata_mut::<Self>(lua, &args, 1, "byte stream", 1)?;
       extract_error_async(lua, async {
         let bytes = this.aggregate().await?;
         let v: serde_json::Value = serde_json::from_slice(&bytes).to_lua_err()?;

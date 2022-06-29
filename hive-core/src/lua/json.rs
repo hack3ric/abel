@@ -1,5 +1,5 @@
-use super::error::extract_error;
-use mlua::{ExternalError, ExternalResult, Function, Lua, LuaSerdeExt};
+use super::error::{check_arg, extract_error};
+use mlua::{ExternalResult, Function, Lua, LuaSerdeExt, MultiValue, Table};
 
 pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, ()| {
@@ -14,7 +14,8 @@ pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn create_fn_json_parse(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, string: mlua::String| {
+  lua.create_function(|lua, args: MultiValue| {
+    let string: mlua::String = check_arg(lua, &args, 1, "string", 0)?;
     extract_error(lua, || {
       let result: serde_json::Value = serde_json::from_slice(string.as_bytes()).to_lua_err()?;
       lua.to_value(&result)
@@ -23,41 +24,36 @@ fn create_fn_json_parse(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn create_fn_json_stringify(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, (value, pretty): (mlua::Value, Option<bool>)| {
+  lua.create_function(|lua, args: MultiValue| {
+    let value: mlua::Value = check_arg(lua, &args, 1, "value", 0)?;
+    let pretty = check_arg::<Option<bool>>(lua, &args, 1, "bool", 0)?.unwrap_or(false);
     extract_error(lua, || {
-      let string = if pretty.unwrap_or_default() {
-        serde_json::to_string_pretty(&value).to_lua_err()?
+      if pretty {
+        serde_json::to_string_pretty(&value).to_lua_err()
       } else {
-        serde_json::to_string(&value).to_lua_err()?
-      };
-      Ok(string)
+        serde_json::to_string(&value).to_lua_err()
+      }
     })
   })
 }
 
 fn create_fn_json_array(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, table: mlua::Value| {
-    match &table {
-      mlua::Value::Table(table) => table.set_metatable(Some(lua.array_metatable())),
-      _ => return Err("expected table".to_lua_err()),
-    }
+  lua.create_function(|lua, args: MultiValue| {
+    let table: Table = check_arg(lua, &args, 1, "table", 0)?;
+    table.set_metatable(Some(lua.array_metatable()));
     Ok(table)
   })
 }
 
 fn create_fn_json_undo_array(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, table: mlua::Value| {
-    match &table {
-      mlua::Value::Table(table) => {
-        if table
-          .get_metatable()
-          .map(|x| x == lua.array_metatable())
-          .unwrap_or(false)
-        {
-          table.set_metatable(None);
-        }
-      }
-      _ => return Err("expected table".to_lua_err()),
+  lua.create_function(|lua, args: MultiValue| {
+    let table: Table = check_arg(lua, &args, 1, "table", 0)?;
+    if table
+      .get_metatable()
+      .map(|x| x == lua.array_metatable())
+      .unwrap_or(false)
+    {
+      table.set_metatable(None);
     }
     Ok(table)
   })
