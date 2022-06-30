@@ -12,19 +12,23 @@ use dashmap::DashMap;
 use log::warn;
 use replace_with::{replace_with_or_abort, replace_with_or_abort_and_return};
 use smallstr::SmallString;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 pub type ServiceName = SmallString<[u8; 16]>;
 type Services = DashMap<ServiceName, ServiceState>;
 
-#[derive(Default)]
 pub struct ServicePool {
   services: Arc<Services>,
+  state: Arc<HiveState>,
 }
 
 impl ServicePool {
-  pub fn new() -> Self {
-    Default::default()
+  pub fn new(state: Arc<HiveState>) -> Self {
+    Self {
+      services: Default::default(),
+      state,
+    }
   }
 
   pub fn get(&self, name: &str) -> Option<Service<'_>> {
@@ -145,7 +149,7 @@ impl ServicePool {
   pub async fn remove(&self, state: &HiveState, name: &str) -> Result<ServiceImpl> {
     if let Some((name2, old_service)) = self.services.remove(name) {
       if let ServiceState::Stopped(x) = old_service {
-        let local_storage_path = state.local_storage_path.join(name);
+        let local_storage_path = get_local_storage_path(state, name);
         tokio::fs::remove_dir_all(local_storage_path).await?;
         Ok(x)
       } else {
@@ -156,4 +160,8 @@ impl ServicePool {
       Err(ServiceNotFound { name: name.into() }.into())
     }
   }
+}
+
+pub(crate) fn get_local_storage_path(state: &HiveState, name: &str) -> PathBuf {
+  state.local_storage_path.join(name)
 }

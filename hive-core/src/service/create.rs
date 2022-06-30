@@ -1,12 +1,13 @@
 use super::{
-  RunningService, Service, ServiceImpl, ServiceName, ServicePool, ServiceState, StoppedService,
+  get_local_storage_path, RunningService, Service, ServiceImpl, ServiceName, ServicePool,
+  ServiceState, StoppedService,
 };
+use crate::lua::sandbox::Isolate;
 use crate::lua::Runtime;
 use crate::source::Source;
 use crate::task::RuntimePool;
 use crate::ErrorKind::{self, ServiceNotFound, ServiceStopped};
 use crate::{Config, Error, Result};
-use mlua::RegistryKey;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -34,12 +35,12 @@ async fn prepare_service(
   uuid: Option<Uuid>,
   source: Source,
   config: Config,
-) -> Result<(ServiceImpl, RegistryKey, RegistryKey)> {
+) -> Result<(ServiceImpl, Isolate)> {
   let Config {
     pkg_name,
     description,
   } = config;
-  let (paths, local_env, internal) = rt.prepare_service(&name, source.clone()).await?;
+  let (paths, isolate) = rt.prepare_service(&name, source.clone()).await?;
   let service_impl = ServiceImpl {
     name,
     pkg_name,
@@ -48,7 +49,7 @@ async fn prepare_service(
     source,
     uuid: uuid.unwrap_or_else(Uuid::new_v4),
   };
-  Ok((service_impl, local_env, internal))
+  Ok((service_impl, isolate))
 }
 
 impl ServicePool {
@@ -66,10 +67,9 @@ impl ServicePool {
       .scope(move |rt| async move {
         let mut error_payload = ErrorPayload::empty();
 
-        let (service_impl, local_env, internal) =
+        let (service_impl, isolate) =
           prepare_service(&rt, name2.clone(), uuid, source, config).await?;
-        rt.remove_registry(local_env)?;
-        rt.remove_registry(internal)?;
+        rt.sandbox.remove_isolate(isolate)?;
 
         match Self::scope_stop(services, &rt, &*name2).await {
           Ok(_) => {}
@@ -101,12 +101,17 @@ impl ServicePool {
     config: Config,
   ) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
     let services = self.services.clone();
+    let state = self.state.clone();
     let name2 = name.clone();
     let (service_state, error_payload) = rt_pool
       .scope(move |rt| async move {
         let mut error_payload = ErrorPayload::default();
 
-        let (service_impl, local_env, internal) =
+        let local_storage_path = get_local_storage_path(&state, &name2);
+        if !local_storage_path.exists() {
+          tokio::fs::create_dir(&local_storage_path).await?;
+        }
+        let (service_impl, isolate) =
           prepare_service(&rt, name2.clone(), uuid, source, config).await?;
 
         match Self::scope_stop(services, &rt, &*name2).await {
@@ -120,8 +125,7 @@ impl ServicePool {
           .create_service(
             service_impl.name(),
             service_impl.downgrade(),
-            local_env,
-            internal,
+            isolate,
             false,
           )
           .await;
@@ -131,7 +135,7 @@ impl ServicePool {
           Err(err) => {
             error_payload.start = Some(err);
             let service_impl = state.into_impl();
-            rt.expire_registry_values();
+            rt.sandbox.expire_registry_values();
             ServiceState::Stopped(service_impl)
           }
         };
@@ -184,17 +188,9 @@ impl ServicePool {
     let name2 = name.clone();
     let service_impl = rt_pool
       .scope(move |rt| async move {
-        let (service_impl, local_env, internal) =
-          prepare_service(&rt, name2, uuid, source, config).await?;
+        let (service_impl, isolate) = prepare_service(&rt, name2, uuid, source, config).await?;
         let service_impl = Arc::new(service_impl);
-        rt
-          .create_service(
-            service_impl.name(),
-            service_impl.downgrade(),
-            local_env,
-            internal,
-            true,
-          )
+        rt.create_service(service_impl.name(), service_impl.downgrade(), isolate, true)
           .await?;
         Ok::<_, crate::Error>(service_impl)
       })

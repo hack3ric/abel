@@ -28,17 +28,6 @@ pub async fn create_preload_fs(
   source: Source,
 ) -> mlua::Result<Function<'_>> {
   let local_storage_path: Arc<Path> = local_storage_path.into().into();
-  if !local_storage_path.exists() {
-    tokio::fs::create_dir(&local_storage_path).await?;
-  }
-  _create_preload_fs(lua, local_storage_path, source)
-}
-
-fn _create_preload_fs(
-  lua: &Lua,
-  local_storage_path: Arc<Path>,
-  source: Source,
-) -> mlua::Result<Function<'_>> {
   lua.create_function(move |lua, ()| {
     let fs_table = lua.create_table()?;
     fs_table.raw_set(

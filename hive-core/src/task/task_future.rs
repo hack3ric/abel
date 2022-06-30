@@ -27,7 +27,7 @@ impl TaskFuture {
     task_fn: impl FnOnce(Rc<Runtime>) -> LocalBoxFuture<'static, AnyBox>,
     tx: oneshot::Sender<AnyBox>,
   ) -> mlua::Result<Self> {
-    let context = context::create(&rt.lua)?;
+    let context = context::create(rt.lua())?;
     Ok(Self {
       rt: rt.clone(),
       context: Some(context),
@@ -45,10 +45,10 @@ impl Future for TaskFuture {
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.project();
 
-    context::set_current(&this.rt.lua, this.context.as_ref())?;
+    context::set_current(this.rt.lua(), this.context.as_ref())?;
 
     let hook_triggers = HookTriggers::every_nth_instruction(1048576);
-    this.rt.lua.set_hook(hook_triggers, {
+    this.rt.lua().set_hook(hook_triggers, {
       let t1 = RefCell::new(Instant::now());
       let cpu_time = this.cpu_time.clone();
       move |_lua, _| {
@@ -66,20 +66,20 @@ impl Future for TaskFuture {
     })?;
 
     let poll = this.task.poll(cx);
-    this.rt.lua.remove_hook();
+    this.rt.lua().remove_hook();
 
     match poll {
       Poll::Ready(result) => {
         if let Some(tx) = this.tx.take() {
           let _ = tx.send(result);
           if let Some(context) = this.context.take() {
-            context::destroy(&this.rt.lua, context)?;
+            context::destroy(this.rt.lua(), context)?;
           }
         }
         Poll::Ready(Ok(()))
       }
       Poll::Pending => {
-        context::set_current(&this.rt.lua, None)?;
+        context::set_current(this.rt.lua(), None)?;
         Poll::Pending
       }
     }

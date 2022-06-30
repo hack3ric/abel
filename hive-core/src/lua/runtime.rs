@@ -1,18 +1,17 @@
-use super::global_env::modify_global_env;
 use super::http::LuaResponse;
-use super::isolate::create_isolate;
+use super::sandbox::{Isolate, Sandbox};
 use super::LuaTableExt;
 use crate::lua::error::rt_error_fmt;
 use crate::lua::http::LuaRequest;
 use crate::path::PathMatcher;
-use crate::service::RunningService;
+use crate::service::{get_local_storage_path, RunningService};
 use crate::source::Source;
 use crate::ErrorKind::{self, *};
 use crate::{Error, HiveState, Result};
 use clru::CLruCache;
 use hyper::{Body, Request};
 use log::debug;
-use mlua::{ExternalError, FromLuaMulti, Function, Lua, RegistryKey, Table, TableExt, ToLuaMulti};
+use mlua::{ExternalError, FromLuaMulti, Function, Lua, Table, TableExt, ToLuaMulti};
 use nonzero_ext::nonzero;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -21,9 +20,8 @@ use std::sync::Arc;
 
 static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}$").unwrap());
 
-#[derive(Debug)]
 pub struct Runtime {
-  pub(crate) lua: Lua,
+  pub(crate) sandbox: Sandbox,
   loaded: RefCell<CLruCache<Box<str>, LoadedService>>,
   state: Arc<HiveState>,
 }
@@ -31,16 +29,22 @@ pub struct Runtime {
 #[derive(Debug)]
 struct LoadedService {
   service: RunningService,
-  local_env: RegistryKey,
-  internal: RegistryKey,
+  isolate: Isolate,
 }
 
 impl Runtime {
   pub fn new(state: Arc<HiveState>) -> Result<Self> {
-    let lua = Lua::new();
+    let sandbox = Sandbox::new()?;
     let loaded = RefCell::new(CLruCache::new(nonzero!(16usize)));
-    modify_global_env(&lua)?;
-    Ok(Self { lua, loaded, state })
+    Ok(Self {
+      sandbox,
+      loaded,
+      state,
+    })
+  }
+
+  pub(crate) fn lua(&self) -> &Lua {
+    &self.sandbox.lua
   }
 
   async fn call_extract_error<'a, T, R>(&'a self, f: mlua::Value<'a>, v: T) -> Result<R>
@@ -121,7 +125,7 @@ impl Runtime {
       })?;
 
     let loaded = self.load_service(service.clone()).await?;
-    let internal: Table = self.lua.registry_value(&loaded.internal)?;
+    let internal = self.sandbox.get_internal(&loaded.isolate)?;
 
     // `loaded` is a mapped, immutable, checked-at-runtime borrow from
     // `self.loaded`. Dropping it manually here prevents `self.loaded` being
@@ -149,12 +153,12 @@ impl Runtime {
     &self,
     name: &str,
     source: Source,
-  ) -> Result<(Vec<PathMatcher>, RegistryKey, RegistryKey)> {
+  ) -> Result<(Vec<PathMatcher>, Isolate)> {
     if !NAME_CHECK_REGEX.is_match(name) {
       return Err(InvalidServiceName { name: name.into() }.into());
     }
 
-    let (local_env, internal_key, internal) = self.run_source(name, source).await?;
+    let (isolate, internal) = self.run_source(name, source).await?;
 
     let mut paths = Vec::new();
     for f in internal
@@ -166,15 +170,14 @@ impl Runtime {
       paths.push(path);
     }
 
-    Ok((paths, local_env, internal_key))
+    Ok((paths, isolate))
   }
 
   pub(crate) async fn create_service(
     &self,
     name: &str,
     service: RunningService,
-    local_env: RegistryKey,
-    internal: RegistryKey,
+    isolate: Isolate,
     hot_update: bool,
   ) -> Result<()> {
     if service.is_dropped() {
@@ -182,8 +185,7 @@ impl Runtime {
     }
     let loaded = LoadedService {
       service: service.clone(),
-      local_env,
-      internal,
+      isolate,
     };
     self.loaded.borrow_mut().put(name.into(), loaded);
     if !hot_update {
@@ -192,18 +194,10 @@ impl Runtime {
     Ok(())
   }
 
-  pub(crate) fn remove_registry(&self, key: RegistryKey) -> mlua::Result<()> {
-    self.lua.remove_registry_value(key)
-  }
-
-  pub(crate) fn expire_registry_values(&self) {
-    self.lua.expire_registry_values();
-  }
-
   pub(crate) async fn run_start(&self, service: RunningService) -> Result<()> {
     let loaded = self.load_service(service).await?;
-    let start_fn: Option<Function> = (self.lua)
-      .registry_value::<Table>(&loaded.local_env)?
+    let start_fn: Option<Function> = (self.sandbox)
+      .get_local_env(&loaded.isolate)?
       .raw_get_path("<local_env>", &["hive", "start"])?;
     if let Some(f) = start_fn {
       f.call_async(()).await?;
@@ -213,8 +207,8 @@ impl Runtime {
 
   pub(crate) async fn run_stop(&self, service: RunningService) -> Result<()> {
     let loaded = self.load_service(service).await?;
-    let stop_fn: Option<Function> = (self.lua)
-      .registry_value::<Table>(&loaded.local_env)?
+    let stop_fn: Option<Function> = (self.sandbox)
+      .get_local_env(&loaded.isolate)?
       .raw_get_path("<local_env>", &["hive", "stop"])?;
     if let Some(f) = stop_fn {
       f.call_async(()).await?;
@@ -223,23 +217,19 @@ impl Runtime {
     Ok(())
   }
 
-  async fn run_source<'a>(
-    &'a self,
-    name: &str,
-    source: Source,
-  ) -> Result<(RegistryKey, RegistryKey, Table<'a>)> {
-    let fs_local_path = self.state.local_storage_path.join(name);
-    let (local_env, internal) =
-      create_isolate(&self.lua, name, fs_local_path, source.clone()).await?;
-    source
-      .load(&self.lua, "/main.lua", local_env.clone())
-      .await?
-      .call_async::<_, ()>(())
+  async fn run_source<'a>(&'a self, name: &str, source: Source) -> Result<(Isolate, Table<'a>)> {
+    let local_storage_path = get_local_storage_path(&self.state, name);
+    let isolate = (self.sandbox)
+      .create_isolate(name, local_storage_path, source.clone())
       .await?;
+    (self.sandbox)
+      .run_isolate_source(&isolate, "main.lua", ())
+      .await?;
+
+    let internal = self.sandbox.get_internal(&isolate)?;
     internal.raw_set("sealed", true)?;
-    let local_env_key = self.lua.create_registry_value(local_env)?;
-    let internal_key = self.lua.create_registry_value(internal.clone())?;
-    Ok((local_env_key, internal_key, internal))
+
+    Ok((isolate, internal))
   }
 
   async fn load_service(&self, service: RunningService) -> Result<Ref<'_, LoadedService>> {
@@ -257,8 +247,7 @@ impl Runtime {
         self.loaded.borrow_mut().get(name);
         return Ok(Ref::map(self.loaded.borrow(), |x| x.peek(name).unwrap()));
       } else {
-        self.lua.remove_registry_value(loaded.internal)?;
-        self.lua.remove_registry_value(loaded.local_env)?;
+        self.sandbox.remove_isolate(loaded.isolate)?;
       }
     }
     debug!(
@@ -267,12 +256,11 @@ impl Runtime {
     );
     drop(self_loaded);
     let source = service_guard.source();
-    let (local_env, internal, _) = self.run_source(name, source.clone()).await?;
+    let (isolate, _) = self.run_source(name, source.clone()).await?;
 
     let loaded = LoadedService {
       service: service.clone(),
-      local_env,
-      internal,
+      isolate,
     };
     let mut self_loaded = self.loaded.borrow_mut();
     self_loaded.put(name.into(), loaded);
@@ -290,7 +278,7 @@ impl Runtime {
       }
       r
     });
-    self.lua.expire_registry_values();
+    self.sandbox.expire_registry_values();
     count
   }
 }

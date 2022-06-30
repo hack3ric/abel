@@ -5,7 +5,6 @@ use crate::lua::json::create_preload_json;
 use crate::lua::print::create_fn_print;
 use crate::lua::LuaTableExt;
 use crate::source::{Source, SourceUserData};
-use crate::Result;
 use mlua::{Function, Lua, Table};
 use std::path::PathBuf;
 
@@ -14,7 +13,7 @@ pub(super) async fn create_isolate<'a, 'b>(
   service_name: &'b str,
   local_storage_path: impl Into<PathBuf>,
   source: Source,
-) -> Result<(Table<'a>, Table<'a>)> {
+) -> mlua::Result<(Table<'a>, Table<'a>)> {
   let isolate_fn = lua.named_registry_value::<_, Function>("isolate_fn")?;
   let (local_env, internal): (Table, Table) = isolate_fn.call(())?;
 

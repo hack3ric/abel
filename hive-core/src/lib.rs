@@ -50,7 +50,7 @@ impl Hive {
         options.runtime_pool_size,
         move || Runtime::new(state2.clone()),
       )?,
-      service_pool: ServicePool::new(),
+      service_pool: ServicePool::new(state.clone()),
       state,
     })
   }
@@ -124,9 +124,7 @@ impl Hive {
     req: Request<Body>,
   ) -> Result<Response<Body>> {
     (self.runtime_pool)
-      .scope(
-        move |rt| async move { Ok(rt.handle_request(service, &path, req).await?.into()) },
-      )
+      .scope(move |rt| async move { Ok(rt.handle_request(service, &path, req).await?.into()) })
       .await
   }
 
