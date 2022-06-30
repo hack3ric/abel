@@ -1,5 +1,5 @@
-use super::error::create_fn_error;
-use mlua::{Function, Lua, Table, ToLua};
+use super::error::{create_fn_assert, create_fn_error, create_fn_pcall};
+use mlua::{Function, Lua, Table};
 
 pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
   let globals = lua.globals();
@@ -28,10 +28,12 @@ pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
 
   globals.raw_set("current_worker", create_fn_current_worker(lua)?)?;
   globals.raw_set("error", create_fn_error(lua)?)?;
+  globals.raw_set("assert", create_fn_assert(lua)?)?;
+  globals.raw_set("pcall", create_fn_pcall(lua)?)?;
 
   Ok(())
 }
 
 fn create_fn_current_worker(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, ()| std::thread::current().name().to_lua(lua))
+  lua.create_function(|lua, ()| lua.pack(std::thread::current().name()))
 }

@@ -1,7 +1,7 @@
 use super::http::LuaResponse;
 use super::sandbox::{Isolate, Sandbox};
 use super::LuaTableExt;
-use crate::lua::error::rt_error_fmt;
+use crate::lua::error::{resolve_callback_error, rt_error_fmt};
 use crate::lua::http::LuaRequest;
 use crate::path::PathMatcher;
 use crate::service::{get_local_storage_path, RunningService};
@@ -53,16 +53,6 @@ impl Runtime {
     R: FromLuaMulti<'a>,
   {
     fn sanitize_error(error: mlua::Error) -> Error {
-      fn resolve_callback_error(error: &mlua::Error) -> &mlua::Error {
-        match error {
-          mlua::Error::CallbackError {
-            traceback: _,
-            cause,
-          } => resolve_callback_error(cause),
-          _ => error,
-        }
-      }
-
       fn extract_custom_error(
         error: &Arc<dyn std::error::Error + Send + Sync + 'static>,
       ) -> Option<Error> {

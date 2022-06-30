@@ -36,7 +36,7 @@ impl Sandbox {
   pub async fn run_isolate<'lua, A: ToLuaMulti<'lua>, R: FromLuaMulti<'lua>>(
     &'lua self,
     isolate: &Isolate,
-    chunk: &impl AsChunk<'lua>,
+    chunk: &(impl AsChunk<'lua> + ?Sized),
     name: &str,
     args: A,
   ) -> mlua::Result<R> {

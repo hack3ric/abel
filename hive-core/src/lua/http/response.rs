@@ -1,7 +1,7 @@
 use super::body::LuaBody;
 use super::check_headers;
 use super::header_map::LuaHeaderMap;
-use crate::lua::error::{check_arg, rt_error_fmt, TableCheckExt};
+use crate::lua::error::{bad_field, check_arg, rt_error_fmt, TableCheckExt};
 use hyper::http::{HeaderMap, StatusCode};
 use hyper::{Body, Response};
 use mlua::{FromLua, Function, Lua, MultiValue, Table, UserData, UserDataFields};
@@ -96,7 +96,7 @@ pub fn create_fn_create_response(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, args: MultiValue| {
     let params: Table = check_arg(lua, &args, 1, "table", 0)?;
     let body = LuaBody::from_value(params.raw_get::<_, mlua::Value>("body")?)
-      .map_err(|error| rt_error_fmt!("bad field 'body' ({error})"))?;
+      .map_err(|error| bad_field("body", error))?;
     let mut response = body.into_default_response();
 
     // TODO: better error message for status code

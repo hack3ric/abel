@@ -1,7 +1,7 @@
 use super::body::LuaBody;
 use super::header_map::LuaHeaderMap;
 use super::uri::LuaUri;
-use crate::lua::error::{arg_error, check_arg, rt_error_fmt, TableCheckExt};
+use crate::lua::error::{arg_error, bad_field, check_arg, rt_error_fmt, TableCheckExt};
 use crate::lua::http::check_headers;
 use crate::lua::LuaEither;
 use crate::path::Params;
@@ -140,7 +140,7 @@ pub fn check_request(
         .unwrap_or_else(HeaderMap::new);
 
       let body = LuaBody::from_value(table.raw_get::<_, mlua::Value>("body")?)
-        .map_err(|error| rt_error_fmt!("bad field 'body' ({})", error))?;
+        .map_err(|error| bad_field("body", error))?;
 
       Ok(LuaRequest {
         method,
