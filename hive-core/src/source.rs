@@ -73,7 +73,7 @@ impl Source {
     let code = self.get_bytes(path).await?;
     let result = lua
       .load(&code)
-      .set_name(&format!("source:{path}"))?
+      .set_name(&format!("@{path}"))? // This prevents `[string 'chunk_name']`
       .set_environment(env)?
       .into_function()?;
     Ok(result)

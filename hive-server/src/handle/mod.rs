@@ -90,7 +90,7 @@ pub(crate) async fn handle(
       if let Some(uuid) = error.uuid() {
         error!("{error} {}", format!("({})", uuid).dimmed());
       } else {
-        error!("error");
+        error!("{error}");
       }
     }
     error.into()

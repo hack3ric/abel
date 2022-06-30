@@ -100,9 +100,9 @@ local function source_searcher(modname)
   local init_exists = source:exists(path .. "/init.lua")
 
   if file_exists and init_exists then
-    return nil, "file '@source:" .. path .. ".lua' and '@source:" .. path .. "/init.lua' conflicts"
+    return nil, "file 'source:" .. path .. ".lua' and 'source:" .. path .. "/init.lua' conflicts"
   elseif not file_exists and not init_exists then
-    return nil, "no file '@source:" .. path .. ".lua'\n\tno file 'source:" .. path .. "/init.lua'"
+    return nil, "no file 'source:" .. path .. ".lua'\n\tno file 'source:" .. path .. "/init.lua'"
   else
     path = path .. (file_exists and ".lua" or "/init.lua")
     local function source_loader(modname, path)
