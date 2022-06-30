@@ -1,105 +1,15 @@
-use crate::{Error, ErrorKind};
-use futures::Future;
+use crate::ErrorKind;
 use mlua::{
   DebugNames, ExternalError, ExternalResult, FromLua, Function, Lua, LuaSerdeExt, MultiValue,
-  Table, ToLuaMulti, UserData,
+  Table, UserData,
 };
 use std::borrow::Cow;
 use std::cell::{Ref, RefMut};
-use std::fmt::Display;
-use std::sync::Arc;
-
-pub fn get_error_msg(error: mlua::Error) -> String {
-  use mlua::Error::*;
-  match error {
-    RuntimeError(x) => x,
-    SyntaxError {
-      message,
-      incomplete_input: _,
-    } => message,
-    MemoryError(x) => x,
-    _ => error.to_string(),
-  }
-}
-
-pub fn extract_error<'lua, R, F>(lua: &'lua Lua, func: F) -> mlua::Result<MultiValue<'lua>>
-where
-  R: ToLuaMulti<'lua>,
-  F: FnOnce() -> mlua::Result<R>,
-{
-  match func() {
-    Ok(result) => lua.pack_multi(result),
-    Err(error) => lua.pack_multi((mlua::Value::Nil, get_error_msg(error))),
-  }
-}
-
-pub async fn extract_error_async<'lua, R, Fut>(
-  lua: &'lua Lua,
-  future: Fut,
-) -> mlua::Result<MultiValue<'lua>>
-where
-  R: ToLuaMulti<'lua>,
-  Fut: Future<Output = mlua::Result<R>>,
-{
-  match future.await {
-    Ok(result) => lua.pack_multi(result),
-    Err(error) => lua.pack_multi((mlua::Value::Nil, get_error_msg(error))),
-  }
-}
-
-pub fn sanitize_error(error: mlua::Error) -> Error {
-  match error {
-    mlua::Error::CallbackError { traceback, cause } => {
-      let cause = resolve_callback_error(&cause);
-      if let mlua::Error::ExternalError(error) = cause {
-        if let Some(error) = extract_custom_error(error) {
-          return error;
-        }
-      }
-      format!("{cause}\n{traceback}").to_lua_err().into()
-    }
-    mlua::Error::ExternalError(error) => {
-      extract_custom_error(&error).unwrap_or_else(|| mlua::Error::ExternalError(error).into())
-    }
-    _ => error.into(),
-  }
-}
-
-fn resolve_callback_error(error: &mlua::Error) -> &mlua::Error {
-  match error {
-    mlua::Error::CallbackError {
-      traceback: _,
-      cause,
-    } => resolve_callback_error(cause),
-    _ => error,
-  }
-}
-
-fn extract_custom_error(
-  error: &Arc<dyn std::error::Error + Send + Sync + 'static>,
-) -> Option<Error> {
-  let maybe_custom = error.downcast_ref::<Error>().map(Error::kind);
-  if let Some(ErrorKind::Custom {
-    status,
-    error,
-    detail,
-  }) = maybe_custom
-  {
-    Some(From::from(ErrorKind::Custom {
-      status: *status,
-      error: error.clone(),
-      detail: detail.clone(),
-    }))
-  } else {
-    None
-  }
-}
 
 pub fn create_fn_error(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, error: mlua::Value| -> mlua::Result<()> {
     use mlua::Value::*;
     match error {
-      // Error(error) => Err(error),
       Table(custom_error) => {
         let status = custom_error
           .raw_get::<_, u16>("status")?
@@ -135,6 +45,14 @@ pub fn create_fn_error(lua: &Lua) -> mlua::Result<Function> {
 pub fn rt_error(s: impl ToString) -> mlua::Error {
   mlua::Error::RuntimeError(s.to_string())
 }
+
+macro_rules! rt_error_fmt {
+  ($($args:tt)*) => {
+    $crate::lua::error::rt_error(format!($($args)*))
+  };
+}
+
+pub(crate) use rt_error_fmt;
 
 fn arg_error_msg(lua: &Lua, mut pos: usize, msg: &str, level: usize) -> String {
   if let Some(d) = lua.inspect_stack(level) {
@@ -230,38 +148,8 @@ impl<'lua> TableCheckExt<'lua> for Table<'lua> {
   ) -> mlua::Result<T> {
     let val: mlua::Value = self.raw_get(field)?;
     let type_name = val.type_name();
-    lua.unpack(val).map_err(|_| {
-      rt_error(format!(
-        "bad field '{field}' ({expected} expected, got {type_name})"
-      ))
-    })
-  }
-}
-
-macro_rules! rt_error_fmt {
-  ($($args:tt)*) => {
-    $crate::lua::error::rt_error(format!($($args)*))
-  };
-}
-
-pub(crate) use rt_error_fmt;
-
-pub trait ExternalResultExt<T> {
-  fn to_rt_error(self) -> mlua::Result<T>;
-}
-
-impl<T, E: Display> ExternalResultExt<T> for Result<T, E> {
-  fn to_rt_error(self) -> mlua::Result<T> {
-    self.map_err(rt_error)
-  }
-}
-
-pub trait ExternalErrorExt {
-  fn to_rt_error(self) -> mlua::Error;
-}
-
-impl<E: Display> ExternalErrorExt for E {
-  fn to_rt_error(self) -> mlua::Error {
-    rt_error(self)
+    lua
+      .unpack(val)
+      .map_err(|_| rt_error_fmt!("bad field '{field}' ({expected} expected, got {type_name})"))
   }
 }

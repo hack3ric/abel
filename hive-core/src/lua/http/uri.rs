@@ -1,5 +1,6 @@
-use crate::lua::error::{check_arg, extract_error};
-use mlua::{ExternalError, ExternalResult, FromLua, Function, Lua, MultiValue, UserData};
+use crate::lua::error::{check_arg, rt_error_fmt};
+use mlua::Value::Nil;
+use mlua::{ExternalResult, FromLua, Function, Lua, MultiValue, UserData};
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -21,27 +22,33 @@ impl UserData for LuaUri {
     // name)
     methods.add_function("query", |lua, args: MultiValue| {
       let this = check_arg::<Self>(lua, &args, 1, "URI", 0)?;
-      extract_error(lua, || {
-        let query_map = (this.0.query())
-          .map(serde_qs::from_str::<HashMap<String, String>>)
-          .transpose()
-          .to_lua_err()?
-          .unwrap_or_default();
-        Ok(query_map)
-      })
+      let result = (this.0.query())
+        .map(serde_qs::from_str::<HashMap<String, String>>)
+        .transpose()
+        .map(Option::unwrap_or_default);
+      match result {
+        Ok(query_map) => lua.pack_multi(query_map),
+        Err(error) => lua.pack_multi((Nil, error.to_string())),
+      }
     });
   }
 }
 
 impl<'lua> FromLua<'lua> for LuaUri {
-  fn from_lua(lua_value: mlua::Value<'lua>, _lua: &'lua Lua) -> mlua::Result<Self> {
-    match lua_value {
-      mlua::Value::String(s) => Ok(Self(hyper::Uri::try_from(s.as_bytes()).to_lua_err()?)),
+  fn from_lua(value: mlua::Value<'lua>, _lua: &'lua Lua) -> mlua::Result<Self> {
+    match value {
+      mlua::Value::String(s) => Ok(Self(
+        hyper::Uri::try_from(s.as_bytes())
+          .map_err(|error| rt_error_fmt!("failed to parse URI ({error})"))?,
+      )),
       mlua::Value::UserData(x) => {
         let x = x.borrow::<Self>()?;
         Ok(Self(x.0.clone()))
       }
-      _ => Err("failed to convert to URI".to_lua_err()),
+      _ => Err(rt_error_fmt!(
+        "failed to parse URI (string expected, got {})",
+        value.type_name(),
+      )),
     }
   }
 }

@@ -1,12 +1,14 @@
-use super::error::{arg_error, extract_error_async};
+use super::error::{arg_error, check_arg, check_userdata_mut, rt_error, tag_error};
 use crate::lua::byte_stream::ByteStream;
 use crate::lua::context;
+use crate::lua::error::rt_error_fmt;
 use crate::path::normalize_path_str;
 use crate::source::{ReadOnlyFile, Source};
 use crate::{HiveState, Result};
+use bstr::ByteSlice;
+use mlua::Value::Nil;
 use mlua::{
-  AnyUserData, ExternalError, ExternalResult, Function, Lua, MultiValue, ToLua, UserData,
-  UserDataMethods, Variadic,
+  AnyUserData, ExternalResult, Function, Lua, MultiValue, ToLua, UserData, UserDataMethods,
 };
 use pin_project::pin_project;
 use std::borrow::Cow;
@@ -78,7 +80,7 @@ impl OpenMode {
         b"r+" => ReadWrite,
         b"w+" => ReadWriteNew,
         b"a+" => ReadAppend,
-        _ => return Err("invalid open mode".to_lua_err()),
+        mode => return Err(rt_error_fmt!("invalid open mode: {}", mode.as_bstr())),
       };
       Ok(result)
     } else {
@@ -113,20 +115,19 @@ enum ReadMode {
 impl ReadMode {
   fn from_lua(mode: mlua::Value) -> mlua::Result<Self> {
     match mode {
-      mlua::Value::Integer(i) => {
-        if i > 0 {
-          return Ok(Self::Exact(i as _));
-        }
-      }
+      mlua::Value::Integer(i) if i > 0 => Ok(Self::Exact(i as _)),
+      mlua::Value::Integer(_) => Err(rt_error("read bytes cannot be negative")),
       mlua::Value::String(s) => match s.as_bytes() {
-        b"a" => return Ok(Self::All),
-        b"l" => return Ok(Self::Line),
-        b"L" => return Ok(Self::LineWithDelimiter),
-        _ => (),
+        b"a" => Ok(Self::All),
+        b"l" => Ok(Self::Line),
+        b"L" => Ok(Self::LineWithDelimiter),
+        s => Err(rt_error_fmt!("invalid file read mode {:?}", s.as_bstr())),
       },
-      _ => (),
+      _ => Err(rt_error_fmt!(
+        "string or integer expected, got {}",
+        mode.type_name()
+      )),
     }
-    Err("invalid file read mode".to_lua_err())
   }
 }
 
@@ -156,7 +157,7 @@ async fn read_once<'lua>(
         let mut buf = vec![0; len as _];
         let actual_len = this.0.read_exact(&mut buf).await?;
         if actual_len == 0 {
-          Ok(mlua::Value::Nil)
+          Ok(Nil)
         } else {
           buf.truncate(actual_len);
           Ok(mlua::Value::String(lua.create_string(&buf)?))
@@ -167,7 +168,7 @@ async fn read_once<'lua>(
       let mut buf = String::new();
       let bytes = this.0.read_line(&mut buf).await?;
       if bytes == 0 {
-        Ok(mlua::Value::Nil)
+        Ok(Nil)
       } else {
         if buf.ends_with('\n') {
           buf.pop();
@@ -182,7 +183,7 @@ async fn read_once<'lua>(
       let mut buf = String::new();
       let bytes = this.0.read_line(&mut buf).await?;
       if bytes == 0 {
-        Ok(mlua::Value::Nil)
+        Ok(Nil)
       } else {
         Ok(mlua::Value::String(lua.create_string(&buf)?))
       }
@@ -197,92 +198,105 @@ impl UserData for LuaFile {
       Ok(())
     });
 
-    methods.add_async_function(
-      "read",
-      |lua, (this, modes): (AnyUserData, MultiValue)| async move {
-        let mut this = this.borrow_mut::<Self>()?;
-        extract_error_async(lua, async {
-          let mut results = Vec::new();
-          if modes.is_empty() {
-            results.push(read_once(&mut this, lua, ReadMode::Line).await?);
-          } else {
-            for (i, mode) in modes.into_iter().enumerate() {
-              let mode = ReadMode::from_lua(mode)
-                .map_err(|error| arg_error(lua, i + 2, &error.to_string(), 1))?;
-              let result = read_once(&mut this, lua, mode).await?;
-              if let mlua::Value::Nil = result {
-                results.push(result);
-                break;
-              } else {
-                results.push(result);
-              }
-            }
+    methods.add_async_function("read", |lua, args: MultiValue| async move {
+      let mut this = check_userdata_mut::<Self>(lua, &args, 1, "file", 1)?;
+      let modes = args.iter().skip(1);
+      let mut results = Vec::new();
+      if modes.len() == 0 {
+        match read_once(&mut this, lua, ReadMode::Line).await {
+          Ok(result) => results.push(result),
+          Err(error) => return lua.pack_multi((Nil, error.to_string())),
+        }
+      } else {
+        for (i, mode) in modes.into_iter().cloned().enumerate() {
+          let mode = ReadMode::from_lua(mode)
+            .map_err(|error| arg_error(lua, i + 2, &error.to_string(), 1))?;
+          match read_once(&mut this, lua, mode).await {
+            Ok(Nil) => break,
+            Ok(result) => results.push(result),
+            Err(error) => return lua.pack_multi((Nil, error.to_string())),
           }
-          Ok(MultiValue::from_vec(results))
-        })
-        .await
-      },
-    );
+        }
+      }
+      Ok(MultiValue::from_vec(results))
+    });
 
-    methods.add_async_function(
-      "write",
-      |lua, (this, content): (AnyUserData, Variadic<mlua::String>)| async move {
-        let mut this = this.borrow_mut::<Self>()?;
-        extract_error_async(lua, async {
-          for x in content {
-            this.0.write_all(x.as_bytes()).await?;
+    methods.add_async_function("write", |lua, args: MultiValue| async move {
+      let this_u: AnyUserData = check_arg(lua, &args, 1, "file", 1)?;
+      {
+        let mut this = this_u
+          .borrow_mut::<Self>()
+          .map_err(|_| tag_error(lua, 1, "file", "other userdata", 1))?;
+        for (i, x) in args.iter().cloned().enumerate().skip(1) {
+          let type_name = x.type_name();
+          let x = lua
+            .coerce_string(x)
+            .ok()
+            .flatten()
+            .ok_or_else(|| tag_error(lua, i, "string", type_name, 1))?;
+          if let Err(error) = this.0.write_all(x.as_bytes()).await {
+            return lua.pack_multi((Nil, error.to_string()));
           }
-          Ok(())
-        })
-        .await
-      },
-    );
+        }
+      }
+      lua.pack_multi(this_u)
+    });
 
-    methods.add_async_function(
-      "seek",
-      |lua, (this, whence, offset): (AnyUserData, Option<mlua::String>, Option<i64>)| async move {
-        let mut this = this.borrow_mut::<Self>()?;
-        extract_error_async(lua, async {
-          let offset = offset.unwrap_or(0);
-          let seekfrom = if let Some(whence) = whence {
-            match whence.as_bytes() {
-              b"set" => SeekFrom::Start(offset.try_into().to_lua_err()?),
-              b"cur" => SeekFrom::Current(offset),
-              b"end" => SeekFrom::End(offset),
-              x => {
-                let error_msg = format!("invalid seek base: {}", String::from_utf8_lossy(x));
-                return Err(error_msg.to_lua_err());
-              }
-            }
-          } else {
-            SeekFrom::Current(0)
-          };
-          Ok(this.0.seek(seekfrom).await?)
-        })
-        .await
-      },
-    );
+    methods.add_async_function("seek", |lua, args: MultiValue| async move {
+      let mut this = check_userdata_mut::<Self>(lua, &args, 1, "file", 1)?;
+      let whence: Option<mlua::String> = check_arg(lua, &args, 2, "string", 1)?;
+      let offset = check_arg::<Option<i64>>(lua, &args, 3, "integer", 1)?.unwrap_or(0);
 
-    methods.add_function("lines", |lua, this: AnyUserData| {
+      let seekfrom = if let Some(whence) = whence {
+        match whence.as_bytes() {
+          b"set" => SeekFrom::Start(
+            offset
+              .try_into()
+              .map_err(|_| arg_error(lua, 2, "cannot combine 'set' with negative number", 1))?,
+          ),
+          b"cur" => SeekFrom::Current(offset),
+          b"end" => SeekFrom::End(offset),
+          x => {
+            let msg = format!("invalid option {:?}", x.as_bstr());
+            return Err(arg_error(lua, 2, &msg, 1));
+          }
+        }
+      } else {
+        SeekFrom::Current(0)
+      };
+      lua.pack_multi(this.0.seek(seekfrom).await.to_lua_err())
+    });
+
+    methods.add_function("lines", |lua, args: MultiValue| {
+      let this = check_arg::<AnyUserData>(lua, &args, 1, "file", 0)?;
+      if !this.is::<Self>() {
+        return Err(tag_error(lua, 1, "file", "other userdata", 0));
+      }
+      // TODO: use `read_once`
       let iter = lua.create_async_function(|lua, this: AnyUserData| async move {
         let mut this = this.borrow_mut::<Self>()?;
-        extract_error_async(lua, async {
+        let result = async {
           let mut buf = Vec::new();
-          this.0.read_until(b'\n', &mut buf).await?;
-          lua.create_string(&buf)
-        })
-        .await
+          if this.0.read_until(b'\n', &mut buf).await? == 0 {
+            mlua::Result::Ok(Nil)
+          } else {
+            Ok(mlua::Value::String(lua.create_string(&buf)?))
+          }
+        };
+        Ok(result.await)
       })?;
       iter.bind(this)
     });
 
-    methods.add_async_function("flush", |lua, this: AnyUserData| async move {
-      let mut this = this.borrow_mut::<Self>()?;
-      extract_error_async(lua, async { Ok(this.0.flush().await?) }).await
+    methods.add_async_function("flush", |lua, args: MultiValue| async move {
+      let mut this = check_userdata_mut::<Self>(lua, &args, 1, "file", 1)?;
+      lua.pack_multi(this.0.flush().await.to_lua_err().map(|_| Nil))
     });
 
-    methods.add_async_function("into_stream", |_lua, this: AnyUserData| async move {
-      let this = this.take::<Self>()?;
+    methods.add_async_function("into_stream", |lua, args: MultiValue| async move {
+      let this = check_arg::<AnyUserData>(lua, &args, 1, "file", 0)?
+        .take::<Self>()
+        .map_err(|_| tag_error(lua, 1, "file", "other userdata", 0))?;
       Ok(ByteStream::from_async_read(this.0))
     });
   }
@@ -368,97 +382,113 @@ fn create_fn_fs_open(
   source: Source,
   local_storage_path: Arc<Path>,
 ) -> mlua::Result<Function<'_>> {
-  lua.create_async_function(
-    move |lua, (path, mode): (mlua::String, Option<mlua::String>)| {
-      let source = source.clone();
-      let local_storage_path = local_storage_path.clone();
-      async move {
-        let (scheme, path) = parse_path(&path)?;
-        let mode = OpenMode::from_lua(mode)?;
-        extract_error_async(lua, async {
-          let file = match scheme {
-            "local" => {
-              let path = normalize_path_str(path);
-              GenericFile::File(
-                mode
-                  .to_open_options()
-                  .open(local_storage_path.join(path))
-                  .await?,
-              )
-            }
-            "source" => {
-              // For `source:`, the only open mode is "read"
-              GenericFile::ReadOnly(source.get(path).await?)
-            }
-            _ => return scheme_not_supported(scheme),
-          };
-          let file = LuaFile(BufReader::new(file));
-          let file = lua.create_userdata(file)?;
-          context::register(lua, file.clone())?;
-          Ok(file)
-        })
-        .await
-      }
-    },
-  )
+  lua.create_async_function(move |lua, args: MultiValue| {
+    let source = source.clone();
+    let local_storage_path = local_storage_path.clone();
+    async move {
+      let path: mlua::String = check_arg(lua, &args, 1, "string", 1)?;
+      let mode: Option<mlua::String> = check_arg(lua, &args, 2, "string", 1)?;
+
+      let (scheme, path) = parse_path(&path)?;
+      let mode = OpenMode::from_lua(mode)?;
+
+      let file = match scheme {
+        "local" => {
+          let path = normalize_path_str(path);
+          let file = mode
+            .to_open_options()
+            .open(local_storage_path.join(path))
+            .await;
+          match file {
+            Ok(file) => GenericFile::File(file),
+            Err(error) => return lua.pack_multi((Nil, error.to_string())),
+          }
+        }
+        "source" => {
+          // For `source:`, the only open mode is "read"
+          match source.get(path).await {
+            Ok(file) => GenericFile::ReadOnly(file),
+            Err(error) => return lua.pack_multi((Nil, error.to_string())),
+          }
+        }
+        _ => return Err(scheme_not_supported(scheme)),
+      };
+      let file = LuaFile(BufReader::new(file));
+      let file = lua.create_userdata(file)?;
+      context::register(lua, file.clone())?;
+      lua.pack_multi(file)
+    }
+  })
 }
 
 fn create_fn_fs_mkdir(lua: &Lua, local_storage_path: Arc<Path>) -> mlua::Result<Function> {
-  lua.create_async_function(move |lua, (path, all): (mlua::String, bool)| {
+  lua.create_async_function(move |lua, args: MultiValue| {
     let local_storage_path = local_storage_path.clone();
-    extract_error_async(lua, async move {
+    async move {
+      let path: mlua::String = check_arg(lua, &args, 1, "string", 1)?;
+      let all = check_arg::<Option<bool>>(lua, &args, 2, "bool", 1)?.unwrap_or(false);
       let (scheme, path) = parse_path(&path)?;
 
       let path: Cow<Path> = match scheme {
         "local" => local_storage_path.join(normalize_path_str(path)).into(),
-        "source" => return Err("cannot modify service source".to_lua_err()),
-        _ => return scheme_not_supported(scheme),
+        "source" => return Err(rt_error("cannot modify service source")),
+        _ => return Err(scheme_not_supported(scheme)),
       };
 
-      if all {
-        fs::create_dir_all(path).await?;
-      } else {
-        fs::create_dir(path).await?;
-      }
-      Ok(())
-    })
+      let result = async move {
+        if all {
+          fs::create_dir_all(path).await?;
+        } else {
+          fs::create_dir(path).await?;
+        }
+        mlua::Result::Ok(Nil)
+      };
+      Ok(result.await)
+    }
   })
 }
 
 fn create_fn_fs_remove(lua: &Lua, local_storage_path: Arc<Path>) -> mlua::Result<Function> {
-  lua.create_async_function(move |lua, (path, all): (mlua::String, bool)| {
+  lua.create_async_function(move |lua, args: MultiValue| {
     let local_storage_path = local_storage_path.clone();
-    extract_error_async(lua, async move {
-      let (scheme, path) = parse_path(&path)?;
+    async move {
+      let path: mlua::String = check_arg(lua, &args, 1, "string", 1)?;
+      let all = check_arg::<Option<bool>>(lua, &args, 2, "bool", 1)?.unwrap_or(false);
 
+      let (scheme, path) = parse_path(&path)?;
       let path: Cow<Path> = match scheme {
         "local" => local_storage_path.join(normalize_path_str(path)).into(),
-        "source" => return Err("cannot modify service source".to_lua_err()),
-        _ => return scheme_not_supported(scheme),
+        "source" => return Err(rt_error("cannot modify service source")),
+        _ => return Err(scheme_not_supported(scheme)),
       };
 
-      let metadata = fs::metadata(&path).await?;
-      if metadata.is_dir() {
-        if all {
-          fs::remove_dir_all(path).await?;
+      let result = async move {
+        let metadata = fs::metadata(&path).await?;
+        if metadata.is_dir() {
+          if all {
+            fs::remove_dir_all(path).await?;
+          } else {
+            fs::remove_dir(path).await?;
+          }
         } else {
-          fs::remove_dir(path).await?;
+          fs::remove_file(path).await?;
         }
-      } else {
-        fs::remove_file(path).await?;
-      }
-      Ok(())
-    })
+        mlua::Result::Ok(Nil)
+      };
+      Ok(result.await)
+    }
   })
 }
 
 fn parse_path<'a>(path: &'a mlua::String<'a>) -> mlua::Result<(&'a str, &'a str)> {
-  let path = std::str::from_utf8(path.as_bytes()).to_lua_err()?;
+  let path = path.as_bytes();
+  let path =
+    std::str::from_utf8(path).map_err(|_| rt_error_fmt!("invalid path: {:?}", path.as_bstr()))?;
   Ok(path.split_once(':').unwrap_or(("local", path)))
 }
 
-fn scheme_not_supported<T>(scheme: &str) -> mlua::Result<T> {
-  Err(format!("scheme currently not supported: {scheme}").to_lua_err())
+fn scheme_not_supported(scheme: &str) -> mlua::Error {
+  rt_error_fmt!("scheme currently not supported: {scheme}")
 }
 
 pub async fn remove_service_local_storage(state: &HiveState, service_name: &str) -> Result<()> {

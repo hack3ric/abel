@@ -1,18 +1,18 @@
-use super::error::sanitize_error;
 use super::global_env::modify_global_env;
 use super::http::LuaResponse;
 use super::local_env::create_local_env;
 use super::LuaTableExt;
+use crate::lua::error::rt_error_fmt;
 use crate::lua::http::LuaRequest;
 use crate::path::PathMatcher;
 use crate::service::RunningService;
 use crate::source::Source;
-use crate::ErrorKind::*;
-use crate::{HiveState, Result};
+use crate::ErrorKind::{self, *};
+use crate::{Error, HiveState, Result};
 use clru::CLruCache;
 use hyper::{Body, Request};
 use log::debug;
-use mlua::{FromLuaMulti, Function, Lua, RegistryKey, Table, TableExt, ToLuaMulti};
+use mlua::{ExternalError, FromLuaMulti, Function, Lua, RegistryKey, Table, TableExt, ToLuaMulti};
 use nonzero_ext::nonzero;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -48,10 +48,58 @@ impl Sandbox {
     T: ToLuaMulti<'a>,
     R: FromLuaMulti<'a>,
   {
+    fn sanitize_error(error: mlua::Error) -> Error {
+      fn resolve_callback_error(error: &mlua::Error) -> &mlua::Error {
+        match error {
+          mlua::Error::CallbackError {
+            traceback: _,
+            cause,
+          } => resolve_callback_error(cause),
+          _ => error,
+        }
+      }
+
+      fn extract_custom_error(
+        error: &Arc<dyn std::error::Error + Send + Sync + 'static>,
+      ) -> Option<Error> {
+        let maybe_custom = error.downcast_ref::<Error>().map(Error::kind);
+        if let Some(ErrorKind::Custom {
+          status,
+          error,
+          detail,
+        }) = maybe_custom
+        {
+          Some(From::from(ErrorKind::Custom {
+            status: *status,
+            error: error.clone(),
+            detail: detail.clone(),
+          }))
+        } else {
+          None
+        }
+      }
+
+      match error {
+        mlua::Error::CallbackError { traceback, cause } => {
+          let cause = resolve_callback_error(&cause);
+          if let mlua::Error::ExternalError(error) = cause {
+            if let Some(error) = extract_custom_error(error) {
+              return error;
+            }
+          }
+          format!("{cause}\n{traceback}").to_lua_err().into()
+        }
+        mlua::Error::ExternalError(error) => {
+          extract_custom_error(&error).unwrap_or_else(|| mlua::Error::ExternalError(error).into())
+        }
+        _ => error.into(),
+      }
+    }
+
     let result = match f {
       mlua::Value::Function(f) => f.call_async(v).await,
       mlua::Value::Table(f) => f.call_async(v).await,
-      _ => todo!(),
+      _ => return Err(rt_error_fmt!("attempt to call a(n) {} value", f.type_name()).into()),
     };
     result.map_err(sanitize_error)
   }

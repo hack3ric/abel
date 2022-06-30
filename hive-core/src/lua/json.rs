@@ -1,5 +1,6 @@
-use super::error::{check_arg, extract_error};
-use mlua::{ExternalResult, Function, Lua, LuaSerdeExt, MultiValue, Table};
+use super::error::check_arg;
+use mlua::Value::Nil;
+use mlua::{Function, Lua, LuaSerdeExt, MultiValue, Table};
 
 pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, ()| {
@@ -16,10 +17,11 @@ pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
 fn create_fn_json_parse(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, args: MultiValue| {
     let string: mlua::String = check_arg(lua, &args, 1, "string", 0)?;
-    extract_error(lua, || {
-      let result: serde_json::Value = serde_json::from_slice(string.as_bytes()).to_lua_err()?;
-      lua.to_value(&result)
-    })
+    let result = serde_json::from_slice::<serde_json::Value>(string.as_bytes());
+    match result {
+      Ok(result) => lua.pack_multi(lua.to_value(&result)?),
+      Err(error) => lua.pack_multi((Nil, error.to_string())),
+    }
   })
 }
 
@@ -27,13 +29,15 @@ fn create_fn_json_stringify(lua: &Lua) -> mlua::Result<Function> {
   lua.create_function(|lua, args: MultiValue| {
     let value: mlua::Value = check_arg(lua, &args, 1, "value", 0)?;
     let pretty = check_arg::<Option<bool>>(lua, &args, 1, "bool", 0)?.unwrap_or(false);
-    extract_error(lua, || {
-      if pretty {
-        serde_json::to_string_pretty(&value).to_lua_err()
-      } else {
-        serde_json::to_string(&value).to_lua_err()
-      }
-    })
+    let result = if pretty {
+      serde_json::to_string_pretty(&value)
+    } else {
+      serde_json::to_string(&value)
+    };
+    match result {
+      Ok(s) => lua.pack_multi(s),
+      Err(error) => lua.pack_multi((Nil, error.to_string())),
+    }
   })
 }
 

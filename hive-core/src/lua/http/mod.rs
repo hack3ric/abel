@@ -8,12 +8,13 @@ pub use request::LuaRequest;
 pub use response::LuaResponse;
 
 use self::request::check_request;
-use super::error::{extract_error_async, rt_error_fmt, ExternalResultExt};
+use super::error::rt_error_fmt;
 use bstr::ByteSlice;
 use hyper::client::HttpConnector;
 use hyper::header::{HeaderName, HeaderValue};
 use hyper::{Client, HeaderMap};
 use hyper_tls::HttpsConnector;
+use mlua::Value::Nil;
 use mlua::{Function, Lua, MultiValue, Table};
 use once_cell::sync::Lazy;
 use response::create_fn_create_response;
@@ -37,12 +38,11 @@ pub fn create_preload_http(lua: &Lua) -> mlua::Result<Function> {
 fn create_fn_request(lua: &Lua) -> mlua::Result<Function> {
   lua.create_async_function(move |lua, args: MultiValue| async move {
     let req = check_request(lua, &args, 1, 1)?;
-    extract_error_async(lua, async move {
-      let resp = CLIENT.request(req.into()).await.to_rt_error()?;
-      let resp = LuaResponse::from_hyper(resp);
-      Ok(resp)
-    })
-    .await
+    let resp = CLIENT.request(req.into()).await;
+    match resp {
+      Ok(resp) => lua.pack_multi(LuaResponse::from_hyper(resp)),
+      Err(error) => lua.pack_multi((Nil, error.to_string())),
+    }
   })
 }
 
