@@ -14,7 +14,7 @@ impl UserData for LuaHeaderMap {
     methods.add_function("get", |lua, args: MultiValue| {
       let this = check_userdata::<Self>(lua, &args, 1, "header map", 0)?;
       let name: mlua::String = check_arg(lua, &args, 2, "string", 0)?;
-      let name = header_name(name).map_err(|_| arg_error(lua, 2, "invalid header name", 0))?;
+      let name = header_name(name).map_err(|error| arg_error(lua, 2, &error.to_string(), 0))?;
       let header_map = this.0.borrow();
       header_map
         .get_all(name)
