@@ -91,6 +91,10 @@ end
 
 local function source_searcher(modname)
   local source = internal.source
+  if not source then
+    return nil, "source not enabled in this isolate"
+  end
+
   local path = ""
   for str in string.gmatch(modname, "([^%.]+)") do
     path = path .. "/" .. str
