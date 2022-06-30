@@ -1,6 +1,6 @@
 use super::global_env::modify_global_env;
 use super::http::LuaResponse;
-use super::local_env::create_local_env;
+use super::isolate::create_isolate;
 use super::LuaTableExt;
 use crate::lua::error::rt_error_fmt;
 use crate::lua::http::LuaRequest;
@@ -22,7 +22,7 @@ use std::sync::Arc;
 static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}$").unwrap());
 
 #[derive(Debug)]
-pub struct Sandbox {
+pub struct Runtime {
   pub(crate) lua: Lua,
   loaded: RefCell<CLruCache<Box<str>, LoadedService>>,
   state: Arc<HiveState>,
@@ -35,7 +35,7 @@ struct LoadedService {
   internal: RegistryKey,
 }
 
-impl Sandbox {
+impl Runtime {
   pub fn new(state: Arc<HiveState>) -> Result<Self> {
     let lua = Lua::new();
     let loaded = RefCell::new(CLruCache::new(nonzero!(16usize)));
@@ -228,8 +228,9 @@ impl Sandbox {
     name: &str,
     source: Source,
   ) -> Result<(RegistryKey, RegistryKey, Table<'a>)> {
+    let fs_local_path = self.state.local_storage_path.join(name);
     let (local_env, internal) =
-      create_local_env(&self.lua, &self.state, name, source.clone()).await?;
+      create_isolate(&self.lua, name, fs_local_path, source.clone()).await?;
     source
       .load(&self.lua, "/main.lua", local_env.clone())
       .await?
@@ -281,16 +282,15 @@ impl Sandbox {
   }
 
   pub(crate) async fn clean_loaded(&self) -> u32 {
-    self.lua.expire_registry_values();
-    let mut x = self.loaded.borrow_mut();
     let mut count = 0;
-    x.retain(|_, v| {
+    self.loaded.borrow_mut().retain(|_, v| {
       let r = !v.service.is_dropped();
       if !r {
         count += 1;
       }
       r
     });
+    self.lua.expire_registry_values();
     count
   }
 }

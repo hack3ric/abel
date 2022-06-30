@@ -19,10 +19,10 @@ pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
   globals.raw_set("routing", routing)?;
 
   lua.set_named_registry_value(
-    "local_env_fn",
+    "isolate_fn",
     lua
-      .load(include_str!("local_env.lua"))
-      .set_name("<local_env>")?
+      .load(include_str!("isolate.lua"))
+      .set_name("<isolate>")?
       .into_function()?,
   )?;
 

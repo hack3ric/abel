@@ -4,7 +4,6 @@ use crate::lua::context;
 use crate::lua::error::rt_error_fmt;
 use crate::path::normalize_path_str;
 use crate::source::{ReadOnlyFile, Source};
-use crate::{HiveState, Result};
 use bstr::ByteSlice;
 use mlua::Value::Nil;
 use mlua::{
@@ -13,7 +12,7 @@ use mlua::{
 use pin_project::pin_project;
 use std::borrow::Cow;
 use std::io::SeekFrom;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -23,13 +22,12 @@ use tokio::io::{
   AsyncWriteExt, BufReader,
 };
 
-pub async fn create_preload_fs<'lua>(
-  lua: &'lua Lua,
-  state: &HiveState,
-  service_name: &str,
+pub async fn create_preload_fs(
+  lua: &Lua,
+  local_storage_path: impl Into<PathBuf>,
   source: Source,
-) -> mlua::Result<Function<'lua>> {
-  let local_storage_path: Arc<Path> = state.local_storage_path.join(service_name).into();
+) -> mlua::Result<Function<'_>> {
+  let local_storage_path: Arc<Path> = local_storage_path.into().into();
   if !local_storage_path.exists() {
     tokio::fs::create_dir(&local_storage_path).await?;
   }
@@ -489,9 +487,4 @@ fn parse_path<'a>(path: &'a mlua::String<'a>) -> mlua::Result<(&'a str, &'a str)
 
 fn scheme_not_supported(scheme: &str) -> mlua::Error {
   rt_error_fmt!("scheme currently not supported: {scheme}")
-}
-
-pub async fn remove_service_local_storage(state: &HiveState, service_name: &str) -> Result<()> {
-  let path = state.local_storage_path.join(service_name);
-  Ok(tokio::fs::remove_dir_all(path).await?)
 }

@@ -1,5 +1,5 @@
 use super::executor::Executor;
-use crate::lua::Sandbox;
+use crate::lua::Runtime;
 use crate::Result;
 use futures::{Future, FutureExt};
 use log::error;
@@ -8,20 +8,20 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex, RwLock};
 
-pub struct SandboxPool {
+pub struct RuntimePool {
   name: String,
   executors: Vec<RwLock<Executor>>,
-  init: Arc<dyn Fn() -> Result<Sandbox> + Send + Sync + 'static>,
+  init: Arc<dyn Fn() -> Result<Runtime> + Send + Sync + 'static>,
 }
 
 // Since `Arc<dyn Fn> does not implement `Fn{,Mut,Once}`, we need to stop clippy
 // from complaining us to wrap it in another closure.
 #[allow(clippy::redundant_closure)]
-impl SandboxPool {
+impl RuntimePool {
   pub fn new(
     name: String,
     size: usize,
-    init: impl Fn() -> Result<Sandbox> + Send + Sync + 'static,
+    init: impl Fn() -> Result<Runtime> + Send + Sync + 'static,
   ) -> Result<Self> {
     let init: Arc<dyn Fn() -> _ + Send + Sync + 'static> = Arc::new(init);
 
@@ -44,7 +44,7 @@ impl SandboxPool {
 
   pub async fn scope<'a, F, Fut, R>(&self, task_fn: F) -> R
   where
-    F: FnOnce(Rc<Sandbox>) -> Fut + Send + 'static,
+    F: FnOnce(Rc<Runtime>) -> Fut + Send + 'static,
     Fut: Future<Output = R> + 'a,
     R: Send + 'static,
   {

@@ -7,12 +7,12 @@ mod error;
 mod fs;
 mod global_env;
 mod json;
-mod local_env;
+mod isolate;
 mod print;
-mod sandbox;
+mod runtime;
 
-pub use fs::remove_service_local_storage;
-pub use sandbox::Sandbox;
+// pub use fs::remove_service_local_storage;
+pub use runtime::Runtime;
 
 use crate::Result;
 use mlua::{ExternalError, FromLua, Table};

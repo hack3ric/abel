@@ -52,7 +52,7 @@ async fn run() -> anyhow::Result<()> {
 
   let state = Arc::new(MainState {
     hive: Hive::new(HiveOptions {
-      sandbox_pool_size: config.pool_size(),
+      runtime_pool_size: config.pool_size(),
       local_storage_path,
     })?,
     hive_path: hive_path.clone(),

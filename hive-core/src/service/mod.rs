@@ -4,8 +4,8 @@ mod impls;
 pub use create::ErrorPayload;
 pub use impls::*;
 
-use crate::lua::{remove_service_local_storage, Sandbox};
-use crate::task::SandboxPool;
+use crate::lua::Runtime;
+use crate::task::RuntimePool;
 use crate::ErrorKind::*;
 use crate::{HiveState, Result};
 use dashmap::DashMap;
@@ -50,14 +50,14 @@ impl ServicePool {
     })
   }
 
-  pub async fn stop(&self, sandbox_pool: &SandboxPool, name: &str) -> Result<StoppedService<'_>> {
+  pub async fn stop(&self, rt_pool: &RuntimePool, name: &str) -> Result<StoppedService<'_>> {
     if let Some(mut service) = self.services.get_mut(name) {
       let state = service.value_mut();
       if let ServiceState::Running(service2) = state {
         let x = service2.downgrade();
-        let result = sandbox_pool
-          .scope(|sandbox| async move {
-            sandbox.run_stop(x).await?;
+        let result = rt_pool
+          .scope(|rt| async move {
+            rt.run_stop(x).await?;
             Ok::<_, crate::Error>(())
           })
           .await;
@@ -71,12 +71,12 @@ impl ServicePool {
     }
   }
 
-  async fn scope_stop(services: Arc<Services>, sandbox: &Sandbox, name: &str) -> Result<()> {
+  async fn scope_stop(services: Arc<Services>, rt: &Runtime, name: &str) -> Result<()> {
     if let Some(mut service) = services.get_mut(name) {
       let state = service.value_mut();
       if let ServiceState::Running(service2) = state {
         let x = service2.downgrade();
-        let result = sandbox.run_stop(x).await;
+        let result = rt.run_stop(x).await;
         replace_with_or_abort(state, |x| ServiceState::Stopped(x.into_impl()));
         result
       } else {
@@ -87,14 +87,14 @@ impl ServicePool {
     }
   }
 
-  pub async fn stop_all(&self, sandbox_pool: &SandboxPool) {
+  pub async fn stop_all(&self, rt_pool: &RuntimePool) {
     for mut service in self.services.iter_mut() {
       let state = service.value_mut();
       if let ServiceState::Running(service2) = state {
         let x = service2.downgrade();
-        let result = sandbox_pool
-          .scope(|sandbox| async move {
-            sandbox.run_stop(x).await?;
+        let result = rt_pool
+          .scope(|rt| async move {
+            rt.run_stop(x).await?;
             Ok::<_, crate::Error>(())
           })
           .await;
@@ -109,7 +109,7 @@ impl ServicePool {
     }
   }
 
-  pub async fn start(&self, sandbox_pool: &SandboxPool, name: &str) -> Result<RunningService> {
+  pub async fn start(&self, rt_pool: &RuntimePool, name: &str) -> Result<RunningService> {
     if let Some(mut service) = self.services.get_mut(name) {
       if let state @ ServiceState::Stopped(_) = service.value_mut() {
         let running = replace_with_or_abort_and_return(state, |x| {
@@ -121,9 +121,9 @@ impl ServicePool {
           }
         });
         let running2 = running.clone();
-        let result = sandbox_pool
-          .scope(move |sandbox| async move {
-            sandbox.run_start(running2).await?;
+        let result = rt_pool
+          .scope(move |rt| async move {
+            rt.run_start(running2).await?;
             Ok::<_, crate::Error>(())
           })
           .await;
@@ -145,7 +145,8 @@ impl ServicePool {
   pub async fn remove(&self, state: &HiveState, name: &str) -> Result<ServiceImpl> {
     if let Some((name2, old_service)) = self.services.remove(name) {
       if let ServiceState::Stopped(x) = old_service {
-        remove_service_local_storage(state, name).await?;
+        let local_storage_path = state.local_storage_path.join(name);
+        tokio::fs::remove_dir_all(local_storage_path).await?;
         Ok(x)
       } else {
         assert!(self.services.insert(name2, old_service).is_none());

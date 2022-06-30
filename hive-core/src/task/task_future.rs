@@ -1,5 +1,5 @@
 use super::AnyBox;
-use crate::lua::{context, Sandbox};
+use crate::lua::{context, Runtime};
 use futures::future::LocalBoxFuture;
 use futures::Future;
 use mlua::{ExternalError, HookTriggers, RegistryKey};
@@ -13,7 +13,7 @@ use tokio::sync::oneshot;
 
 #[pin_project]
 pub struct TaskFuture {
-  sandbox: Rc<Sandbox>,
+  rt: Rc<Runtime>,
   context: Option<RegistryKey>,
   #[pin]
   task: LocalBoxFuture<'static, AnyBox>,
@@ -23,15 +23,15 @@ pub struct TaskFuture {
 
 impl TaskFuture {
   pub fn new_with_context(
-    sandbox: Rc<Sandbox>,
-    task_fn: impl FnOnce(Rc<Sandbox>) -> LocalBoxFuture<'static, AnyBox>,
+    rt: Rc<Runtime>,
+    task_fn: impl FnOnce(Rc<Runtime>) -> LocalBoxFuture<'static, AnyBox>,
     tx: oneshot::Sender<AnyBox>,
   ) -> mlua::Result<Self> {
-    let context = context::create(&sandbox.lua)?;
+    let context = context::create(&rt.lua)?;
     Ok(Self {
-      sandbox: sandbox.clone(),
+      rt: rt.clone(),
       context: Some(context),
-      task: task_fn(sandbox),
+      task: task_fn(rt),
       tx: Some(tx),
       cpu_time: Rc::new(RefCell::new(Duration::new(0, 0))),
     })
@@ -45,10 +45,10 @@ impl Future for TaskFuture {
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.project();
 
-    context::set_current(&this.sandbox.lua, this.context.as_ref())?;
+    context::set_current(&this.rt.lua, this.context.as_ref())?;
 
     let hook_triggers = HookTriggers::every_nth_instruction(1048576);
-    this.sandbox.lua.set_hook(hook_triggers, {
+    this.rt.lua.set_hook(hook_triggers, {
       let t1 = RefCell::new(Instant::now());
       let cpu_time = this.cpu_time.clone();
       move |_lua, _| {
@@ -66,20 +66,20 @@ impl Future for TaskFuture {
     })?;
 
     let poll = this.task.poll(cx);
-    this.sandbox.lua.remove_hook();
+    this.rt.lua.remove_hook();
 
     match poll {
       Poll::Ready(result) => {
         if let Some(tx) = this.tx.take() {
           let _ = tx.send(result);
           if let Some(context) = this.context.take() {
-            context::destroy(&this.sandbox.lua, context)?;
+            context::destroy(&this.rt.lua, context)?;
           }
         }
         Poll::Ready(Ok(()))
       }
       Poll::Pending => {
-        context::set_current(&this.sandbox.lua, None)?;
+        context::set_current(&this.rt.lua, None)?;
         Poll::Pending
       }
     }

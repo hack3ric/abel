@@ -1,6 +1,6 @@
 use super::task_future::TaskFuture;
 use super::Task;
-use crate::lua::Sandbox;
+use crate::lua::Runtime;
 use crate::Result;
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
@@ -62,7 +62,7 @@ pub struct Executor {
 }
 
 impl Executor {
-  pub fn new(f: impl FnOnce() -> Result<Sandbox> + Send + 'static, name: String) -> Self {
+  pub fn new(f: impl FnOnce() -> Result<Runtime> + Send + 'static, name: String) -> Self {
     let task_count = Arc::new(AtomicU32::new(0));
     let panicked = Arc::new(AtomicBool::new(false));
     let panic_notifier = PanicNotifier(panicked.clone());
@@ -76,7 +76,7 @@ impl Executor {
       .spawn(move || {
         let _panic_notifier = panic_notifier;
         rt.block_on(async move {
-          let sandbox = Rc::new(f().unwrap());
+          let rt = Rc::new(f().unwrap());
           let mut tasks = FuturesUnordered::<TaskFuture>::new();
           let (waker_tx, mut waker_rx) = mpsc::unbounded_channel();
           let mut waker = MyWaker::from_tx(waker_tx.clone());
@@ -114,7 +114,7 @@ impl Executor {
               }
               Either::Right((Either::Left(_), _)) => {
                 // TODO: better cleaning trigger
-                let count = sandbox.clean_loaded().await;
+                let count = rt.clean_loaded().await;
                 if count > 0 {
                   info!("successfully cleaned {count} dropped services");
                 }
@@ -123,7 +123,7 @@ impl Executor {
                 if let Some((task_fn, tx)) = msg.try_lock().ok().and_then(|mut x| x.take()) {
                   let task_count = task_count2.clone();
                   task_count.fetch_add(1, Ordering::AcqRel);
-                  let task = TaskFuture::new_with_context(sandbox.clone(), task_fn, tx).unwrap();
+                  let task = TaskFuture::new_with_context(rt.clone(), task_fn, tx).unwrap();
                   tasks.push(task);
                   waker.wake_by_ref();
                 }

@@ -1,9 +1,9 @@
 use super::{
   RunningService, Service, ServiceImpl, ServiceName, ServicePool, ServiceState, StoppedService,
 };
-use crate::lua::Sandbox;
+use crate::lua::Runtime;
 use crate::source::Source;
-use crate::task::SandboxPool;
+use crate::task::RuntimePool;
 use crate::ErrorKind::{self, ServiceNotFound, ServiceStopped};
 use crate::{Config, Error, Result};
 use mlua::RegistryKey;
@@ -29,7 +29,7 @@ impl ErrorPayload {
 }
 
 async fn prepare_service(
-  sandbox: &Sandbox,
+  rt: &Runtime,
   name: ServiceName,
   uuid: Option<Uuid>,
   source: Source,
@@ -39,7 +39,7 @@ async fn prepare_service(
     pkg_name,
     description,
   } = config;
-  let (paths, local_env, internal) = sandbox.prepare_service(&name, source.clone()).await?;
+  let (paths, local_env, internal) = rt.prepare_service(&name, source.clone()).await?;
   let service_impl = ServiceImpl {
     name,
     pkg_name,
@@ -54,7 +54,7 @@ async fn prepare_service(
 impl ServicePool {
   pub async fn load(
     &self,
-    sandbox_pool: &SandboxPool,
+    rt_pool: &RuntimePool,
     name: ServiceName,
     uuid: Option<Uuid>,
     source: Source,
@@ -62,16 +62,16 @@ impl ServicePool {
   ) -> Result<(StoppedService<'_>, Option<ServiceImpl>, ErrorPayload)> {
     let services = self.services.clone();
     let name2 = name.clone();
-    let (service_impl, error_payload) = sandbox_pool
-      .scope(move |sandbox| async move {
+    let (service_impl, error_payload) = rt_pool
+      .scope(move |rt| async move {
         let mut error_payload = ErrorPayload::empty();
 
         let (service_impl, local_env, internal) =
-          prepare_service(&sandbox, name2.clone(), uuid, source, config).await?;
-        sandbox.remove_registry(local_env)?;
-        sandbox.remove_registry(internal)?;
+          prepare_service(&rt, name2.clone(), uuid, source, config).await?;
+        rt.remove_registry(local_env)?;
+        rt.remove_registry(internal)?;
 
-        match Self::scope_stop(services, &sandbox, &*name2).await {
+        match Self::scope_stop(services, &rt, &*name2).await {
           Ok(_) => {}
           Err(error) if matches!(error.kind(), ServiceStopped { .. } | ServiceNotFound { .. }) => {}
           Err(error) => error_payload.stop = Some(error),
@@ -94,7 +94,7 @@ impl ServicePool {
 
   pub async fn cold_update_or_create(
     &self,
-    sandbox_pool: &SandboxPool,
+    rt_pool: &RuntimePool,
     name: ServiceName,
     uuid: Option<Uuid>,
     source: Source,
@@ -102,21 +102,21 @@ impl ServicePool {
   ) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
     let services = self.services.clone();
     let name2 = name.clone();
-    let (service_state, error_payload) = sandbox_pool
-      .scope(move |sandbox| async move {
+    let (service_state, error_payload) = rt_pool
+      .scope(move |rt| async move {
         let mut error_payload = ErrorPayload::default();
 
         let (service_impl, local_env, internal) =
-          prepare_service(&sandbox, name2.clone(), uuid, source, config).await?;
+          prepare_service(&rt, name2.clone(), uuid, source, config).await?;
 
-        match Self::scope_stop(services, &sandbox, &*name2).await {
+        match Self::scope_stop(services, &rt, &*name2).await {
           Ok(_) => {}
           Err(error) if matches!(error.kind(), ServiceStopped { .. } | ServiceNotFound { .. }) => {}
           Err(error) => error_payload.stop = Some(error),
         }
 
         let service_impl = Arc::new(service_impl);
-        let result = sandbox
+        let result = rt
           .create_service(
             service_impl.name(),
             service_impl.downgrade(),
@@ -131,7 +131,7 @@ impl ServicePool {
           Err(err) => {
             error_payload.start = Some(err);
             let service_impl = state.into_impl();
-            sandbox.expire_registry_values();
+            rt.expire_registry_values();
             ServiceState::Stopped(service_impl)
           }
         };
@@ -169,7 +169,7 @@ impl ServicePool {
 
   pub async fn hot_update(
     &self,
-    sandbox_pool: &SandboxPool,
+    rt_pool: &RuntimePool,
     name: ServiceName,
     uuid: Option<Uuid>,
     source: Source,
@@ -182,12 +182,12 @@ impl ServicePool {
     }
 
     let name2 = name.clone();
-    let service_impl = sandbox_pool
-      .scope(move |sandbox| async move {
+    let service_impl = rt_pool
+      .scope(move |rt| async move {
         let (service_impl, local_env, internal) =
-          prepare_service(&sandbox, name2, uuid, source, config).await?;
+          prepare_service(&rt, name2, uuid, source, config).await?;
         let service_impl = Arc::new(service_impl);
-        sandbox
+        rt
           .create_service(
             service_impl.name(),
             service_impl.downgrade(),

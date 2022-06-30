@@ -14,16 +14,16 @@ pub use mlua::Error as LuaError;
 pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 
 use hyper::{Body, Request, Response};
-use lua::Sandbox;
+use lua::Runtime;
 use service::{ErrorPayload, Service, ServiceName, ServicePool, StoppedService};
 use source::Source;
 use std::path::PathBuf;
 use std::sync::Arc;
-use task::SandboxPool;
+use task::RuntimePool;
 use uuid::Uuid;
 
 pub struct Hive {
-  sandbox_pool: SandboxPool,
+  runtime_pool: RuntimePool,
   service_pool: ServicePool,
   state: Arc<HiveState>,
 }
@@ -34,7 +34,7 @@ pub struct HiveState {
 }
 
 pub struct HiveOptions {
-  pub sandbox_pool_size: usize,
+  pub runtime_pool_size: usize,
   pub local_storage_path: PathBuf,
 }
 
@@ -45,10 +45,10 @@ impl Hive {
     });
     let state2 = state.clone();
     Ok(Self {
-      sandbox_pool: SandboxPool::new(
+      runtime_pool: RuntimePool::new(
         "hive-worker".to_string(),
-        options.sandbox_pool_size,
-        move || Sandbox::new(state2.clone()),
+        options.runtime_pool_size,
+        move || Runtime::new(state2.clone()),
       )?,
       service_pool: ServicePool::new(),
       state,
@@ -63,7 +63,7 @@ impl Hive {
     config: Config,
   ) -> Result<(StoppedService<'_>, Option<ServiceImpl>, ErrorPayload)> {
     (self.service_pool)
-      .load(&self.sandbox_pool, name.into(), uuid, source, config)
+      .load(&self.runtime_pool, name.into(), uuid, source, config)
       .await
   }
 
@@ -75,7 +75,7 @@ impl Hive {
     config: Config,
   ) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
     (self.service_pool)
-      .cold_update_or_create(&self.sandbox_pool, name.into(), uuid, source, config)
+      .cold_update_or_create(&self.runtime_pool, name.into(), uuid, source, config)
       .await
   }
 
@@ -87,7 +87,7 @@ impl Hive {
     config: Config,
   ) -> Result<(RunningService, ServiceImpl)> {
     (self.service_pool)
-      .hot_update(&self.sandbox_pool, name.into(), uuid, source, config)
+      .hot_update(&self.runtime_pool, name.into(), uuid, source, config)
       .await
   }
 
@@ -99,7 +99,7 @@ impl Hive {
     config: Config,
   ) -> Result<(StoppedService<'_>, ErrorPayload)> {
     let (service, replaced, error_payload) = (self.service_pool)
-      .load(&self.sandbox_pool, name.into(), Some(uuid), source, config)
+      .load(&self.runtime_pool, name.into(), Some(uuid), source, config)
       .await?;
     assert!(replaced.is_none());
     Ok((service, error_payload))
@@ -123,9 +123,9 @@ impl Hive {
     path: String,
     req: Request<Body>,
   ) -> Result<Response<Body>> {
-    (self.sandbox_pool)
+    (self.runtime_pool)
       .scope(
-        move |sandbox| async move { Ok(sandbox.handle_request(service, &path, req).await?.into()) },
+        move |rt| async move { Ok(rt.handle_request(service, &path, req).await?.into()) },
       )
       .await
   }
@@ -135,15 +135,15 @@ impl Hive {
   }
 
   pub async fn stop_service(&self, name: &str) -> Result<StoppedService<'_>> {
-    self.service_pool.stop(&self.sandbox_pool, name).await
+    self.service_pool.stop(&self.runtime_pool, name).await
   }
 
   pub async fn stop_all_services(&self) {
-    self.service_pool.stop_all(&self.sandbox_pool).await
+    self.service_pool.stop_all(&self.runtime_pool).await
   }
 
   pub async fn start_service(&self, name: &str) -> Result<RunningService> {
-    self.service_pool.start(&self.sandbox_pool, name).await
+    self.service_pool.start(&self.runtime_pool, name).await
   }
 
   pub async fn remove_service(&self, name: &str) -> Result<ServiceImpl> {
