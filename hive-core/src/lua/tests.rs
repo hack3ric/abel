@@ -103,7 +103,6 @@ lua_tests! {
 
     assert(type(rng:random()) == "number")
     assert(math.tointeger(rng:gen_range(1, 5)))
-    local x = rng.gen_range
-    assert(pcall(x, rng, 1, -1))
+    assert(not pcall(rng.gen_range, rng, 1, -1))
   "#
 }
