@@ -1,7 +1,7 @@
 use super::global_env::modify_global_env;
 use super::isolate::create_isolate;
 use crate::source::Source;
-use mlua::{AsChunk, FromLuaMulti, Lua, RegistryKey, Table, ToLuaMulti};
+use mlua::{FromLuaMulti, Lua, RegistryKey, Table, ToLuaMulti};
 use std::path::PathBuf;
 
 pub struct Sandbox {
@@ -36,21 +36,6 @@ impl Sandbox {
   pub async fn run_isolate<'lua, A: ToLuaMulti<'lua>, R: FromLuaMulti<'lua>>(
     &'lua self,
     isolate: &Isolate,
-    chunk: &(impl AsChunk<'lua> + ?Sized),
-    name: &str,
-    args: A,
-  ) -> mlua::Result<R> {
-    let env: Table = self.get_local_env(isolate)?;
-    (self.lua.load(chunk))
-      .set_environment(env)?
-      .set_name(name)?
-      .call_async::<A, R>(args)
-      .await
-  }
-
-  pub async fn run_isolate_source<'lua, A: ToLuaMulti<'lua>, R: FromLuaMulti<'lua>>(
-    &'lua self,
-    isolate: &Isolate,
     path: &str,
     args: A,
   ) -> mlua::Result<R> {
@@ -60,6 +45,27 @@ impl Sandbox {
       .load(&self.lua, path, env)
       .await?
       .call_async(args)
+      .await
+  }
+
+  #[cfg(test)]
+  pub async fn run_isolate_ext<'lua, C, A, R>(
+    &'lua self,
+    isolate: &Isolate,
+    chunk: &C,
+    name: &str,
+    args: A,
+  ) -> mlua::Result<R>
+  where
+    C: mlua::AsChunk<'lua> + ?Sized,
+    A: ToLuaMulti<'lua>,
+    R: FromLuaMulti<'lua>,
+  {
+    let env: Table = self.get_local_env(isolate)?;
+    (self.lua.load(chunk))
+      .set_environment(env)?
+      .set_name(name)?
+      .call_async::<A, R>(args)
       .await
   }
 

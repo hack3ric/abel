@@ -1,4 +1,4 @@
-use crate::lua::error::{check_arg, rt_error_fmt};
+use crate::lua::error::{check_string, check_userdata, rt_error_fmt, tag_handler};
 use mlua::Value::Nil;
 use mlua::{ExternalResult, FromLua, Function, Lua, MultiValue, UserData};
 use std::collections::HashMap;
@@ -20,9 +20,9 @@ impl UserData for LuaUri {
 
     // TODO: support more complex QS structure (e.g. multiple queries with the same
     // name)
-    methods.add_function("query", |lua, args: MultiValue| {
-      let this = check_arg::<Self>(lua, &args, 1, "URI", 0)?;
-      let result = (this.0.query())
+    methods.add_function("query", |lua, mut args: MultiValue| {
+      let this = check_userdata::<Self>(args.pop_front(), "URI").map_err(tag_handler(lua, 1))?;
+      let result = (this.borrow_borrowed().0.query())
         .map(serde_qs::from_str::<HashMap<String, String>>)
         .transpose()
         .map(Option::unwrap_or_default);
@@ -54,8 +54,9 @@ impl<'lua> FromLua<'lua> for LuaUri {
 }
 
 pub fn create_fn_create_uri(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, args: MultiValue| {
-    let s: mlua::String = check_arg(lua, &args, 1, "string", 0)?;
+  lua.create_function(|lua, mut args: MultiValue| {
+    // let s: mlua::String = check_arg(lua, &args, 1, "string", 0)?;
+    let s = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1))?;
     Ok(LuaUri(hyper::Uri::try_from(s.as_bytes()).to_lua_err()?))
   })
 }

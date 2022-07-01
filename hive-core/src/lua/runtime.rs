@@ -212,9 +212,7 @@ impl Runtime {
     let isolate = (self.sandbox)
       .create_isolate(name, local_storage_path, source.clone())
       .await?;
-    (self.sandbox)
-      .run_isolate_source(&isolate, "main.lua", ())
-      .await?;
+    (self.sandbox).run_isolate(&isolate, "main.lua", ()).await?;
 
     let internal = self.sandbox.get_internal(&isolate)?;
     internal.raw_set("sealed", true)?;

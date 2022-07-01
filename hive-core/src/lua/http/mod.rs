@@ -7,15 +7,16 @@ mod uri;
 pub use request::LuaRequest;
 pub use response::LuaResponse;
 
-use self::request::check_request;
 use super::error::rt_error_fmt;
+use crate::lua::error::{arg_error, check_value, tag_handler_async};
+use crate::lua::LuaEither;
 use bstr::ByteSlice;
 use hyper::client::HttpConnector;
 use hyper::header::{HeaderName, HeaderValue};
 use hyper::{Client, HeaderMap};
 use hyper_tls::HttpsConnector;
 use mlua::Value::Nil;
-use mlua::{Function, Lua, MultiValue, Table};
+use mlua::{AnyUserData, Function, Lua, MultiValue, Table};
 use once_cell::sync::Lazy;
 use response::create_fn_create_response;
 use uri::create_fn_create_uri;
@@ -35,9 +36,28 @@ pub fn create_preload_http(lua: &Lua) -> mlua::Result<Function> {
   })
 }
 
-fn create_fn_request(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_async_function(move |lua, args: MultiValue| async move {
-    let req = check_request(lua, &args, 1, 1)?;
+pub fn create_fn_request(lua: &Lua) -> mlua::Result<Function> {
+  fn check_request_first_arg(lua: &Lua, value: Option<mlua::Value>) -> mlua::Result<LuaRequest> {
+    use LuaEither::*;
+    type RequestMeta<'a> = LuaEither<LuaEither<mlua::String<'a>, Table<'a>>, AnyUserData<'a>>;
+    const EXPECTED: &str = "string, table or request userdata";
+
+    let either =
+      check_value::<RequestMeta>(lua, value, EXPECTED).map_err(tag_handler_async(lua, 1))?;
+    match either {
+      Left(Left(uri)) => Ok(LuaRequest {
+        // TODO: uri
+        uri: hyper::Uri::try_from(uri.as_bytes())
+          .map_err(|error| arg_error(lua, 1, &error.to_string(), 0))?,
+        ..Default::default()
+      }),
+      Left(Right(table)) => LuaRequest::from_table(lua, table),
+      Right(userdata) => LuaRequest::from_userdata(userdata),
+    }
+  }
+
+  lua.create_async_function(move |lua, mut args: MultiValue| async move {
+    let req = check_request_first_arg(lua, args.pop_front())?;
     let resp = CLIENT.request(req.into()).await;
     match resp {
       Ok(resp) => lua.pack_multi(LuaResponse::from_hyper(resp)),

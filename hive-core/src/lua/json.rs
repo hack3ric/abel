@@ -1,4 +1,4 @@
-use super::error::{arg_error, check_arg, tag_error};
+use super::error::{arg_error, check_string, check_truthiness, check_value, tag_handler};
 use mlua::Value::Nil;
 use mlua::{Function, Lua, LuaSerdeExt, MultiValue, Table};
 
@@ -15,8 +15,8 @@ pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn create_fn_json_parse(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, args: MultiValue| {
-    let string: mlua::String = check_arg(lua, &args, 1, "string", 0)?;
+  lua.create_function(|lua, mut args: MultiValue| {
+    let string = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1))?;
     let result = serde_json::from_slice::<serde_json::Value>(string.as_bytes());
     match result {
       Ok(result) => lua.pack_multi(lua.to_value(&result)?),
@@ -30,11 +30,7 @@ fn create_fn_json_stringify(lua: &Lua) -> mlua::Result<Function> {
     let value = args
       .pop_front()
       .ok_or_else(|| arg_error(lua, 1, "value expected", 0))?;
-    let pretty = match args.pop_front() {
-      Some(mlua::Value::Boolean(b)) => b,
-      Some(v) => return Err(tag_error(lua, 2, "boolean", v.type_name(), 0)),
-      None => false,
-    };
+    let pretty = check_truthiness(args.pop_front());
     let result = if pretty {
       serde_json::to_string_pretty(&value)
     } else {
@@ -48,16 +44,16 @@ fn create_fn_json_stringify(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn create_fn_json_array(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, args: MultiValue| {
-    let table: Table = check_arg(lua, &args, 1, "table", 0)?;
+  lua.create_function(|lua, mut args: MultiValue| {
+    let table: Table = check_value(lua, args.pop_front(), "table").map_err(tag_handler(lua, 1))?;
     table.set_metatable(Some(lua.array_metatable()));
     Ok(table)
   })
 }
 
 fn create_fn_json_undo_array(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, args: MultiValue| {
-    let table: Table = check_arg(lua, &args, 1, "table", 0)?;
+  lua.create_function(|lua, mut args: MultiValue| {
+    let table: Table = check_value(lua, args.pop_front(), "table").map_err(tag_handler(lua, 1))?;
     if table
       .get_metatable()
       .map(|x| x == lua.array_metatable())

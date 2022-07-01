@@ -1,3 +1,4 @@
+use super::error::resolve_callback_error;
 use super::sandbox::Sandbox;
 use crate::source::{Source, SourceVfs};
 use async_trait::async_trait;
@@ -22,14 +23,28 @@ impl SourceVfs for EmptySource {
 
 macro_rules! run_lua_test {
   ($test_name:expr, $code:literal) => {
-    let _ = pretty_env_logger::try_init();
-    let sandbox = Sandbox::new()?;
-    let local_storage = TempDir::new()?;
-    let isolate = sandbox
-      .create_isolate($test_name, local_storage.path(), Source::new(EmptySource))
-      .await?;
-    sandbox.run_isolate(&isolate, $code, $test_name, ()).await
+    async {
+      let _ = pretty_env_logger::try_init();
+      let sandbox = Sandbox::new()?;
+      let local_storage = TempDir::new()?;
+      let isolate = sandbox
+        .create_isolate($test_name, local_storage.path(), Source::new(EmptySource))
+        .await?;
+      sandbox
+        .run_isolate_ext::<_, _, ()>(&isolate, $code, $test_name, ())
+        .await
+    }
+    .await
   };
+}
+
+fn error_to_string(error: &mlua::Error) -> String {
+  match error {
+    mlua::Error::CallbackError { traceback, cause } => {
+      format!("{}\n{traceback}", resolve_callback_error(cause))
+    }
+    _ => error.to_string(),
+  }
 }
 
 macro_rules! lua_tests {
@@ -40,8 +55,11 @@ macro_rules! lua_tests {
     $(
       $(#[$($attr)*])*
       #[tokio::test]
-      async fn $test_name() -> mlua::Result<()> {
-        run_lua_test! { std::stringify!($test_name), $code }
+      async fn $test_name() {
+        let result = run_lua_test! { std::stringify!($test_name), $code };
+        if let Err(error) = result {
+          log::error!("{}", error_to_string(&error));
+        }
       }
     )*
   };
@@ -61,21 +79,31 @@ lua_tests! {
     assert(json.stringify(json.undo_array(table)) == '{}')
   "#
 
-  test_uri r#"
+  test_http_uri r#"
     local http = require "http"
-    local uri = http.Uri("https://test.example.com:8080/path?foo=bar#test")
 
     assert(uri.scheme == "https")
     assert(uri.host == "test.example.com")
     assert(uri.port == 8080)
     assert(uri.path == "/path")
-    assert(uri.query_string == "foo=bar")
+    assert(uri.query_string == "foo=bar&baz=%20")
 
     -- Ignores fragment intentionally (see https://github.com/hyperium/hyper/issues/1345)
-    assert(tostring(uri) == "https://test.example.com:8080/path?foo=bar")
+    assert(tostring(uri) == "https://test.example.com:8080/path?foo=bar&baz=%20")
 
     local query = uri:query()
     assert(type(query) == "table")
     assert(query.foo == "bar")
+    assert(query.baz == " ")
+  "#
+
+  test_crypto_random r#"
+    local crypto = require "crypto"
+    local rng = crypto.thread_rng
+
+    assert(type(rng:random()) == "number")
+    assert(math.tointeger(rng:gen_range(1, 5)))
+    local x = rng.gen_range
+    assert(pcall(x, rng, 1, -1))
   "#
 }
