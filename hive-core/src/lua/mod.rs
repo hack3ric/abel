@@ -12,6 +12,9 @@ mod json;
 mod print;
 mod runtime;
 
+#[cfg(test)]
+mod tests;
+
 pub use runtime::Runtime;
 
 use crate::Result;

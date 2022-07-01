@@ -1,3 +1,5 @@
+// TODO: Move context into Sandbox?
+
 use mlua::{Lua, RegistryKey, Table, ToLua};
 
 pub fn create(lua: &Lua) -> mlua::Result<RegistryKey> {

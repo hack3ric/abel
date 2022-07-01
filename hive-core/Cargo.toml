@@ -8,7 +8,7 @@ default = ["vendored"]
 vendored = ["mlua/vendored"]
 
 [dependencies.mlua]
-version = "0.8.0"
+version = "0.8.1"
 features = ["lua54", "async", "macros", "serialize"]
 
 [dependencies]
@@ -43,5 +43,6 @@ bstr = "0.2.17"
 [dev-dependencies]
 anyhow = "1.0.57"
 hyper = { version = "0.14.16", features = ["full"] }
+pretty_env_logger = "0.4.0"
 tempfile = "3.3.0"
 test-case = "2.0.0"

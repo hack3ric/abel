@@ -515,6 +515,7 @@ dependencies = [
  "once_cell",
  "ouroboros",
  "pin-project",
+ "pretty_env_logger",
  "rand",
  "regex",
  "replace_with",

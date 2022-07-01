@@ -1,4 +1,4 @@
-use super::error::check_arg;
+use super::error::{arg_error, check_arg, tag_error};
 use mlua::Value::Nil;
 use mlua::{Function, Lua, LuaSerdeExt, MultiValue, Table};
 
@@ -26,9 +26,15 @@ fn create_fn_json_parse(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn create_fn_json_stringify(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, args: MultiValue| {
-    let value: mlua::Value = check_arg(lua, &args, 1, "value", 0)?;
-    let pretty = check_arg::<Option<bool>>(lua, &args, 1, "bool", 0)?.unwrap_or(false);
+  lua.create_function(|lua, mut args: MultiValue| {
+    let value = args
+      .pop_front()
+      .ok_or_else(|| arg_error(lua, 1, "value expected", 0))?;
+    let pretty = match args.pop_front() {
+      Some(mlua::Value::Boolean(b)) => b,
+      Some(v) => return Err(tag_error(lua, 2, "boolean", v.type_name(), 0)),
+      None => false,
+    };
     let result = if pretty {
       serde_json::to_string_pretty(&value)
     } else {
