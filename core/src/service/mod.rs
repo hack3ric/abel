@@ -7,7 +7,7 @@ pub use impls::*;
 use crate::lua::Runtime;
 use crate::task::RuntimePool;
 use crate::ErrorKind::*;
-use crate::{HiveState, Result};
+use crate::{AbelState, Result};
 use dashmap::DashMap;
 use log::warn;
 use replace_with::{replace_with_or_abort, replace_with_or_abort_and_return};
@@ -20,11 +20,11 @@ type Services = DashMap<ServiceName, ServiceState>;
 
 pub struct ServicePool {
   services: Arc<Services>,
-  state: Arc<HiveState>,
+  state: Arc<AbelState>,
 }
 
 impl ServicePool {
-  pub fn new(state: Arc<HiveState>) -> Self {
+  pub fn new(state: Arc<AbelState>) -> Self {
     Self {
       services: Default::default(),
       state,
@@ -146,7 +146,7 @@ impl ServicePool {
     }
   }
 
-  pub async fn remove(&self, state: &HiveState, name: &str) -> Result<ServiceImpl> {
+  pub async fn remove(&self, state: &AbelState, name: &str) -> Result<ServiceImpl> {
     if let Some((name2, old_service)) = self.services.remove(name) {
       if let ServiceState::Stopped(x) = old_service {
         let local_storage_path = get_local_storage_path(state, name);
@@ -162,6 +162,6 @@ impl ServicePool {
   }
 }
 
-pub(crate) fn get_local_storage_path(state: &HiveState, name: &str) -> PathBuf {
+pub(crate) fn get_local_storage_path(state: &AbelState, name: &str) -> PathBuf {
   state.local_storage_path.join(name)
 }

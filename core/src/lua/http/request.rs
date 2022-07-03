@@ -16,7 +16,7 @@ pub struct LuaRequest {
   pub(crate) uri: hyper::Uri,
   pub(crate) headers: Rc<RefCell<HeaderMap>>,
   pub(crate) body: Option<LuaBody>,
-  /// Only used in Hive core
+  /// Only used in Abel core
   pub(crate) params: Option<Params>,
 }
 

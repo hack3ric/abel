@@ -10,7 +10,7 @@ pub fn set_current(lua: &Lua, context: Option<&RegistryKey>) -> mlua::Result<()>
   let context = context
     .map(|x| lua.registry_value::<Table>(x))
     .transpose()?;
-  lua.set_named_registry_value("hive_current_context", context)
+  lua.set_named_registry_value("abel_current_context", context)
 }
 
 pub fn destroy(lua: &Lua, context: RegistryKey) -> mlua::Result<()> {
@@ -23,10 +23,10 @@ pub fn destroy(lua: &Lua, context: RegistryKey) -> mlua::Result<()> {
       end)
     end
   };
-  lua.load(code).set_name("hive_destroy_context")?.call(())
+  lua.load(code).set_name("abel_destroy_context")?.call(())
 }
 
 pub fn register<'lua>(lua: &'lua Lua, value: impl ToLua<'lua>) -> mlua::Result<()> {
-  let context: Table = lua.named_registry_value("hive_current_context")?;
+  let context: Table = lua.named_registry_value("abel_current_context")?;
   context.raw_insert(context.raw_len() + 1, value)
 }

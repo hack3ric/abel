@@ -7,13 +7,13 @@ mod config;
 mod source;
 
 use crate::config::Config;
+use abel_core::service::Service;
+use abel_core::source::{Source, SourceVfs};
+use abel_core::{Abel, AbelOptions};
 use clap::Parser;
 use config::{Args, HALF_NUM_CPUS};
 use error::Error;
 use handle::handle;
-use hive_core::service::Service;
-use hive_core::source::{Source, SourceVfs};
-use hive_core::{Hive, HiveOptions};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use log::{error, info, warn};
@@ -30,8 +30,8 @@ use uuid::Uuid;
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub(crate) struct MainState {
-  hive: Hive,
-  hive_path: PathBuf,
+  abel: Abel,
+  abel_path: PathBuf,
   auth_token: Option<Uuid>,
 }
 
@@ -40,22 +40,22 @@ async fn run() -> anyhow::Result<()> {
     std::env::set_var("RUST_LOG", "INFO");
   }
   pretty_env_logger::init();
-  info!("Starting hive-server v{}", env!("CARGO_PKG_VERSION"));
+  info!("Starting abel-server v{}", env!("CARGO_PKG_VERSION"));
 
-  let Args { config, hive_path } = Args::parse();
+  let Args { config, abel_path } = Args::parse();
 
-  info!("Hive working path: {}", hive_path.display().underline());
-  let local_storage_path = init_paths(&hive_path).await;
+  info!("Abel working path: {}", abel_path.display().underline());
+  let local_storage_path = init_paths(&abel_path).await;
 
-  let config_path = hive_path.join("config.json");
+  let config_path = abel_path.join("config.json");
   let config = Config::get(config_path, config).await?;
 
   let state = Arc::new(MainState {
-    hive: Hive::new(HiveOptions {
+    abel: Abel::new(AbelOptions {
       runtime_pool_size: config.pool_size(),
       local_storage_path,
     })?,
-    hive_path: hive_path.clone(),
+    abel_path: abel_path.clone(),
     auth_token: Some(config.auth_token),
   });
 
@@ -65,7 +65,7 @@ async fn run() -> anyhow::Result<()> {
     warn!("No authentication token set. Don't do this in production environment!");
   }
 
-  load_saved_services(&state, hive_path).await?;
+  load_saved_services(&state, abel_path).await?;
 
   let state2 = state.clone();
   let make_svc = make_service_fn(move |_conn| {
@@ -77,18 +77,18 @@ async fn run() -> anyhow::Result<()> {
     .serve(make_svc)
     .with_graceful_shutdown(shutdown_signal());
 
-  info!("Hive is listening to {}", config.listen.underline());
+  info!("Abel is listening to {}", config.listen.underline());
 
   if let Err(error) = server.await {
     error!("fatal server error: {}", error);
   }
 
-  state.hive.stop_all_services().await;
+  state.abel.stop_all_services().await;
 
   Ok(())
 }
 
-async fn init_paths(hive_path: &Path) -> PathBuf {
+async fn init_paths(abel_path: &Path) -> PathBuf {
   async fn create_dir_path(path: impl AsRef<Path>) -> io::Result<()> {
     if !(&path).as_ref().exists() {
       fs::create_dir(&path).await?;
@@ -97,16 +97,16 @@ async fn init_paths(hive_path: &Path) -> PathBuf {
   }
 
   let local_storage_path = async {
-    create_dir_path(hive_path).await?;
-    create_dir_path(hive_path.join("services")).await?;
-    create_dir_path(hive_path.join("tmp")).await?;
+    create_dir_path(abel_path).await?;
+    create_dir_path(abel_path.join("services")).await?;
+    create_dir_path(abel_path.join("tmp")).await?;
 
-    let local_storage_path = hive_path.join("storage");
+    let local_storage_path = abel_path.join("storage");
     create_dir_path(&local_storage_path).await?;
     io::Result::Ok(local_storage_path)
   }
   .await
-  .expect("failed to create Hive config directory");
+  .expect("failed to create Abel config directory");
 
   local_storage_path
 }
@@ -122,13 +122,13 @@ async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<
         let metadata: Metadata = serde_json::from_slice(&metadata_bytes)?;
 
         let source = DirSource::new(service_folder.path().join("src")).await?;
-        let mut config = source.get("hive.json").await?;
+        let mut config = source.get("abel.json").await?;
         let mut bytes = Vec::with_capacity(config.metadata().await?.len() as _);
         config.read_to_end(&mut bytes).await?;
         let config = serde_json::from_slice(&bytes)?;
 
         let (service, error_payload) = if metadata.started {
-          let (service, _, error_payload) = (state.hive)
+          let (service, _, error_payload) = (state.abel)
             .cold_update_or_create_service(
               name.clone(),
               Some(metadata.uuid),
@@ -138,7 +138,7 @@ async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<
             .await?;
           (service, error_payload)
         } else {
-          let (service, error_payload) = (state.hive)
+          let (service, error_payload) = (state.abel)
             .preload_service(name.clone(), metadata.uuid, Source::new(source), config)
             .await?;
           (Service::Stopped(service), error_payload)

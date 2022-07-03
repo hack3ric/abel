@@ -22,31 +22,31 @@ use std::sync::Arc;
 use task::RuntimePool;
 use uuid::Uuid;
 
-pub struct Hive {
+pub struct Abel {
   runtime_pool: RuntimePool,
   service_pool: ServicePool,
-  state: Arc<HiveState>,
+  state: Arc<AbelState>,
 }
 
 #[derive(Debug)]
-pub struct HiveState {
+pub struct AbelState {
   pub local_storage_path: PathBuf,
 }
 
-pub struct HiveOptions {
+pub struct AbelOptions {
   pub runtime_pool_size: usize,
   pub local_storage_path: PathBuf,
 }
 
-impl Hive {
-  pub fn new(options: HiveOptions) -> Result<Self> {
-    let state = Arc::new(HiveState {
+impl Abel {
+  pub fn new(options: AbelOptions) -> Result<Self> {
+    let state = Arc::new(AbelState {
       local_storage_path: options.local_storage_path,
     });
     let state2 = state.clone();
     Ok(Self {
       runtime_pool: RuntimePool::new(
-        "hive-worker".to_string(),
+        "abel-worker".to_string(),
         options.runtime_pool_size,
         move || Runtime::new(state2.clone()),
       )?,

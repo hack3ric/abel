@@ -1,4 +1,4 @@
-function hive_Error(obj)
+function abel_Error(obj)
   local status = obj.status
   local error = obj.error
 

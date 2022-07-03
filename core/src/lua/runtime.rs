@@ -7,7 +7,7 @@ use crate::path::PathMatcher;
 use crate::service::{get_local_storage_path, RunningService};
 use crate::source::Source;
 use crate::ErrorKind::{self, *};
-use crate::{Error, HiveState, Result};
+use crate::{AbelState, Error, Result};
 use clru::CLruCache;
 use hyper::{Body, Request};
 use log::debug;
@@ -23,7 +23,7 @@ static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}
 pub struct Runtime {
   pub(crate) sandbox: Sandbox,
   loaded: RefCell<CLruCache<Box<str>, LoadedService>>,
-  state: Arc<HiveState>,
+  state: Arc<AbelState>,
 }
 
 #[derive(Debug)]
@@ -33,7 +33,7 @@ struct LoadedService {
 }
 
 impl Runtime {
-  pub fn new(state: Arc<HiveState>) -> Result<Self> {
+  pub fn new(state: Arc<AbelState>) -> Result<Self> {
     let sandbox = Sandbox::new()?;
     let loaded = RefCell::new(CLruCache::new(nonzero!(16usize)));
     Ok(Self {
@@ -188,7 +188,7 @@ impl Runtime {
     let loaded = self.load_service(service).await?;
     let start_fn: Option<Function> = (self.sandbox)
       .get_local_env(&loaded.isolate)?
-      .raw_get_path("<local_env>", &["hive", "start"])?;
+      .raw_get_path("<local_env>", &["abel", "start"])?;
     if let Some(f) = start_fn {
       f.call_async(()).await?;
     }
@@ -199,7 +199,7 @@ impl Runtime {
     let loaded = self.load_service(service).await?;
     let stop_fn: Option<Function> = (self.sandbox)
       .get_local_env(&loaded.isolate)?
-      .raw_get_path("<local_env>", &["hive", "stop"])?;
+      .raw_get_path("<local_env>", &["abel", "stop"])?;
     if let Some(f) = stop_fn {
       f.call_async(()).await?;
     }

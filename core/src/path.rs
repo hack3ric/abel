@@ -108,7 +108,7 @@ pub fn normalize_path(path: impl AsRef<Path>) -> PathBuf {
   ret
 }
 
-/// Similar to `hive_core::path::normalize_path`, but for `str`s instead of
+/// Similar to `abel_core::path::normalize_path`, but for `str`s instead of
 /// `Path`s.
 ///
 /// The returned path is always relative, which is intentional and convenient

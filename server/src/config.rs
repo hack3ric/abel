@@ -15,15 +15,15 @@ pub struct Args {
   #[clap(flatten)]
   pub config: ConfigArgs,
 
-  /// Hive's working path.
-  #[clap(long, default_value_os_t = get_default_hive_path())]
-  pub hive_path: PathBuf,
+  /// Abel's working path.
+  #[clap(long, default_value_os_t = get_default_abel_path())]
+  pub abel_path: PathBuf,
 }
 
-fn get_default_hive_path() -> PathBuf {
-  let mut hive_path = home::home_dir().expect("no home directory found");
-  hive_path.push(".hive");
-  hive_path
+fn get_default_abel_path() -> PathBuf {
+  let mut abel_path = home::home_dir().expect("no home directory found");
+  abel_path.push(".abel");
+  abel_path
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -37,7 +37,7 @@ pub struct ConfigArgs {
   #[clap(long)]
   pub auth_token: Option<Uuid>,
 
-  /// Hive executor pool size [overrides config]
+  /// Abel executor pool size [overrides config]
   #[clap(long)]
   pub pool_size: Option<usize>,
 }

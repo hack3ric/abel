@@ -34,7 +34,7 @@ pub(crate) fn authenticate(state: &MainState, req: &Request<Body>) -> bool {
   let result = if let Some(uuid) = state.auth_token {
     (req.headers())
       .get("authentication")
-      .map(|x| x == &format!("Hive {uuid}"))
+      .map(|x| x == &format!("Abel {uuid}"))
       .unwrap_or(false)
   } else {
     true

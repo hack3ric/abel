@@ -9,6 +9,76 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe438c63458706e03479442743baae6c88256498e6431708f6dfc520a26515d3"
 
 [[package]]
+name = "abel-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "backtrace",
+ "bstr",
+ "clru",
+ "dashmap",
+ "futures",
+ "hyper",
+ "hyper-tls",
+ "libc",
+ "log",
+ "mlua",
+ "nonzero_ext",
+ "once_cell",
+ "ouroboros",
+ "pin-project",
+ "pretty_env_logger",
+ "rand",
+ "regex",
+ "replace_with",
+ "serde",
+ "serde_json",
+ "serde_qs",
+ "smallstr",
+ "smallvec",
+ "strum",
+ "tempfile",
+ "test-case",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "uuid",
+]
+
+[[package]]
+name = "abel-server"
+version = "0.1.0"
+dependencies = [
+ "abel-core",
+ "anyhow",
+ "async-trait",
+ "backtrace",
+ "clap",
+ "futures",
+ "hive-asar",
+ "home",
+ "hyper",
+ "libc",
+ "log",
+ "multer",
+ "num_cpus",
+ "once_cell",
+ "owo-colors",
+ "pretty_env_logger",
+ "serde",
+ "serde_json",
+ "serde_qs",
+ "slug",
+ "strum",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "uuid",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -493,76 +563,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "tokio",
-]
-
-[[package]]
-name = "hive-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "backtrace",
- "bstr",
- "clru",
- "dashmap",
- "futures",
- "hyper",
- "hyper-tls",
- "libc",
- "log",
- "mlua",
- "nonzero_ext",
- "once_cell",
- "ouroboros",
- "pin-project",
- "pretty_env_logger",
- "rand",
- "regex",
- "replace_with",
- "serde",
- "serde_json",
- "serde_qs",
- "smallstr",
- "smallvec",
- "strum",
- "tempfile",
- "test-case",
- "thiserror",
- "tokio",
- "tokio-util",
- "uuid",
-]
-
-[[package]]
-name = "hive-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "backtrace",
- "clap",
- "futures",
- "hive-asar",
- "hive-core",
- "home",
- "hyper",
- "libc",
- "log",
- "multer",
- "num_cpus",
- "once_cell",
- "owo-colors",
- "pretty_env_logger",
- "serde",
- "serde_json",
- "serde_qs",
- "slug",
- "strum",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-util",
- "uuid",
 ]
 
 [[package]]

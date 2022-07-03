@@ -17,12 +17,12 @@ local internal = {
   package = package,
 }
 
--- Hive table --
+-- Abel table --
 
 local function register(path, handler)
   assert(
     not internal.sealed,
-    "cannot call `hive.register` from places other than the top level of `main.lua`"
+    "cannot call `abel.register` from places other than the top level of `main.lua`"
   )
   local type_handler = type(handler)
   if type_handler ~= "function" then
@@ -39,17 +39,17 @@ local function register(path, handler)
   table.insert(paths, { path, handler })
 end
 
-local hive = {
+local abel = {
   register = register,
   context = nil,
   current_worker = current_worker,
-  Error = hive_Error,
+  Error = abel_Error,
 }
 
 -- Local env --
 
 local local_env = {
-  hive = hive,
+  abel = abel,
 }
 
 function local_env.require(modname)

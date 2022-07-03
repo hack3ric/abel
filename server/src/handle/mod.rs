@@ -5,8 +5,8 @@ use crate::error::{method_not_allowed, ErrorAuthWrapper};
 use crate::metadata::modify_metadata;
 use crate::util::{authenticate, json_response};
 use crate::{MainState, Result};
-use hive_core::service::Service;
-use hive_core::ErrorKind::{ServiceDropped, ServiceNotFound};
+use abel_core::service::Service;
+use abel_core::ErrorKind::{ServiceDropped, ServiceNotFound};
 use hyper::{Body, Method, Request, Response, StatusCode};
 use log::{error, info};
 use owo_colors::OwoColorize;
@@ -54,16 +54,16 @@ pub(crate) async fn handle(
         method,
       )),
 
-      (_, [..]) => Err((404, "hive path not found", json!({ "path": path })).into()),
+      (_, [..]) => Err((404, "path not found", json!({ "path": path })).into()),
     },
 
     // Service entry
     (_, [service_name, ..]) => {
       let sub_path = "/".to_string() + path[1..].split_once('/').unwrap_or(("", "")).1;
       let service_name: String = (*service_name).into();
-      match state.hive.get_running_service(&service_name) {
+      match state.abel.get_running_service(&service_name) {
         Ok(service) => {
-          let result = state.hive.run_service(service, sub_path, req).await;
+          let result = state.abel.run_service(service, sub_path, req).await;
           match result {
             Ok(resp) => Ok(resp),
             // Hide `ServiceDropped` from normal users
@@ -80,7 +80,7 @@ pub(crate) async fn handle(
       }
     }
 
-    _ => Err((404, "hive path not found", json!({ "path": path })).into()),
+    _ => Err((404, "path not found", json!({ "path": path })).into()),
   };
 
   Ok(result.unwrap_or_else(|error| {
@@ -102,13 +102,13 @@ async fn hello_world() -> Result<Response<Body>> {
 }
 
 fn list(state: &MainState) -> Result<Response<Body>> {
-  let services = state.hive.list_services().collect::<Vec<_>>();
+  let services = state.abel.list_services().collect::<Vec<_>>();
   let services = (services.iter()).map(Service::upgrade).collect::<Vec<_>>();
   json_response(StatusCode::OK, services)
 }
 
 fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
-  let service = state.hive.get_service(name)?;
+  let service = state.abel.get_service(name)?;
   json_response(StatusCode::OK, service.upgrade())
 }
 
@@ -127,19 +127,19 @@ async fn start_stop(state: &MainState, name: &str, query: &str) -> Result<Respon
   }
 
   let Query { op } = serde_qs::from_str(query)?;
-  let metadata_path = (state.hive_path)
+  let metadata_path = (state.abel_path)
     .join("services")
     .join(name)
     .join("metadata.json");
 
   match op {
     Operation::Start => {
-      let service = state.hive.start_service(name).await?;
+      let service = state.abel.start_service(name).await?;
       modify_metadata(&metadata_path, |m| m.started = true).await?;
       json_response(StatusCode::OK, json!({ "started": service.upgrade() }))
     }
     Operation::Stop => {
-      let result = state.hive.stop_service(name).await;
+      let result = state.abel.stop_service(name).await;
       modify_metadata(&metadata_path, |m| m.started = false).await?;
       result
         .map_err(From::from)
@@ -149,8 +149,8 @@ async fn start_stop(state: &MainState, name: &str, query: &str) -> Result<Respon
 }
 
 async fn remove(state: &MainState, service_name: &str) -> Result<Response<Body>> {
-  let removed = state.hive.remove_service(service_name).await?;
-  tokio::fs::remove_dir_all(state.hive_path.join("services").join(service_name)).await?;
+  let removed = state.abel.remove_service(service_name).await?;
+  tokio::fs::remove_dir_all(state.abel_path.join("services").join(service_name)).await?;
   info!("Removed service '{}' ({})", removed.name(), removed.uuid());
   json_response(StatusCode::OK, json!({ "removed_service": removed }))
 }

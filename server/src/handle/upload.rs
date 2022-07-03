@@ -3,12 +3,12 @@ use crate::metadata::Metadata;
 use crate::source::DirSource;
 use crate::util::{asyncify, json_response};
 use crate::{MainState, Result};
+use abel_core::service::{ErrorPayload, Service};
+use abel_core::source::Source;
+use abel_core::ErrorKind::ServiceExists;
+use abel_core::{Config, ServiceImpl};
 use futures::TryStreamExt;
 use hive_asar::Archive;
-use hive_core::service::{ErrorPayload, Service};
-use hive_core::source::Source;
-use hive_core::ErrorKind::ServiceExists;
-use hive_core::{Config, ServiceImpl};
 use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 use log::{info, warn};
 use multer::{Constraints, Field, Multipart, SizeLimit};
@@ -61,8 +61,8 @@ pub(crate) async fn upload(
   ))?;
 
   // See https://github.com/hackerer1c/hive/issues/4
-  let hive_tmp = state.hive_path.join("tmp");
-  let tmp = asyncify(|| tempdir_in(hive_tmp)).await?;
+  let abel_tmp = state.abel_path.join("tmp");
+  let tmp = asyncify(|| tempdir_in(abel_tmp)).await?;
 
   let config = match source_field.name() {
     Some("single") => read_single(tmp.path(), multipart, source_field).await?,
@@ -76,7 +76,7 @@ pub(crate) async fn upload(
   };
 
   if config.is_none() {
-    fs::write(tmp.path().join("hive.json"), "{}").await?;
+    fs::write(tmp.path().join("abel.json"), "{}").await?;
   }
 
   let (name, config) = get_name_config(state, name, config).await?;
@@ -121,7 +121,7 @@ async fn read_single<'a>(
     }
     let bytes = config_field.bytes().await?;
     let config: Config = serde_json::from_slice(&bytes)?;
-    fs::write(tmp.join("hive.json"), &bytes).await?;
+    fs::write(tmp.join("abel.json"), &bytes).await?;
     Ok(Some(config))
   } else {
     Ok(None)
@@ -134,7 +134,7 @@ async fn read_multi<'a>(tmp: &Path, source_field: Field<'static>) -> Result<Opti
   let mut archive = Archive::new(tmpfile).await?;
   archive.extract(tmp).await?;
 
-  if let Ok(bytes) = fs::read(tmp.join("hive.json")).await {
+  if let Ok(bytes) = fs::read(tmp.join("abel.json")).await {
     Ok(Some(serde_json::from_slice(&bytes)?))
   } else {
     Ok(None)
@@ -176,7 +176,7 @@ async fn get_name_config(
     (name, Default::default())
   };
 
-  if !name_provided && state.hive.get_service(&name).is_ok() {
+  if !name_provided && state.abel.get_service(&name).is_ok() {
     return Err(ServiceExists { name: name.into() }.into());
   }
 
@@ -192,11 +192,11 @@ async fn create_service(
 ) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
   let source = DirSource::new(source_path.as_ref()).await?;
   let (service, replaced, error_payload) = match mode {
-    UploadMode::Create if state.hive.get_service(&name).is_ok() => {
+    UploadMode::Create if state.abel.get_service(&name).is_ok() => {
       return Err(ServiceExists { name: name.into() }.into())
     }
-    UploadMode::Hot if state.hive.get_running_service(&name).is_ok() => {
-      let (service, replaced) = (state.hive)
+    UploadMode::Hot if state.abel.get_running_service(&name).is_ok() => {
+      let (service, replaced) = (state.abel)
         .hot_update_service(name, None, Source::new(source.clone()), config)
         .await?;
       (
@@ -206,12 +206,12 @@ async fn create_service(
       )
     }
     UploadMode::Hot | UploadMode::Cold | UploadMode::Create => {
-      (state.hive)
+      (state.abel)
         .cold_update_or_create_service(name, None, Source::new(source.clone()), config)
         .await?
     }
     UploadMode::Load => {
-      let (service, replaced, error_payload) = (state.hive)
+      let (service, replaced, error_payload) = (state.abel)
         .load_service(name, None, Source::new(source.clone()), config)
         .await?;
       (Service::Stopped(service), replaced, error_payload)
@@ -219,7 +219,7 @@ async fn create_service(
   };
   let guard = service.upgrade();
 
-  let service_path = state.hive_path.join("services").join(guard.name());
+  let service_path = state.abel_path.join("services").join(guard.name());
   if service_path.exists() {
     fs::remove_dir_all(&service_path).await?;
   }
@@ -269,13 +269,13 @@ async fn response(
     if let Some(stop) = error_payload.stop {
       map.insert(
         "stop".into(),
-        json!(Error::from(ErrorKind::Hive(stop)).into_status_and_body().1),
+        json!(Error::from(ErrorKind::Abel(stop)).into_status_and_body().1),
       );
     }
     if let Some(start) = error_payload.start {
       map.insert(
         "start".into(),
-        json!(Error::from(ErrorKind::Hive(start)).into_status_and_body().1),
+        json!(Error::from(ErrorKind::Abel(start)).into_status_and_body().1),
       );
     }
     body.insert("errors".into(), serde_json::Value::Object(map));

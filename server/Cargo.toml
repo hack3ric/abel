@@ -1,16 +1,16 @@
 [package]
-name = "hive-server"
+name = "abel-server"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+abel-core = { path = "../core" }
 anyhow = { version = "1.0.52", features = ["backtrace"] }
 async-trait = "0.1.56"
 backtrace = "0.3.63"
 clap = { version = "3.2.5", features = ["derive"] }
 futures = "0.3.19"
 hive-asar = "0.3.1"
-hive-core = { path = "../hive-core" }
 home = "0.5.3"
 hyper = { version = "0.14.16", features = ["full"] }
 libc = "0.2.126"

@@ -34,7 +34,7 @@ impl Error {
   pub fn into_status_and_body(self) -> (StatusCode, serde_json::Map<String, serde_json::Value>) {
     use ErrorKind::*;
     let (status, error, detail, backtrace) = match self.kind {
-      Hive(x) => {
+      Abel(x) => {
         let (kind, backtrace) = x.into_parts();
         (
           kind.status(),
@@ -99,10 +99,10 @@ impl<E: Into<ErrorKind>> From<E> for Error {
   }
 }
 
-impl From<hive_core::ErrorKind> for Error {
-  fn from(x: hive_core::ErrorKind) -> Self {
+impl From<abel_core::ErrorKind> for Error {
+  fn from(x: abel_core::ErrorKind) -> Self {
     Self {
-      kind: ErrorKind::Hive(x.into()),
+      kind: ErrorKind::Abel(x.into()),
       detail: None,
       backtrace: None,
     }
@@ -219,7 +219,7 @@ pub enum ErrorKind {
 
   #[error(transparent)]
   #[serde(skip)]
-  Hive(#[from] hive_core::Error),
+  Abel(#[from] abel_core::Error),
 
   #[error("{error}: {detail:?}")]
   #[serde(skip)]
@@ -241,7 +241,7 @@ where
 impl ErrorKind {
   pub fn status(&self) -> StatusCode {
     match self {
-      ErrorKind::Hive(error) => error.kind().status(),
+      ErrorKind::Abel(error) => error.kind().status(),
       ErrorKind::Custom { status, .. } => *status,
       _ => self.get_str("status").unwrap().parse().unwrap(),
     }
@@ -249,7 +249,7 @@ impl ErrorKind {
 
   pub fn internal(&self) -> bool {
     match self {
-      ErrorKind::Hive(error) => error.kind().internal(),
+      ErrorKind::Abel(error) => error.kind().internal(),
       _ => self.status().is_server_error(),
     }
   }

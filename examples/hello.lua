@@ -3,5 +3,5 @@ local function hello(req)
   return { greeting = "Hello, " .. name .. "!" }
 end
 
-hive.register("/", hello)
-hive.register("/:name", hello)
+abel.register("/", hello)
+abel.register("/:name", hello)

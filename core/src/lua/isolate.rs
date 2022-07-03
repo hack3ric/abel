@@ -76,7 +76,7 @@ impl<'lua> IsolateBuilder<'lua> {
   ) -> mlua::Result<&mut Self> {
     self.add_lib(name, f)?;
     let lib = self.local_env.call_function("require", name)?;
-    
+
     Ok(self)
   }
 
