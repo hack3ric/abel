@@ -1,6 +1,5 @@
 pub(crate) mod context;
 pub mod http;
-pub mod sandbox;
 
 mod byte_stream;
 mod crypto;
@@ -11,10 +10,12 @@ mod isolate;
 mod json;
 mod print;
 mod runtime;
+mod sandbox;
 
 #[cfg(test)]
 mod tests;
 
+pub use isolate::Isolate;
 pub use runtime::Runtime;
 
 use crate::Result;

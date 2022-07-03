@@ -25,28 +25,29 @@ use tokio::io::{
   AsyncWriteExt, BufReader,
 };
 
-pub async fn create_preload_fs(
-  lua: &Lua,
+pub fn create_preload_fs(
   local_storage_path: impl Into<PathBuf>,
   source: Source,
-) -> mlua::Result<Function<'_>> {
-  let local_storage_path: Arc<Path> = local_storage_path.into().into();
-  lua.create_function(move |lua, ()| {
-    let fs_table = lua.create_table()?;
-    fs_table.raw_set(
-      "open",
-      create_fn_fs_open(lua, source.clone(), local_storage_path.clone())?,
-    )?;
-    fs_table.raw_set(
-      "mkdir",
-      create_fn_fs_mkdir(lua, local_storage_path.clone())?,
-    )?;
-    fs_table.raw_set(
-      "remove",
-      create_fn_fs_remove(lua, local_storage_path.clone())?,
-    )?;
-    Ok(fs_table)
-  })
+) -> impl FnOnce(&Lua) -> mlua::Result<Function> {
+  |lua| {
+    let local_storage_path: Arc<Path> = local_storage_path.into().into();
+    lua.create_function(move |lua, ()| {
+      let fs_table = lua.create_table()?;
+      fs_table.raw_set(
+        "open",
+        create_fn_fs_open(lua, source.clone(), local_storage_path.clone())?,
+      )?;
+      fs_table.raw_set(
+        "mkdir",
+        create_fn_fs_mkdir(lua, local_storage_path.clone())?,
+      )?;
+      fs_table.raw_set(
+        "remove",
+        create_fn_fs_remove(lua, local_storage_path.clone())?,
+      )?;
+      Ok(fs_table)
+    })
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,5 +1,6 @@
 use super::http::LuaResponse;
-use super::sandbox::{Isolate, Sandbox};
+use super::isolate::Isolate;
+use super::sandbox::Sandbox;
 use super::LuaTableExt;
 use crate::lua::error::{resolve_callback_error, rt_error_fmt};
 use crate::lua::http::LuaRequest;
@@ -210,7 +211,7 @@ impl Runtime {
   async fn run_source<'a>(&'a self, name: &str, source: Source) -> Result<(Isolate, Table<'a>)> {
     let local_storage_path = get_local_storage_path(&self.state, name);
     let isolate = (self.sandbox)
-      .create_isolate(name, local_storage_path, source.clone())
+      .create_isolate(name, source.clone(), local_storage_path)
       .await?;
     (self.sandbox).run_isolate(&isolate, "main.lua", ()).await?;
 

@@ -1,7 +1,12 @@
+use super::crypto::create_preload_crypto;
+use super::fs::create_preload_fs;
 use super::global_env::modify_global_env;
-use super::isolate::create_isolate;
-use crate::source::Source;
-use mlua::{FromLuaMulti, Lua, RegistryKey, Table, ToLuaMulti};
+use super::http::create_preload_http;
+use super::isolate::{Isolate, IsolateBuilder};
+use super::json::create_preload_json;
+use super::print::create_fn_print;
+use crate::source::{Source, SourceUserData};
+use mlua::{FromLuaMulti, Lua, Table, ToLuaMulti};
 use std::path::PathBuf;
 
 pub struct Sandbox {
@@ -15,22 +20,25 @@ impl Sandbox {
     Ok(Self { lua })
   }
 
-  // TODO: maybe make this modular
   pub async fn create_isolate(
     &self,
     name: &str,
-    local_storage_path: impl Into<PathBuf>,
     source: Source,
+    local_storage_path: impl Into<PathBuf>,
   ) -> mlua::Result<Isolate> {
-    let (local_env, internal) =
-      create_isolate(&self.lua, name, local_storage_path, source.clone()).await?;
-    let local_env = self.lua.create_registry_value(local_env)?;
-    let internal = self.lua.create_registry_value(internal)?;
-    Ok(Isolate {
-      source,
-      local_env,
-      internal,
-    })
+    self
+      .create_isolate_builder(source.clone())?
+      .add_side_effect(|lua, env, _| env.raw_set("print", create_fn_print(lua, name)?))?
+      .add_side_effect(|_, _, i| i.raw_set("source", SourceUserData(source.clone())))?
+      .add_lib("fs", create_preload_fs(local_storage_path, source))?
+      .add_lib("http", create_preload_http)?
+      .add_lib("json", create_preload_json)?
+      .add_lib("crypto", create_preload_crypto)?
+      .build()
+  }
+
+  pub fn create_isolate_builder(&self, source: Source) -> mlua::Result<IsolateBuilder> {
+    IsolateBuilder::new(&self.lua, source)
   }
 
   pub async fn run_isolate<'lua, A: ToLuaMulti<'lua>, R: FromLuaMulti<'lua>>(
@@ -85,11 +93,4 @@ impl Sandbox {
   pub fn expire_registry_values(&self) {
     self.lua.expire_registry_values();
   }
-}
-
-#[derive(Debug)]
-pub struct Isolate {
-  source: Source,
-  local_env: RegistryKey,
-  internal: RegistryKey,
 }
