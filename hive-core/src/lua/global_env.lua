@@ -19,11 +19,13 @@ function hive_Error(obj)
   return setmetatable(result, result_mt)
 end
 
-function safe_getmetatable(t)
+local lua_getmetatable = getmetatable
+
+function getmetatable(t)
   local type_t = type(t)
   assert(
     type_t == "table",
     "bad argument #1 to 'getmetatable' (table expected, got " .. type_t .. ")"
   )
-  return getmetatable(t)
+  return lua_getmetatable(t)
 end

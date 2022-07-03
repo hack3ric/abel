@@ -48,7 +48,11 @@ local hive = {
 
 -- Local env --
 
-local function require(modname)
+local local_env = {
+  hive = hive,
+}
+
+function local_env.require(modname)
   local modname_type = type(modname)
   assert(
     modname_type == "string",
@@ -70,13 +74,8 @@ local function require(modname)
       end
     end
   end
-  error("module '" .. modname .. "' not found:\n\t" .. table.concat(error_msgs, "\n"))
+  error("module '" .. modname .. "' not found:\n\t" .. table.concat(error_msgs, "\n\t"))
 end
-
-local local_env = {
-  hive = hive,
-  require = require,
-}
 
 -- Searchers --
 
@@ -122,10 +121,11 @@ package.searchers = { preload_searcher, source_searcher }
 
 local whitelist = {
   [false] = {
-    "assert", "ipairs", "next", "pairs",
-    "pcall", "print", "rawequal", "select",
-    "setmetatable", "tonumber", "tostring", "type",
-    "warn", "xpcall", "_VERSION",
+    "assert", "error", "getmetatable", "ipairs",
+    "next", "pairs", "pcall", "print",
+    "rawequal", "select", "setmetatable", "tonumber",
+    "tostring", "type", "warn", "xpcall",
+    "_VERSION",
   },
   math = {
     "abs", "acos", "asin", "atan",
@@ -146,23 +146,14 @@ local whitelist = {
     "match", "reverse", "sub", "upper",
   },
   table = {
-    "remove", "sort", "concat", "pack",
-    "unpack",
+    "insert", "move", "remove", "sort",
+    "concat", "pack", "unpack",
   },
   coroutine = {
     "close", "create", "isyieldable", "resume",
     "running", "status", "wrap", "yield",
   },
-}
-
-local monkey_patch = {
-  [false] = {
-    "error",
-  },
-  table = {
-    "insert", "dump", "scope"
-  },
-  routing = "*"
+  routing = "*",
 }
 
 local function apply_whitelist(whitelist)
@@ -190,8 +181,5 @@ local function apply_whitelist(whitelist)
 end
 
 apply_whitelist(whitelist)
-apply_whitelist(monkey_patch)
-
-local_env.getmetatable = safe_getmetatable
 
 return local_env, internal
