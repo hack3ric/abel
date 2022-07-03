@@ -58,7 +58,7 @@ macro_rules! lua_tests {
       async fn $test_name() {
         let result = run_lua_test! { std::stringify!($test_name), $code };
         if let Err(error) = result {
-          log::error!("{}", error_to_string(&error));
+          panic!("{}", error_to_string(&error))
         }
       }
     )*
@@ -81,6 +81,8 @@ lua_tests! {
 
   test_http_uri r#"
     local http = require "http"
+
+    local uri = http.Uri "https://test.example.com:8080/path?foo=bar&baz=%20#segment"
 
     assert(uri.scheme == "https")
     assert(uri.host == "test.example.com")
