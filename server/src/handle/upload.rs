@@ -60,7 +60,7 @@ pub(crate) async fn upload(
     "specify either `single` or `multi` field in multipart",
   ))?;
 
-  // See https://github.com/hackerer1c/hive/issues/4
+  // See https://github.com/hack3ric/abel/issues/4
   let abel_tmp = state.abel_path.join("tmp");
   let tmp = asyncify(|| tempdir_in(abel_tmp)).await?;
 

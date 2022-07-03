@@ -1,10 +1,9 @@
+mod config;
 mod error;
 mod handle;
 mod metadata;
-#[macro_use]
-mod util;
-mod config;
 mod source;
+mod util;
 
 use crate::config::Config;
 use abel_core::service::Service;
