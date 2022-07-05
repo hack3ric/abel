@@ -12,12 +12,6 @@ pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
     .set_name("<bootstrap>")?
     .exec()?;
 
-  let routing: Table = lua
-    .load(include_str!("routing.lua"))
-    .set_name("<routing>")?
-    .call(())?;
-  globals.raw_set("routing", routing)?;
-
   lua.set_named_registry_value(
     "isolate_fn",
     lua

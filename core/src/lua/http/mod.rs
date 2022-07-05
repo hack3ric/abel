@@ -8,6 +8,7 @@ pub use request::LuaRequest;
 pub use response::LuaResponse;
 
 use super::error::rt_error_fmt;
+use super::LuaCacheExt;
 use crate::lua::error::{arg_error, check_value, tag_handler_async};
 use crate::lua::LuaEither;
 use bstr::ByteSlice;
@@ -20,7 +21,6 @@ use mlua::{AnyUserData, Function, Lua, MultiValue, Table};
 use once_cell::sync::Lazy;
 use response::create_fn_http_create_response;
 use uri::create_fn_http_create_uri;
-use super::LuaCacheExt;
 
 static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> =
   Lazy::new(|| Client::builder().build(HttpsConnector::new()));
@@ -57,14 +57,17 @@ pub fn create_fn_http_request(lua: &Lua) -> mlua::Result<Function> {
     }
   }
 
-  lua.create_cached_async_function("abel:http.request", move |lua, mut args: MultiValue| async move {
-    let req = check_request_first_arg(lua, args.pop_front())?;
-    let resp = CLIENT.request(req.into()).await;
-    match resp {
-      Ok(resp) => lua.pack_multi(LuaResponse::from_hyper(resp)),
-      Err(error) => lua.pack_multi((Nil, error.to_string())),
-    }
-  })
+  lua.create_cached_async_function(
+    "abel:http.request",
+    move |lua, mut args: MultiValue| async move {
+      let req = check_request_first_arg(lua, args.pop_front())?;
+      let resp = CLIENT.request(req.into()).await;
+      match resp {
+        Ok(resp) => lua.pack_multi(LuaResponse::from_hyper(resp)),
+        Err(error) => lua.pack_multi((Nil, error.to_string())),
+      }
+    },
+  )
 }
 
 fn check_headers(lua: &Lua, headers_table: Table) -> mlua::Result<HeaderMap> {

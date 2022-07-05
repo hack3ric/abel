@@ -1,8 +1,8 @@
 use crate::lua::error::{check_string, check_userdata, rt_error_fmt, tag_handler};
+use crate::lua::LuaCacheExt;
 use mlua::Value::Nil;
 use mlua::{ExternalResult, FromLua, Function, Lua, MultiValue, UserData};
 use std::collections::HashMap;
-use crate::lua::LuaCacheExt;
 
 #[derive(Debug)]
 pub struct LuaUri(pub(crate) hyper::Uri);

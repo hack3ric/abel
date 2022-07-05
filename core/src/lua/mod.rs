@@ -145,21 +145,6 @@ impl LuaCacheExt for Lua {
   }
 }
 
-fn create_preload_routing(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, ()| {
-    let module = lua.create_table()?;
-    for f in lua
-      .globals()
-      .raw_get::<_, Table>("routing")?
-      .pairs::<mlua::Value, mlua::Value>()
-    {
-      let (k, v) = f?;
-      module.raw_set(k, v)?;
-    }
-    Ok(module)
-  })
-}
-
 fn create_fn_print_to_log<'a>(lua: &'a Lua, service_name: &str) -> mlua::Result<Function<'a>> {
   let tostring: Function = lua.globals().raw_get("tostring")?;
   let target = format!("service '{service_name}'");

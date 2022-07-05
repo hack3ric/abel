@@ -1,4 +1,4 @@
-use super::create_preload_routing;
+use super::create_fn_print_to_log;
 use super::crypto::create_preload_crypto;
 use super::fs::create_preload_fs;
 use super::global_env::modify_global_env;
@@ -9,7 +9,6 @@ use super::lua_std::{
   create_preload_coroutine, create_preload_io, create_preload_math, create_preload_os,
   create_preload_string, create_preload_table, create_preload_utf8, global_whitelist,
 };
-use super::create_fn_print_to_log;
 use crate::source::{Source, SourceUserData};
 use mlua::{FromLuaMulti, Lua, Table, ToLuaMulti};
 use std::path::{Path, PathBuf};
@@ -50,15 +49,12 @@ impl Sandbox {
         create_preload_io(source.clone(), local_storage_path.clone()),
       )?
       // Abel std (?)
-      .add_lib("routing", create_preload_routing)?
       .add_lib("fs", create_preload_fs(source, local_storage_path))?
       .add_lib("http", create_preload_http)?
       .add_lib("json", create_preload_json)?
       .add_lib("crypto", create_preload_crypto)?
       // ...and load some of then into local env
-      .load_libs([
-        "math", "string", "table", "coroutine", "os", "utf8", "io", "routing",
-      ])?
+      .load_libs(["math", "string", "table", "coroutine", "os", "utf8", "io"])?
       .build()
   }
 

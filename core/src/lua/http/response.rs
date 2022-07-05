@@ -2,12 +2,12 @@ use super::body::LuaBody;
 use super::check_headers;
 use super::header_map::LuaHeaderMap;
 use crate::lua::error::{bad_field, check_value, rt_error_fmt, tag_handler, TableCheckExt};
+use crate::lua::LuaCacheExt;
 use hyper::http::{HeaderMap, StatusCode};
 use hyper::{Body, Response};
 use mlua::{FromLua, Function, Lua, MultiValue, Table, UserData, UserDataFields};
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::lua::LuaCacheExt;
 
 #[derive(Default)]
 pub struct LuaResponse {
