@@ -1,4 +1,5 @@
 use super::error::{arg_error, check_integer, check_userdata_mut, tag_handler};
+use super::LuaCacheExt;
 use mlua::{Function, Lua, MultiValue, UserData};
 use rand::{thread_rng, Rng, RngCore};
 
@@ -28,9 +29,14 @@ impl UserData for LuaRng {
 }
 
 pub fn create_preload_crypto(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, ()| {
+  lua.create_cached_function("abel:preload_crypto", |lua, ()| {
     let crypto_table = lua.create_table()?;
-    crypto_table.raw_set("thread_rng", LuaRng(Box::new(thread_rng())))?;
+    crypto_table.raw_set(
+      "thread_rng",
+      lua.create_cached_value("abel:crypto.thread_rng", |lua| {
+        lua.create_userdata(LuaRng(Box::new(thread_rng())))
+      })?,
+    )?;
     Ok(crypto_table)
   })
 }

@@ -1,9 +1,10 @@
 use super::error::{arg_error, check_string, check_truthiness, check_value, tag_handler};
+use super::LuaCacheExt;
 use mlua::Value::Nil;
 use mlua::{Function, Lua, LuaSerdeExt, MultiValue, Table};
 
 pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, ()| {
+  lua.create_cached_function("abel:preload_json", |lua, ()| {
     let json_table = lua.create_table()?;
     json_table.raw_set("parse", create_fn_json_parse(lua)?)?;
     json_table.raw_set("stringify", create_fn_json_stringify(lua)?)?;
@@ -15,7 +16,7 @@ pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn create_fn_json_parse(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, mut args: MultiValue| {
+  lua.create_cached_function("abel:json.parse", |lua, mut args: MultiValue| {
     let string = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1))?;
     let result = serde_json::from_slice::<serde_json::Value>(string.as_bytes());
     match result {
@@ -26,7 +27,7 @@ fn create_fn_json_parse(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn create_fn_json_stringify(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, mut args: MultiValue| {
+  lua.create_cached_function("abel:json.stringify", |lua, mut args: MultiValue| {
     let value = args
       .pop_front()
       .ok_or_else(|| arg_error(lua, 1, "value expected", 0))?;
@@ -44,7 +45,7 @@ fn create_fn_json_stringify(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn create_fn_json_array(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, mut args: MultiValue| {
+  lua.create_cached_function("abel:json.array", |lua, mut args: MultiValue| {
     let table: Table = check_value(lua, args.pop_front(), "table").map_err(tag_handler(lua, 1))?;
     table.set_metatable(Some(lua.array_metatable()));
     Ok(table)
@@ -52,7 +53,7 @@ fn create_fn_json_array(lua: &Lua) -> mlua::Result<Function> {
 }
 
 fn create_fn_json_undo_array(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, mut args: MultiValue| {
+  lua.create_cached_function("abel:json.undo_array", |lua, mut args: MultiValue| {
     let table: Table = check_value(lua, args.pop_front(), "table").map_err(tag_handler(lua, 1))?;
     if table
       .get_metatable()

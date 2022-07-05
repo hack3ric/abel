@@ -18,25 +18,26 @@ use hyper_tls::HttpsConnector;
 use mlua::Value::Nil;
 use mlua::{AnyUserData, Function, Lua, MultiValue, Table};
 use once_cell::sync::Lazy;
-use response::create_fn_create_response;
-use uri::create_fn_create_uri;
+use response::create_fn_http_create_response;
+use uri::create_fn_http_create_uri;
+use super::LuaCacheExt;
 
 static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> =
   Lazy::new(|| Client::builder().build(HttpsConnector::new()));
 
 pub fn create_preload_http(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(move |lua, ()| {
+  lua.create_cached_function("abel:preload_http", move |lua, ()| {
     let http = lua.create_table()?;
 
-    http.raw_set("request", create_fn_request(lua)?)?;
-    http.raw_set("Response", create_fn_create_response(lua)?)?;
-    http.raw_set("Uri", create_fn_create_uri(lua)?)?;
+    http.raw_set("request", create_fn_http_request(lua)?)?;
+    http.raw_set("Response", create_fn_http_create_response(lua)?)?;
+    http.raw_set("Uri", create_fn_http_create_uri(lua)?)?;
 
     Ok(http)
   })
 }
 
-pub fn create_fn_request(lua: &Lua) -> mlua::Result<Function> {
+pub fn create_fn_http_request(lua: &Lua) -> mlua::Result<Function> {
   fn check_request_first_arg(lua: &Lua, value: Option<mlua::Value>) -> mlua::Result<LuaRequest> {
     use LuaEither::*;
     type RequestMeta<'a> = LuaEither<LuaEither<mlua::String<'a>, Table<'a>>, AnyUserData<'a>>;
@@ -56,7 +57,7 @@ pub fn create_fn_request(lua: &Lua) -> mlua::Result<Function> {
     }
   }
 
-  lua.create_async_function(move |lua, mut args: MultiValue| async move {
+  lua.create_cached_async_function("abel:http.request", move |lua, mut args: MultiValue| async move {
     let req = check_request_first_arg(lua, args.pop_front())?;
     let resp = CLIENT.request(req.into()).await;
     match resp {

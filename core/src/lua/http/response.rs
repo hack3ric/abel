@@ -7,6 +7,7 @@ use hyper::{Body, Response};
 use mlua::{FromLua, Function, Lua, MultiValue, Table, UserData, UserDataFields};
 use std::cell::RefCell;
 use std::rc::Rc;
+use crate::lua::LuaCacheExt;
 
 #[derive(Default)]
 pub struct LuaResponse {
@@ -92,8 +93,8 @@ impl From<LuaResponse> for Response<Body> {
   }
 }
 
-pub fn create_fn_create_response(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, mut args: MultiValue| {
+pub fn create_fn_http_create_response(lua: &Lua) -> mlua::Result<Function> {
+  lua.create_cached_function("abel:http.Response", |lua, mut args: MultiValue| {
     let params: Table = check_value(lua, args.pop_front(), "table").map_err(tag_handler(lua, 1))?;
     let body = LuaBody::from_value(params.raw_get::<_, mlua::Value>("body")?)
       .map_err(|error| bad_field("body", error))?;

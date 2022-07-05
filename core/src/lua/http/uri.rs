@@ -2,6 +2,7 @@ use crate::lua::error::{check_string, check_userdata, rt_error_fmt, tag_handler}
 use mlua::Value::Nil;
 use mlua::{ExternalResult, FromLua, Function, Lua, MultiValue, UserData};
 use std::collections::HashMap;
+use crate::lua::LuaCacheExt;
 
 #[derive(Debug)]
 pub struct LuaUri(pub(crate) hyper::Uri);
@@ -53,8 +54,8 @@ impl<'lua> FromLua<'lua> for LuaUri {
   }
 }
 
-pub fn create_fn_create_uri(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, mut args: MultiValue| {
+pub fn create_fn_http_create_uri(lua: &Lua) -> mlua::Result<Function> {
+  lua.create_cached_function("abel:http.Uri", |lua, mut args: MultiValue| {
     let s = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1))?;
     Ok(LuaUri(hyper::Uri::try_from(s.as_bytes()).to_lua_err()?))
   })
