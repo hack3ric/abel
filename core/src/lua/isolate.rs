@@ -1,3 +1,4 @@
+use super::LuaCacheExt;
 use crate::lua::LuaTableExt;
 use crate::source::Source;
 use mlua::{Function, Lua, RegistryKey, Table, TableExt};
@@ -19,8 +20,7 @@ pub struct IsolateBuilder<'lua> {
 
 impl<'lua> IsolateBuilder<'lua> {
   pub(crate) fn new(lua: &'lua Lua, source: Source) -> mlua::Result<Self> {
-    let isolate_fn = lua.named_registry_value::<_, Function>("isolate_fn")?;
-    let (local_env, internal): (_, Table) = isolate_fn.call(())?;
+    let (local_env, internal): (_, Table) = isolate_bootstrap(lua)?;
     let preload = internal.raw_get_path("<internal>", &["package", "preload"])?;
     Ok(Self {
       lua,
@@ -66,4 +66,14 @@ impl<'lua> IsolateBuilder<'lua> {
       internal,
     })
   }
+}
+
+pub fn isolate_bootstrap(lua: &Lua) -> mlua::Result<(Table, Table)> {
+  let bootstrap = lua.create_cached_value("abel:isolate_bootstrap", |lua| {
+    lua
+      .load(include_str!("isolate_bootstrap.lua"))
+      .set_name("@<isolate_bootstrap>")?
+      .into_function()
+  })?;
+  bootstrap.call(())
 }

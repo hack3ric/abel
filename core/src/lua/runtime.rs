@@ -189,7 +189,7 @@ impl Runtime {
     let loaded = self.load_service(service).await?;
     let start_fn: Option<Function> = (self.sandbox)
       .get_local_env(&loaded.isolate)?
-      .raw_get_path("<local_env>", &["abel", "start"])?;
+      .raw_get_path("<local_env>", &["abel", "start"])?; // TODO: check validity
     if let Some(f) = start_fn {
       f.call_async(()).await?;
     }

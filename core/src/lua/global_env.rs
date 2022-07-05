@@ -1,5 +1,5 @@
 use super::error::{create_fn_assert, create_fn_error, create_fn_pcall};
-use mlua::{Function, Lua, Table};
+use mlua::{Function, Lua};
 
 pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
   let globals = lua.globals();
@@ -9,16 +9,8 @@ pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
 
   lua
     .load(include_str!("bootstrap.lua"))
-    .set_name("<bootstrap>")?
+    .set_name("@<bootstrap>")?
     .exec()?;
-
-  lua.set_named_registry_value(
-    "isolate_fn",
-    lua
-      .load(include_str!("isolate_bootstrap.lua"))
-      .set_name("<isolate_bootstrap>")?
-      .into_function()?,
-  )?;
 
   globals.raw_set("current_worker", create_fn_current_worker(lua)?)?;
   globals.raw_set("error", create_fn_error(lua)?)?;
