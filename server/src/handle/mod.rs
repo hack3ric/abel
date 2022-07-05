@@ -21,6 +21,7 @@ pub(crate) async fn handle(
   req: Request<Body>,
 ) -> Result<Response<Body>, Infallible> {
   const GET: &Method = &Method::GET;
+  #[allow(unused)]
   const POST: &Method = &Method::POST;
   const PUT: &Method = &Method::PUT;
   const PATCH: &Method = &Method::PATCH;
@@ -42,11 +43,10 @@ pub(crate) async fn handle(
     (_, ["services", ..]) => match (method, &segments[1..]) {
       _ if !auth => Err(Unauthorized.into()),
       (GET, []) => list(&state),
-      (POST, []) => upload(&state, None, req).await, // TODO: maybe deprecate this?
-      (_, []) => Err(method_not_allowed(&["GET", "POST"], method)),
+      (_, []) => Err(method_not_allowed(&["GET"], method)),
 
       (GET, [name]) => get(&state, name),
-      (PUT, [name]) => upload(&state, Some((*name).into()), req).await,
+      (PUT, [name]) => upload(&state, (*name).into(), req).await,
       (PATCH, [name]) => start_stop(&state, name, req.uri().query().unwrap_or("")).await,
       (DELETE, [name]) => remove(&state, name).await,
       (_, [_name]) => Err(method_not_allowed(

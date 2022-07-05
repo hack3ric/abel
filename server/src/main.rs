@@ -7,18 +7,20 @@ mod util;
 
 use crate::config::Config;
 use abel_core::service::Service;
-use abel_core::source::{Source, SourceVfs};
+use abel_core::source::Source;
 use abel_core::{Abel, AbelOptions};
+use anyhow::bail;
 use clap::Parser;
 use config::{Args, HALF_NUM_CPUS};
 use error::Error;
 use handle::handle;
+use hive_asar::Archive;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use log::{error, info, warn};
 use metadata::Metadata;
 use owo_colors::OwoColorize;
-use source::DirSource;
+use source::{AsarSource, SingleSource};
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -98,7 +100,6 @@ async fn init_paths(abel_path: &Path) -> PathBuf {
   let local_storage_path = async {
     create_dir_path(abel_path).await?;
     create_dir_path(abel_path.join("services")).await?;
-    create_dir_path(abel_path.join("tmp")).await?;
 
     let local_storage_path = abel_path.join("storage");
     create_dir_path(&local_storage_path).await?;
@@ -110,7 +111,7 @@ async fn init_paths(abel_path: &Path) -> PathBuf {
   local_storage_path
 }
 
-async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<()> {
+async fn load_saved_services(state: &MainState, config_path: PathBuf) -> anyhow::Result<()> {
   let mut services = fs::read_dir(config_path.join("services")).await?;
 
   while let Some(service_folder) = services.next_entry().await? {
@@ -120,25 +121,38 @@ async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<
         let metadata_bytes = fs::read(service_folder.path().join("metadata.json")).await?;
         let metadata: Metadata = serde_json::from_slice(&metadata_bytes)?;
 
-        let source = DirSource::new(service_folder.path().join("src")).await?;
-        let mut config = source.get("abel.json").await?;
-        let mut bytes = Vec::with_capacity(config.metadata().await?.len() as _);
-        config.read_to_end(&mut bytes).await?;
-        let config = serde_json::from_slice(&bytes)?;
+        let asar_path = service_folder.path().join("source.asar");
+        let asar_exists = asar_path.exists();
+        let lua_path = service_folder.path().join("source.lua");
+        let lua_exists = lua_path.exists();
+        let (source, config) = if asar_exists && lua_exists {
+          bail!("both source.asar and source.lua found");
+        } else if asar_exists {
+          let mut archive = Archive::new_from_file(asar_path).await?;
+
+          let mut config_file = archive.get("abel.json").await?;
+          let mut config_bytes = vec![0; config_file.metadata().size as _];
+          config_file.read_to_end(&mut config_bytes).await?;
+          let config = serde_json::from_slice(&config_bytes)?;
+
+          let source = Source::new(AsarSource(archive));
+          (source, config)
+        } else if lua_exists {
+          let code = fs::read(lua_path).await?;
+          let source = Source::new(SingleSource::new(code));
+          (source, Default::default())
+        } else {
+          bail!("neither source.asar nor source.lua found")
+        };
 
         let (service, error_payload) = if metadata.started {
           let (service, _, error_payload) = (state.abel)
-            .cold_update_or_create_service(
-              name.clone(),
-              Some(metadata.uuid),
-              Source::new(source),
-              config,
-            )
+            .cold_update_or_create_service(name.clone(), Some(metadata.uuid), source, config)
             .await?;
           (service, error_payload)
         } else {
           let (service, error_payload) = (state.abel)
-            .preload_service(name.clone(), metadata.uuid, Source::new(source), config)
+            .preload_service(name.clone(), metadata.uuid, source, config)
             .await?;
           (Service::Stopped(service), error_payload)
         };
@@ -159,7 +173,7 @@ async fn load_saved_services(state: &MainState, config_path: PathBuf) -> Result<
           );
         }
 
-        Ok::<_, crate::Error>(())
+        anyhow::Ok(())
       }
       .await;
       if let Err(error) = result {

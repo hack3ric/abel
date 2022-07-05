@@ -1,7 +1,7 @@
 use crate::error::{Error, ErrorKind};
 use crate::metadata::Metadata;
-use crate::source::DirSource;
-use crate::util::{asyncify, json_response};
+use crate::source::{AsarSource, SingleSource};
+use crate::util::json_response;
 use crate::{MainState, Result};
 use abel_core::service::{ErrorPayload, Service};
 use abel_core::source::Source;
@@ -11,14 +11,13 @@ use futures::TryStreamExt;
 use hive_asar::Archive;
 use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 use log::{info, warn};
-use multer::{Constraints, Field, Multipart, SizeLimit};
+use multer::{Constraints, Multipart, SizeLimit};
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::Path;
-use tempfile::{tempdir_in, tempfile};
 use tokio::fs::{self, File};
-use tokio::io::{self, AsyncWrite};
+use tokio::io::{self, AsyncReadExt};
 use tokio_util::io::StreamReader;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,7 +46,7 @@ struct UploadQuery {
 
 pub(crate) async fn upload(
   state: &MainState,
-  name: Option<String>,
+  name: String,
   req: Request<Body>,
 ) -> Result<Response<Body>> {
   let (parts, body) = req.into_parts();
@@ -55,34 +54,64 @@ pub(crate) async fn upload(
 
   let UploadQuery { mode } = serde_qs::from_str(parts.uri.query().unwrap_or(""))?;
 
+  // TODO: check name in `state.abel`
+
   let source_field = multipart.next_field().await?.ok_or((
     "no source uploaded",
     "specify either `single` or `multi` field in multipart",
   ))?;
 
-  // See https://github.com/hack3ric/abel/issues/4
-  let abel_tmp = state.abel_path.join("tmp");
-  let tmp = asyncify(|| tempdir_in(abel_tmp)).await?;
+  // create service dir, if the following errors then remove the folder
+  let service_path = state.abel_path.join("services").join(&name);
+  if service_path.exists() {
+    fs::remove_dir_all(&service_path).await?;
+  }
+  fs::create_dir(&service_path).await?;
 
-  let config = match source_field.name() {
-    Some("single") => read_single(tmp.path(), multipart, source_field).await?,
-    Some("multi") => read_multi(tmp.path(), source_field).await?,
-    _ => {
-      return Err(From::from((
-        "unknown field name",
-        "first field is neither named `single` nor `multi`",
-      )))
-    }
+  let result = async {
+    let (source, config): (Source, Config) = match source_field.name() {
+      Some("single") => {
+        let code = source_field.bytes().await?;
+        fs::write(service_path.join("source.lua"), &code).await?;
+
+        let source = Source::new(SingleSource::new(code));
+        (source, Default::default())
+      }
+      Some("multi") => {
+        let mut reader =
+          StreamReader::new(source_field.map_err(|e| io::Error::new(io::ErrorKind::Other, e)));
+        let path = service_path.join("source.asar");
+        let mut writer = File::create(&path).await?;
+        io::copy(&mut reader, &mut writer).await?;
+
+        let mut archive = Archive::new_from_file(path).await?;
+
+        let mut config_file = archive.get("abel.json").await?;
+        let mut config_bytes = vec![0; config_file.metadata().size as _];
+        config_file.read_to_end(&mut config_bytes).await?;
+        let config = serde_json::from_slice(&config_bytes)?;
+
+        let source = Source::new(AsarSource(archive));
+        (source, config)
+      }
+      _ => {
+        return Err(From::from((
+          "unknown field name",
+          "first field is neither named `single` nor `multi`",
+        )))
+      }
+    };
+
+    create_service(state, mode, name, config, source, &service_path).await
   };
 
-  if config.is_none() {
-    fs::write(tmp.path().join("abel.json"), "{}").await?;
+  match result.await {
+    Ok((service, replaced, error_payload)) => response(service, replaced, error_payload).await,
+    Err(error) => {
+      fs::remove_dir_all(service_path).await?;
+      Err(error)
+    }
   }
-
-  let (name, config) = get_name_config(state, name, config).await?;
-  let (service, replaced, error_payload) =
-    create_service(state, mode, name, config, tmp.into_path()).await?;
-  response(service, replaced, error_payload).await
 }
 
 fn parse_multipart(headers: &HeaderMap, body: Body) -> Result<Multipart<'static>> {
@@ -104,100 +133,21 @@ fn parse_multipart(headers: &HeaderMap, body: Body) -> Result<Multipart<'static>
   Ok(Multipart::with_constraints(body, boundary, constraints))
 }
 
-async fn read_single<'a>(
-  tmp: &Path,
-  mut multipart: Multipart<'static>,
-  source_field: Field<'static>,
-) -> Result<Option<Config>> {
-  let mut main = File::create(tmp.join("main.lua")).await?;
-  save_field(source_field, &mut main).await?;
-
-  if let Some(config_field) = multipart.next_field().await? {
-    if config_field.name().map(|x| x != "config").unwrap_or(true) {
-      return Err(From::from((
-        "unknown field name",
-        "second field is not named `config`",
-      )));
-    }
-    let bytes = config_field.bytes().await?;
-    let config: Config = serde_json::from_slice(&bytes)?;
-    fs::write(tmp.join("abel.json"), &bytes).await?;
-    Ok(Some(config))
-  } else {
-    Ok(None)
-  }
-}
-
-async fn read_multi<'a>(tmp: &Path, source_field: Field<'static>) -> Result<Option<Config>> {
-  let mut tmpfile = File::from_std(asyncify(tempfile).await?);
-  save_field(source_field, &mut tmpfile).await?;
-  let mut archive = Archive::new(tmpfile).await?;
-  archive.extract(tmp).await?;
-
-  if let Ok(bytes) = fs::read(tmp.join("abel.json")).await {
-    Ok(Some(serde_json::from_slice(&bytes)?))
-  } else {
-    Ok(None)
-  }
-}
-
-async fn save_field(field: Field<'_>, dest: &mut (impl AsyncWrite + Unpin)) -> Result<()> {
-  let mut stream =
-    StreamReader::new(field.map_err(|error| io::Error::new(io::ErrorKind::Other, error)));
-  io::copy(&mut stream, dest).await?;
-  Ok(())
-}
-
-async fn get_name_config(
-  state: &MainState,
-  name: Option<String>,
-  config: Option<Config>,
-) -> Result<(String, Config)> {
-  let name_provided = name.is_some();
-
-  let (name, config) = if let Some(config) = config {
-    let name = name
-      .or_else(|| {
-        config.pkg_name.as_ref().map(|x| {
-          let x = x.rsplit_once('.').map(|x| x.0).unwrap_or(x);
-          slug::slugify(x)
-        })
-      })
-      .ok_or((
-        "no service name provided",
-        "neither service name in path nor config's `pkg_name` field is specified",
-      ))?;
-    (name, config)
-  } else {
-    let name = name.ok_or((
-      "no service name provided",
-      "missing config; service name not specified in path",
-    ))?;
-    (name, Default::default())
-  };
-
-  if !name_provided && state.abel.get_service(&name).is_ok() {
-    return Err(ServiceExists { name: name.into() }.into());
-  }
-
-  Ok((name, config))
-}
-
-async fn create_service(
-  state: &MainState,
+async fn create_service<'a>(
+  state: &'a MainState,
   mode: UploadMode,
   name: String,
   config: Config,
-  source_path: impl AsRef<Path>,
-) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
-  let source = DirSource::new(source_path.as_ref()).await?;
+  source: Source,
+  service_path: &Path,
+) -> Result<(Service<'a>, Option<ServiceImpl>, ErrorPayload)> {
   let (service, replaced, error_payload) = match mode {
     UploadMode::Create if state.abel.get_service(&name).is_ok() => {
       return Err(ServiceExists { name: name.into() }.into())
     }
     UploadMode::Hot if state.abel.get_running_service(&name).is_ok() => {
       let (service, replaced) = (state.abel)
-        .hot_update_service(name, None, Source::new(source.clone()), config)
+        .hot_update_service(name, None, source, config)
         .await?;
       (
         Service::Running(service),
@@ -207,24 +157,17 @@ async fn create_service(
     }
     UploadMode::Hot | UploadMode::Cold | UploadMode::Create => {
       (state.abel)
-        .cold_update_or_create_service(name, None, Source::new(source.clone()), config)
+        .cold_update_or_create_service(name, None, source, config)
         .await?
     }
     UploadMode::Load => {
       let (service, replaced, error_payload) = (state.abel)
-        .load_service(name, None, Source::new(source.clone()), config)
+        .load_service(name, None, source, config)
         .await?;
       (Service::Stopped(service), replaced, error_payload)
     }
   };
   let guard = service.upgrade();
-
-  let service_path = state.abel_path.join("services").join(guard.name());
-  if service_path.exists() {
-    fs::remove_dir_all(&service_path).await?;
-  }
-  fs::create_dir(&service_path).await?;
-  source.rename_base(service_path.join("src")).await?;
 
   let metadata = Metadata {
     uuid: guard.uuid(),
