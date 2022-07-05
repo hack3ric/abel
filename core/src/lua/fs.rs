@@ -9,9 +9,7 @@ use crate::path::normalize_path_str;
 use crate::source::{ReadOnlyFile, Source};
 use bstr::ByteSlice;
 use mlua::Value::Nil;
-use mlua::{
-  AnyUserData, ExternalResult, Function, Lua, MultiValue, ToLua, UserData, UserDataMethods,
-};
+use mlua::{AnyUserData, ExternalResult, Function, Lua, MultiValue, UserData, UserDataMethods};
 use pin_project::pin_project;
 use std::borrow::Cow;
 use std::io::SeekFrom;
@@ -104,19 +102,19 @@ enum ReadMode {
 }
 
 impl ReadMode {
-  fn from_lua(mode: mlua::Value) -> mlua::Result<Self> {
+  fn from_lua(mode: mlua::Value) -> Result<Self, String> {
     match mode {
       mlua::Value::Integer(i) if i > 0 => Ok(Self::Exact(i as _)),
-      mlua::Value::Integer(_) => Err(rt_error("read bytes cannot be negative")),
+      mlua::Value::Integer(_) => Err("read bytes cannot be negative".into()),
       mlua::Value::String(s) => match s.as_bytes() {
         b"a" => Ok(Self::All),
         b"l" => Ok(Self::Line),
         b"L" => Ok(Self::LineWithDelimiter),
-        s => Err(rt_error_fmt!("invalid file read mode {:?}", s.as_bstr())),
+        s => Err(format!("invalid file read mode {:?}", s.as_bstr())),
       },
-      _ => Err(rt_error_fmt!(
+      _ => Err(format!(
         "string or integer expected, got {}",
-        mode.type_name()
+        mode.type_name(),
       )),
     }
   }
@@ -141,18 +139,14 @@ async fn read_once<'lua>(
       Ok(mlua::Value::String(lua.create_string(&buf)?))
     }
     Exact(len) => {
-      if len == 0 {
-        "".to_lua(lua)
+      let len = len.min(this.0.get_mut().len().await?);
+      let mut buf = vec![0; len as _];
+      let actual_len = this.0.read_exact(&mut buf).await?;
+      if actual_len == 0 {
+        Ok(Nil)
       } else {
-        let len = len.min(this.0.get_mut().len().await?);
-        let mut buf = vec![0; len as _];
-        let actual_len = this.0.read_exact(&mut buf).await?;
-        if actual_len == 0 {
-          Ok(Nil)
-        } else {
-          buf.truncate(actual_len);
-          Ok(mlua::Value::String(lua.create_string(&buf)?))
-        }
+        buf.truncate(actual_len);
+        Ok(mlua::Value::String(lua.create_string(&buf)?))
       }
     }
     Line => {
@@ -217,8 +211,7 @@ impl UserData for LuaFile {
         }
       } else {
         for (i, mode) in modes.enumerate() {
-          let mode = ReadMode::from_lua(mode)
-            .map_err(|error| arg_error(lua, i + 2, &error.to_string(), 1))?;
+          let mode = ReadMode::from_lua(mode).map_err(|error| arg_error(lua, i + 2, &error, 1))?;
           match this.with_borrowed_mut(|x| read_once(x, lua, mode)).await {
             Ok(Nil) => break,
             Ok(result) => results.push(result),
@@ -230,7 +223,6 @@ impl UserData for LuaFile {
     });
 
     methods.add_async_function("write", |lua, mut args: MultiValue| async move {
-      // let this_u: AnyUserData = check_arg(lua, &args, 1, "file", 1)?;
       let mut this = check_self_mut_async(lua, args.pop_front())?;
       for (i, x) in args.iter().cloned().enumerate().skip(1) {
         let type_name = x.type_name();
@@ -264,11 +256,12 @@ impl UserData for LuaFile {
 
       let seekfrom = if let Some(whence) = whence {
         match whence.as_bytes() {
-          b"set" => SeekFrom::Start(
-            offset
+          b"set" => {
+            let offset = offset
               .try_into()
-              .map_err(|_| arg_error(lua, 2, "cannot combine 'set' with negative number", 1))?,
-          ),
+              .map_err(|_| arg_error(lua, 2, "cannot combine 'set' with negative number", 1))?;
+            SeekFrom::Start(offset)
+          }
           b"cur" => SeekFrom::Current(offset),
           b"end" => SeekFrom::End(offset),
           x => {
@@ -289,18 +282,16 @@ impl UserData for LuaFile {
 
     methods.add_function("lines", |lua, mut args: MultiValue| {
       let this = check_self_async(lua, args.pop_front())?;
-      // TODO: use `read_once`
-      let iter = lua.create_async_function(|lua, this: AnyUserData| async move {
+      let mode = args
+        .pop_front()
+        .map(ReadMode::from_lua)
+        .unwrap_or(Ok(ReadMode::Line))
+        .map_err(|error| arg_error(lua, 2, &error, 1))?;
+      let iter = lua.create_async_function(move |lua, this: AnyUserData| async move {
         let mut this = this.borrow_mut::<Self>()?;
-        let result = async {
-          let mut buf = Vec::new();
-          if this.0.read_until(b'\n', &mut buf).await? == 0 {
-            mlua::Result::Ok(Nil)
-          } else {
-            Ok(mlua::Value::String(lua.create_string(&buf)?))
-          }
-        };
-        Ok(result.await)
+        // This, unlike other function in `fs`, returns hard error.
+        // This corresponds with Lua's behaviour.
+        read_once(&mut this, lua, mode).await
       })?;
       iter.bind(this.into_any())
     });

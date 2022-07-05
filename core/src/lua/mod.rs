@@ -8,6 +8,7 @@ mod fs;
 mod global_env;
 mod isolate;
 mod json;
+mod lua_std;
 mod print;
 mod runtime;
 mod sandbox;
@@ -19,7 +20,7 @@ pub use isolate::Isolate;
 pub use runtime::Runtime;
 
 use crate::Result;
-use mlua::{ExternalError, FromLua, Table};
+use mlua::{ExternalError, FromLua, Function, Lua, Table};
 
 pub trait LuaTableExt<'a> {
   fn raw_get_path<T: FromLua<'a>>(&self, base: &str, path: &[&str]) -> Result<T>;
@@ -64,4 +65,19 @@ impl<'lua, T: FromLua<'lua>, U: FromLua<'lua>> FromLua<'lua> for LuaEither<T, U>
       .or_else(|_| lua.unpack::<U>(lua_value).map(Self::Right))
       .map_err(|_| "failed to convert Lua value to LuaEither".to_lua_err())
   }
+}
+
+pub fn create_preload_routing(lua: &Lua) -> mlua::Result<Function> {
+  lua.create_function(|lua, ()| {
+    let module = lua.create_table()?;
+    for f in lua
+      .globals()
+      .raw_get::<_, Table>("routing")?
+      .pairs::<mlua::Value, mlua::Value>()
+    {
+      let (k, v) = f?;
+      module.raw_set(k, v)?;
+    }
+    Ok(module)
+  })
 }

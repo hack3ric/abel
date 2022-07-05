@@ -8,8 +8,8 @@ pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
   lua.set_named_registry_value("lua_pcall", globals.raw_get::<_, Function>("pcall")?)?;
 
   lua
-    .load(include_str!("global_env.lua"))
-    .set_name("<global_env>")?
+    .load(include_str!("bootstrap.lua"))
+    .set_name("<bootstrap>")?
     .exec()?;
 
   let routing: Table = lua
@@ -21,8 +21,8 @@ pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
   lua.set_named_registry_value(
     "isolate_fn",
     lua
-      .load(include_str!("isolate.lua"))
-      .set_name("<isolate>")?
+      .load(include_str!("isolate_bootstrap.lua"))
+      .set_name("<isolate_bootstrap>")?
       .into_function()?,
   )?;
 

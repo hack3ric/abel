@@ -29,3 +29,5 @@ function getmetatable(t)
   )
   return lua_getmetatable(t)
 end
+
+string.dump = nil

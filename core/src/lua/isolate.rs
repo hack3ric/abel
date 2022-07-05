@@ -1,6 +1,5 @@
 use crate::lua::LuaTableExt;
 use crate::source::Source;
-use futures::Future;
 use mlua::{Function, Lua, RegistryKey, Table, TableExt};
 
 #[derive(Debug)]
@@ -50,24 +49,11 @@ impl<'lua> IsolateBuilder<'lua> {
     Ok(self)
   }
 
-  pub async fn add_lib_async<F, Fut>(self, name: &str, f: F) -> mlua::Result<IsolateBuilder<'lua>>
-  where
-    F: FnOnce(&'lua Lua) -> Fut,
-    Fut: Future<Output = mlua::Result<Function<'lua>>>,
-  {
-    self.preload.raw_set(name, f(self.lua).await?)?;
-    Ok(self)
-  }
-
-  pub fn load_lib(self, name: &str) -> mlua::Result<Self> {
-    let lib: mlua::Value = self.local_env.call_function("require", name)?;
-    self.local_env.raw_set(name, lib)?;
-    Ok(self)
-  }
-
-  pub async fn load_lib_async(self, name: &str) -> mlua::Result<IsolateBuilder<'lua>> {
-    let lib: mlua::Value = self.local_env.call_async_function("require", name).await?;
-    self.local_env.raw_set(name, lib)?;
+  pub fn load_libs<'a>(self, names: impl IntoIterator<Item = &'a str>) -> mlua::Result<Self> {
+    for name in names {
+      let lib: mlua::Value = self.local_env.call_function("require", name)?;
+      self.local_env.raw_set(name, lib)?;
+    }
     Ok(self)
   }
 

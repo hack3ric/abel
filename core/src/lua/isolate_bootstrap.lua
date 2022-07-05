@@ -1,7 +1,5 @@
 -- Fields with `nil` should be initialized in Rust
 
--- Internal --
-
 local paths = {}
 
 local package = {
@@ -16,8 +14,6 @@ local internal = {
   source = nil,
   package = package,
 }
-
--- Abel table --
 
 local function register(path, handler)
   assert(
@@ -45,8 +41,6 @@ local abel = {
   current_worker = current_worker,
   Error = abel_Error,
 }
-
--- Local env --
 
 local local_env = {
   abel = abel,
@@ -116,70 +110,5 @@ local function source_searcher(modname)
 end
 
 package.searchers = { preload_searcher, source_searcher }
-
--- Standard library whitelist --
-
-local whitelist = {
-  [false] = {
-    "assert", "error", "getmetatable", "ipairs",
-    "next", "pairs", "pcall", "print",
-    "rawequal", "select", "setmetatable", "tonumber",
-    "tostring", "type", "warn", "xpcall",
-    "_VERSION",
-  },
-  math = {
-    "abs", "acos", "asin", "atan",
-    "atan2", "ceil", "cos", "deg",
-    "exp", "floor", "fmod", "frexp",
-    "huge", "ldexp", "log", "log10",
-    "max", "maxinteger", "min", "mininteger",
-    "modf", "pi", "pow", "rad", "random",
-    "sin", "sinh", "sqrt", "tan",
-    "tanh", "tointeger", "type", "ult",
-  },
-  os = {
-    "clock", "difftime", "time",
-  },
-  string = {
-    "byte", "char", "find", "format",
-    "gmatch", "gsub", "len", "lower",
-    "match", "reverse", "sub", "upper",
-  },
-  table = {
-    "insert", "move", "remove", "sort",
-    "concat", "pack", "unpack",
-  },
-  coroutine = {
-    "close", "create", "isyieldable", "resume",
-    "running", "status", "wrap", "yield",
-  },
-  routing = "*",
-}
-
-local function apply_whitelist(whitelist)
-  for module, fields in pairs(whitelist) do
-    local from_module, to_module
-    if module then
-      from_module = _G[module]
-      to_module = {}
-      local_env[module] = to_module
-    else
-      from_module = _G
-      to_module = local_env
-    end
-
-    if fields == "*" then
-      for k, v in pairs(from_module) do
-        to_module[k] = v
-      end
-    else
-      for _, field in ipairs(fields) do
-        to_module[field] = from_module[field]
-      end
-    end
-  end
-end
-
-apply_whitelist(whitelist)
 
 return local_env, internal

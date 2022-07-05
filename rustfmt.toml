@@ -1,3 +1,5 @@
 imports_granularity = "Module"
 tab_spaces = 2
 wrap_comments = true
+short_array_element_width_threshold = 16
+overflow_delimited_expr = true

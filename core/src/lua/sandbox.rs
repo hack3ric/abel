@@ -1,9 +1,14 @@
+use super::create_preload_routing;
 use super::crypto::create_preload_crypto;
 use super::fs::create_preload_fs;
 use super::global_env::modify_global_env;
 use super::http::create_preload_http;
 use super::isolate::{Isolate, IsolateBuilder};
 use super::json::create_preload_json;
+use super::lua_std::{
+  create_preload_coroutine, create_preload_math, create_preload_os, create_preload_string,
+  create_preload_table, global_whitelist,
+};
 use super::print::create_fn_print;
 use crate::source::{Source, SourceUserData};
 use mlua::{FromLuaMulti, Lua, Table, ToLuaMulti};
@@ -28,12 +33,23 @@ impl Sandbox {
   ) -> mlua::Result<Isolate> {
     self
       .create_isolate_builder(source.clone())?
+      .add_side_effect(global_whitelist)?
       .add_side_effect(|lua, env, _| env.raw_set("print", create_fn_print(lua, name)?))?
       .add_side_effect(|_, _, i| i.raw_set("source", SourceUserData(source.clone())))?
+      // Lua std, modified
+      .add_lib("math", create_preload_math)?
+      .add_lib("string", create_preload_string)?
+      .add_lib("table", create_preload_table)?
+      .add_lib("coroutine", create_preload_coroutine)?
+      .add_lib("os", create_preload_os)?
+      // Abel std (?)
+      .add_lib("routing", create_preload_routing)?
       .add_lib("fs", create_preload_fs(local_storage_path, source))?
       .add_lib("http", create_preload_http)?
       .add_lib("json", create_preload_json)?
       .add_lib("crypto", create_preload_crypto)?
+      // ...and load some of then into local env
+      .load_libs(["math", "string", "table", "coroutine", "os", "routing"])?
       .build()
   }
 
