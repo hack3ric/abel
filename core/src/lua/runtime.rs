@@ -19,8 +19,6 @@ use regex::Regex;
 use std::cell::{Ref, RefCell};
 use std::sync::Arc;
 
-static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}$").unwrap());
-
 pub struct Runtime {
   pub(crate) sandbox: Sandbox,
   loaded: RefCell<CLruCache<Box<str>, LoadedService>>,
@@ -145,6 +143,8 @@ impl Runtime {
     name: &str,
     source: Source,
   ) -> Result<(Vec<PathMatcher>, Isolate)> {
+    static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}$").unwrap());
+
     if !NAME_CHECK_REGEX.is_match(name) {
       return Err(InvalidServiceName { name: name.into() }.into());
     }

@@ -1,4 +1,5 @@
 use super::error::{arg_error, check_truthiness, check_userdata_mut, rt_error, tag_error};
+use super::LuaCacheExt;
 use crate::lua::byte_stream::ByteStream;
 use crate::lua::context;
 use crate::lua::error::{
@@ -13,37 +14,40 @@ use mlua::{AnyUserData, ExternalResult, Function, Lua, MultiValue, UserData, Use
 use pin_project::pin_project;
 use std::borrow::Cow;
 use std::io::SeekFrom;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use tempfile::tempfile;
 use tokio::fs::{self, File, OpenOptions};
 use tokio::io::{
   self, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt, AsyncWrite,
   AsyncWriteExt, BufReader,
 };
+use tokio::task::spawn_blocking;
 
 pub fn create_preload_fs(
-  local_storage_path: impl Into<PathBuf>,
   source: Source,
+  local_storage_path: Arc<Path>,
 ) -> impl FnOnce(&Lua) -> mlua::Result<Function> {
   |lua| {
-    let local_storage_path: Arc<Path> = local_storage_path.into().into();
     lua.create_function(move |lua, ()| {
-      let fs_table = lua.create_table()?;
-      fs_table.raw_set(
+      let fs = lua.create_table()?;
+      fs.raw_set(
         "open",
         create_fn_fs_open(lua, source.clone(), local_storage_path.clone())?,
       )?;
-      fs_table.raw_set(
+      fs.raw_set("type", create_fn_fs_type(lua)?)?;
+      fs.raw_set("tmpfile", create_fn_fs_tmpfile(lua)?)?;
+      fs.raw_set(
         "mkdir",
         create_fn_fs_mkdir(lua, local_storage_path.clone())?,
       )?;
-      fs_table.raw_set(
+      fs.raw_set(
         "remove",
         create_fn_fs_remove(lua, local_storage_path.clone())?,
       )?;
-      Ok(fs_table)
+      Ok(fs)
     })
   }
 }
@@ -392,7 +396,8 @@ impl AsyncSeek for GenericFile {
   }
 }
 
-fn create_fn_fs_open(
+// Also used in `io.open`
+pub(crate) fn create_fn_fs_open(
   lua: &Lua,
   source: Source,
   local_storage_path: Arc<Path>,
@@ -437,6 +442,33 @@ fn create_fn_fs_open(
       context::register(lua, file.clone())?;
       lua.pack_multi(file)
     }
+  })
+}
+
+// Also used in `io.type`
+pub(crate) fn create_fn_fs_type(lua: &Lua) -> mlua::Result<Function> {
+  lua.create_cached_function("abel:fs.type", |lua, mut args: MultiValue| {
+    use mlua::Value::*;
+    let maybe_file = args
+      .pop_front()
+      .ok_or_else(|| arg_error(lua, 1, "value expected", 0))?;
+    match maybe_file {
+      UserData(u) if u.is::<LuaFile>() => Ok(String(lua.create_string("file")?)),
+      UserData(_) => Ok(String(lua.create_string("closed file")?)),
+      _ => Ok(Nil),
+    }
+  })
+}
+
+// Also used in `io.tmpfile`
+pub(crate) fn create_fn_fs_tmpfile(lua: &Lua) -> mlua::Result<Function> {
+  lua.create_cached_async_function("abel:fs.tmpfile", |_lua, ()| async move {
+    let result = spawn_blocking(tempfile)
+      .await
+      .map_err(|_| io::Error::new(io::ErrorKind::Other, "background task failed"))?
+      .map(|file| LuaFile(BufReader::new(GenericFile::File(File::from_std(file)))))
+      .to_lua_err();
+    Ok(result)
   })
 }
 
@@ -498,6 +530,39 @@ fn create_fn_fs_remove(lua: &Lua, local_storage_path: Arc<Path>) -> mlua::Result
     }
   })
 }
+
+// Simplified version of `fs.remove`
+pub(crate) fn create_fn_os_remove(
+  lua: &Lua,
+  local_storage_path: Arc<Path>,
+) -> mlua::Result<Function> {
+  lua.create_async_function(move |lua, mut args: MultiValue| {
+    let local_storage_path = local_storage_path.clone();
+    async move {
+      let path = check_string(lua, args.pop_front()).map_err(tag_handler_async(lua, 1))?;
+
+      let (scheme, path) = parse_path(&path)?;
+      let path: Cow<Path> = match scheme {
+        "local" => local_storage_path.join(normalize_path_str(path)).into(),
+        "source" => return Err(rt_error("cannot modify service source")),
+        _ => return Err(scheme_not_supported(scheme)),
+      };
+
+      let result = async move {
+        let metadata = fs::metadata(&path).await?;
+        if metadata.is_dir() {
+          fs::remove_dir(path).await?
+        } else {
+          fs::remove_file(path).await?
+        }
+        mlua::Result::Ok(Nil)
+      };
+      Ok(result.await)
+    }
+  })
+}
+
+// TODO: create_fn_fs_rename
 
 fn parse_path<'a>(path: &'a mlua::String<'a>) -> mlua::Result<(&'a str, &'a str)> {
   let path = path.as_bytes();

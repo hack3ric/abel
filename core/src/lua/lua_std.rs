@@ -1,4 +1,9 @@
-use mlua::{Function, Lua, Table};
+use super::fs::{create_fn_fs_open, create_fn_fs_tmpfile, create_fn_fs_type, create_fn_os_remove};
+use crate::source::Source;
+use mlua::Value::Nil;
+use mlua::{Function, Lua, MultiValue, Table};
+use std::path::Path;
+use std::sync::Arc;
 
 fn apply_whitelist<'lua>(
   from: Table<'lua>,
@@ -57,13 +62,49 @@ create_whitelist_preloads! {
   ]);
 }
 
-pub fn create_preload_os(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, ()| {
-    let module = lua.create_table()?;
-    apply_whitelist(lua.globals().raw_get("os")?, module.clone(), [
-      "clock", "difftime", "time",
-    ])?;
-    // TODO: add some shim from other modules
-    Ok(module)
-  })
+pub fn create_preload_os(
+  local_storage_path: Arc<Path>,
+) -> impl FnOnce(&Lua) -> mlua::Result<Function> {
+  |lua| {
+    lua.create_function(move |lua, ()| {
+      let os = lua.create_table()?;
+      apply_whitelist(lua.globals().raw_get("os")?, os.clone(), [
+        "clock", "difftime", "time",
+      ])?;
+
+      os.raw_set(
+        "remove",
+        create_fn_os_remove(lua, local_storage_path.clone())?,
+      )?;
+      os.raw_set(
+        "getenv",
+        lua.create_function(|_lua, _args: MultiValue| {
+          // TODO: read env from config file
+          Ok(Nil)
+        })?,
+      )?;
+
+      Ok(os)
+    })
+  }
+}
+
+pub fn create_preload_io(
+  source: Source,
+  local_storage_path: Arc<Path>,
+) -> impl FnOnce(&Lua) -> mlua::Result<Function> {
+  |lua| {
+    lua.create_function(move |lua, ()| {
+      let io = lua.create_table()?;
+
+      io.raw_set(
+        "open",
+        create_fn_fs_open(lua, source.clone(), local_storage_path.clone())?,
+      )?;
+      io.raw_set("type", create_fn_fs_type(lua)?)?;
+      io.raw_set("tmpfile", create_fn_fs_tmpfile(lua)?)?;
+
+      Ok(io)
+    })
+  }
 }

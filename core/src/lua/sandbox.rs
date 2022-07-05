@@ -6,13 +6,14 @@ use super::http::create_preload_http;
 use super::isolate::{Isolate, IsolateBuilder};
 use super::json::create_preload_json;
 use super::lua_std::{
-  create_preload_coroutine, create_preload_math, create_preload_os, create_preload_string,
-  create_preload_table, global_whitelist, create_preload_utf8,
+  create_preload_coroutine, create_preload_io, create_preload_math, create_preload_os,
+  create_preload_string, create_preload_table, create_preload_utf8, global_whitelist,
 };
 use super::print::create_fn_print;
 use crate::source::{Source, SourceUserData};
 use mlua::{FromLuaMulti, Lua, Table, ToLuaMulti};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 pub struct Sandbox {
   pub(crate) lua: Lua,
@@ -31,6 +32,7 @@ impl Sandbox {
     source: Source,
     local_storage_path: impl Into<PathBuf>,
   ) -> mlua::Result<Isolate> {
+    let local_storage_path: Arc<Path> = local_storage_path.into().into();
     self
       .create_isolate_builder(source.clone())?
       .add_side_effect(global_whitelist)?
@@ -41,16 +43,22 @@ impl Sandbox {
       .add_lib("string", create_preload_string)?
       .add_lib("table", create_preload_table)?
       .add_lib("coroutine", create_preload_coroutine)?
-      .add_lib("os", create_preload_os)?
+      .add_lib("os", create_preload_os(local_storage_path.clone()))?
       .add_lib("utf8", create_preload_utf8)?
+      .add_lib(
+        "io",
+        create_preload_io(source.clone(), local_storage_path.clone()),
+      )?
       // Abel std (?)
       .add_lib("routing", create_preload_routing)?
-      .add_lib("fs", create_preload_fs(local_storage_path, source))?
+      .add_lib("fs", create_preload_fs(source, local_storage_path))?
       .add_lib("http", create_preload_http)?
       .add_lib("json", create_preload_json)?
       .add_lib("crypto", create_preload_crypto)?
       // ...and load some of then into local env
-      .load_libs(["math", "string", "table", "coroutine", "os", "utf8", "routing"])?
+      .load_libs([
+        "math", "string", "table", "coroutine", "os", "utf8", "io", "routing",
+      ])?
       .build()
   }
 
