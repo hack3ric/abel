@@ -38,6 +38,7 @@ create_whitelist_preloads! {
     "ult",
   ]);
 
+  // Removed `string.dump`
   create_preload_string => ("string", [
     "gsub", "format", "byte", "upper", "char", "pack", "lower", "sub", "gmatch", "reverse",
     "match", "len", "rep", "find", "unpack", "packsize",
@@ -49,6 +50,10 @@ create_whitelist_preloads! {
 
   create_preload_coroutine => ("coroutine", [
     "close", "create", "isyieldable", "resume", "running", "status", "wrap", "yield",
+  ]);
+
+  create_preload_utf8 => ("utf8", [
+    "char", "charpattern", "codes", "codepoint", "len", "offset",
   ]);
 }
 

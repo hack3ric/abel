@@ -7,7 +7,7 @@ use super::isolate::{Isolate, IsolateBuilder};
 use super::json::create_preload_json;
 use super::lua_std::{
   create_preload_coroutine, create_preload_math, create_preload_os, create_preload_string,
-  create_preload_table, global_whitelist,
+  create_preload_table, global_whitelist, create_preload_utf8,
 };
 use super::print::create_fn_print;
 use crate::source::{Source, SourceUserData};
@@ -42,6 +42,7 @@ impl Sandbox {
       .add_lib("table", create_preload_table)?
       .add_lib("coroutine", create_preload_coroutine)?
       .add_lib("os", create_preload_os)?
+      .add_lib("utf8", create_preload_utf8)?
       // Abel std (?)
       .add_lib("routing", create_preload_routing)?
       .add_lib("fs", create_preload_fs(local_storage_path, source))?
@@ -49,7 +50,7 @@ impl Sandbox {
       .add_lib("json", create_preload_json)?
       .add_lib("crypto", create_preload_crypto)?
       // ...and load some of then into local env
-      .load_libs(["math", "string", "table", "coroutine", "os", "routing"])?
+      .load_libs(["math", "string", "table", "coroutine", "os", "utf8", "routing"])?
       .build()
   }
 
