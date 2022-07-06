@@ -19,6 +19,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: Install Rust
+      run: rustup update stable
     - name: Build
       run: cargo build --verbose --features mlua/vendored
     - name: Run tests
