@@ -1,11 +1,10 @@
 -- Fields with `nil` should be initialized in Rust
 
-local paths = {}
+local paths, loaded, preload = {}, {}, {}
 
 local package = {
-  loaded = {},
-  preload = {},
-  searchers = nil,
+  loaded = loaded,
+  preload = preload,
 }
 
 local internal = {
@@ -15,7 +14,16 @@ local internal = {
   package = package,
 }
 
-local function register(path, handler)
+local abel = {
+  current_worker = current_worker,
+  Error = abel_Error,
+}
+
+local local_env = {
+  abel = abel
+}
+
+function abel.register(path, handler)
   assert(
     not internal.sealed,
     "cannot call `abel.register` from places other than the top level of `main.lua`"
@@ -35,17 +43,6 @@ local function register(path, handler)
   table.insert(paths, { path, handler })
 end
 
-local abel = {
-  register = register,
-  context = nil,
-  current_worker = current_worker,
-  Error = abel_Error,
-}
-
-local local_env = {
-  abel = abel,
-}
-
 function local_env.require(modname)
   local modname_type = type(modname)
   assert(
@@ -54,14 +51,14 @@ function local_env.require(modname)
   )
 
   local error_msgs = {}
-  if package.loaded[modname] then
-    return table.unpack(package.loaded[modname])
+  if loaded[modname] then
+    return table.unpack(loaded[modname])
   else
     for _, searcher in ipairs(package.searchers) do
       local loader, data = searcher(modname)
       if loader then
         local result = { loader(modname, data) }
-        package.loaded[modname] = result
+        loaded[modname] = result
         return table.unpack(result)
       else
         table.insert(error_msgs, data)
@@ -74,7 +71,7 @@ end
 -- Searchers --
 
 local function preload_searcher(modname)
-  local loader = package.preload[modname]
+  local loader = preload[modname]
   if loader then
     return loader, "<preload>"
   else
