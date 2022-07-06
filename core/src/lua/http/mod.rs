@@ -9,7 +9,7 @@ pub use response::LuaResponse;
 
 use super::error::rt_error_fmt;
 use super::LuaCacheExt;
-use crate::lua::error::{arg_error, check_value, tag_handler_async};
+use crate::lua::error::{arg_error, check_value, tag_error, tag_handler_async};
 use crate::lua::LuaEither;
 use bstr::ByteSlice;
 use hyper::client::HttpConnector;
@@ -20,7 +20,7 @@ use mlua::Value::Nil;
 use mlua::{AnyUserData, Function, Lua, MultiValue, Table};
 use once_cell::sync::Lazy;
 use response::create_fn_http_create_response;
-use uri::create_fn_http_create_uri;
+use uri::{create_fn_http_create_uri, LuaUri};
 
 static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> =
   Lazy::new(|| Client::builder().build(HttpsConnector::new()));
@@ -41,19 +41,23 @@ pub fn create_fn_http_request(lua: &Lua) -> mlua::Result<Function> {
   fn check_request_first_arg(lua: &Lua, value: Option<mlua::Value>) -> mlua::Result<LuaRequest> {
     use LuaEither::*;
     type RequestMeta<'a> = LuaEither<LuaEither<mlua::String<'a>, Table<'a>>, AnyUserData<'a>>;
-    const EXPECTED: &str = "string, table or request userdata";
+    const EXPECTED: &str = "URI or request";
 
     let either =
       check_value::<RequestMeta>(lua, value, EXPECTED).map_err(tag_handler_async(lua, 1))?;
     match either {
       Left(Left(uri)) => Ok(LuaRequest {
-        // TODO: uri
         uri: hyper::Uri::try_from(uri.as_bytes())
-          .map_err(|error| arg_error(lua, 1, &error.to_string(), 0))?,
+          .map_err(|error| arg_error(lua, 1, &error.to_string(), 1))?,
         ..Default::default()
       }),
       Left(Right(table)) => LuaRequest::from_table(lua, table),
-      Right(userdata) => LuaRequest::from_userdata(userdata),
+      Right(u) if u.is::<LuaRequest>() => LuaRequest::from_userdata(u),
+      Right(u) if u.is::<LuaUri>() => Ok(LuaRequest {
+        uri: u.borrow::<LuaUri>()?.0.clone(),
+        ..Default::default()
+      }),
+      Right(_) => Err(tag_error(lua, 1, EXPECTED, "other userdata", 1)),
     }
   }
 
