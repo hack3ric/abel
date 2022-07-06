@@ -113,13 +113,13 @@ impl Runtime {
         path: path.into(),
       })?;
 
-    let loaded = self.load_service(service.clone()).await?;
-    let internal = self.sandbox.get_internal(&loaded.isolate)?;
-
     // `loaded` is a mapped, immutable, checked-at-runtime borrow from
-    // `self.loaded`. Dropping it manually here prevents `self.loaded` being
-    // borrowed more than once at a time.
-    drop(loaded);
+    // `self.loaded`. Dropping it early here prevents `self.loaded` being borrowed
+    // more than once at a time.
+    let internal = {
+      let loaded = self.load_service(service.clone()).await?;
+      self.sandbox.get_internal(&loaded.isolate)?
+    };
 
     for f in internal
       .raw_get_path::<Table>("<internal>", &["paths"])?
@@ -186,10 +186,13 @@ impl Runtime {
   }
 
   pub(crate) async fn run_start(&self, service: RunningService) -> Result<()> {
-    let loaded = self.load_service(service).await?;
-    let start_fn: Option<Function> = (self.sandbox)
-      .get_local_env(&loaded.isolate)?
-      .raw_get_path("<local_env>", &["abel", "start"])?; // TODO: check validity
+    // TODO: check validity
+    let start_fn: Option<Function> = {
+      let loaded = self.load_service(service).await?;
+      (self.sandbox)
+        .get_local_env(&loaded.isolate)?
+        .raw_get_path("<local_env>", &["abel", "start"])?
+    };
     if let Some(f) = start_fn {
       f.call_async(()).await?;
     }
@@ -197,10 +200,12 @@ impl Runtime {
   }
 
   pub(crate) async fn run_stop(&self, service: RunningService) -> Result<()> {
-    let loaded = self.load_service(service).await?;
-    let stop_fn: Option<Function> = (self.sandbox)
-      .get_local_env(&loaded.isolate)?
-      .raw_get_path("<local_env>", &["abel", "stop"])?;
+    let stop_fn: Option<Function> = {
+      let loaded = self.load_service(service).await?;
+      (self.sandbox)
+        .get_local_env(&loaded.isolate)?
+        .raw_get_path("<local_env>", &["abel", "stop"])?
+    };
     if let Some(f) = stop_fn {
       f.call_async(()).await?;
     }
@@ -224,26 +229,27 @@ impl Runtime {
   async fn load_service(&self, service: RunningService) -> Result<Ref<'_, LoadedService>> {
     let service_guard = service.try_upgrade()?;
     let name = service_guard.name();
-    let mut self_loaded = self.loaded.borrow_mut();
-    if let Some(loaded) = self_loaded.pop(name) {
-      if !loaded.service.is_dropped() && loaded.service.ptr_eq(&service) {
-        debug!(
-          "service {name} cache hit on '{}'",
-          std::thread::current().name().unwrap_or("<unnamed>")
-        );
-        self_loaded.put(name.into(), loaded);
-        drop(self_loaded);
-        self.loaded.borrow_mut().get(name);
-        return Ok(Ref::map(self.loaded.borrow(), |x| x.peek(name).unwrap()));
-      } else {
-        self.sandbox.remove_isolate(loaded.isolate)?;
+    {
+      let mut self_loaded = self.loaded.borrow_mut();
+      if let Some(loaded) = self_loaded.pop(name) {
+        if !loaded.service.is_dropped() && loaded.service.ptr_eq(&service) {
+          debug!(
+            "service {name} cache hit on '{}'",
+            std::thread::current().name().unwrap_or("<unnamed>")
+          );
+          self_loaded.put(name.into(), loaded);
+          drop(self_loaded);
+          self.loaded.borrow_mut().get(name);
+          return Ok(Ref::map(self.loaded.borrow(), |x| x.peek(name).unwrap()));
+        } else {
+          self.sandbox.remove_isolate(loaded.isolate)?;
+        }
       }
+      debug!(
+        "service {name} cache miss on '{}'",
+        std::thread::current().name().unwrap_or("<unnamed>")
+      );
     }
-    debug!(
-      "service {name} cache miss on '{}'",
-      std::thread::current().name().unwrap_or("<unnamed>")
-    );
-    drop(self_loaded);
     let source = service_guard.source();
     let (isolate, _) = self.run_source(name, source.clone()).await?;
 

@@ -91,7 +91,7 @@ async fn run() -> anyhow::Result<()> {
 
 async fn init_paths(abel_path: &Path) -> PathBuf {
   async fn create_dir_path(path: impl AsRef<Path>) -> io::Result<()> {
-    if !(&path).as_ref().exists() {
+    if !path.as_ref().exists() {
       fs::create_dir(&path).await?;
     }
     Ok(())
@@ -100,6 +100,13 @@ async fn init_paths(abel_path: &Path) -> PathBuf {
   let local_storage_path = async {
     create_dir_path(abel_path).await?;
     create_dir_path(abel_path.join("services")).await?;
+
+    // Creates a fresh temporary folder
+    let temp_dir = abel_path.join("tmp");
+    if temp_dir.exists() {
+      fs::remove_dir_all(&temp_dir).await?;
+    }
+    fs::create_dir(temp_dir).await?;
 
     let local_storage_path = abel_path.join("storage");
     create_dir_path(&local_storage_path).await?;
@@ -130,10 +137,13 @@ async fn load_saved_services(state: &MainState, config_path: PathBuf) -> anyhow:
         } else if asar_exists {
           let mut archive = Archive::new_from_file(asar_path).await?;
 
-          let mut config_file = archive.get("abel.json").await?;
-          let mut config_bytes = vec![0; config_file.metadata().size as _];
-          config_file.read_to_end(&mut config_bytes).await?;
-          let config = serde_json::from_slice(&config_bytes)?;
+          let config = if let Ok(mut config_file) = archive.get("abel.json").await {
+            let mut config_bytes = vec![0; config_file.metadata().size as _];
+            config_file.read_to_end(&mut config_bytes).await?;
+            serde_json::from_slice(&config_bytes)?
+          } else {
+            Default::default()
+          };
 
           let source = Source::new(AsarSource(archive));
           (source, config)

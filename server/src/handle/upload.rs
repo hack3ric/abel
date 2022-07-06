@@ -19,12 +19,14 @@ use std::path::Path;
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncReadExt};
 use tokio_util::io::StreamReader;
+use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum UploadMode {
   #[serde(rename = "create")]
   Create,
   #[serde(rename = "hot")]
+  #[default]
   Hot,
   #[serde(rename = "cold")]
   Cold,
@@ -32,16 +34,16 @@ enum UploadMode {
   Load,
 }
 
-impl Default for UploadMode {
-  fn default() -> Self {
-    Self::Hot
-  }
-}
-
 #[derive(Deserialize)]
 struct UploadQuery {
   #[serde(default)]
   mode: UploadMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SourceKind {
+  Single,
+  Multi,
 }
 
 pub(crate) async fn upload(
@@ -61,57 +63,47 @@ pub(crate) async fn upload(
     "specify either `single` or `multi` field in multipart",
   ))?;
 
-  // create service dir, if the following errors then remove the folder
-  let service_path = state.abel_path.join("services").join(&name);
-  if service_path.exists() {
-    fs::remove_dir_all(&service_path).await?;
-  }
-  fs::create_dir(&service_path).await?;
+  let temp_path = state.abel_path.join(format!("tmp/{}", Uuid::new_v4()));
 
-  let result = async {
-    let (source, config): (Source, Config) = match source_field.name() {
-      Some("single") => {
-        let code = source_field.bytes().await?;
-        fs::write(service_path.join("source.lua"), &code).await?;
+  let (kind, source, config): (_, Source, Config) = match source_field.name() {
+    Some("single") => {
+      let code = source_field.bytes().await?;
+      fs::write(&temp_path, &code).await?;
 
-        let source = Source::new(SingleSource::new(code));
-        (source, Default::default())
-      }
-      Some("multi") => {
-        let mut reader =
-          StreamReader::new(source_field.map_err(|e| io::Error::new(io::ErrorKind::Other, e)));
-        let path = service_path.join("source.asar");
-        let mut writer = File::create(&path).await?;
-        io::copy(&mut reader, &mut writer).await?;
+      let source = Source::new(SingleSource::new(code));
+      (SourceKind::Single, source, Default::default())
+    }
+    Some("multi") => {
+      let mut reader =
+        StreamReader::new(source_field.map_err(|e| io::Error::new(io::ErrorKind::Other, e)));
+      let mut writer = File::create(&temp_path).await?;
+      io::copy(&mut reader, &mut writer).await?;
 
-        let mut archive = Archive::new_from_file(path).await?;
+      let mut archive = Archive::new_from_file(&temp_path).await?;
 
-        let mut config_file = archive.get("abel.json").await?;
+      let config = if let Ok(mut config_file) = archive.get("abel.json").await {
         let mut config_bytes = vec![0; config_file.metadata().size as _];
         config_file.read_to_end(&mut config_bytes).await?;
-        let config = serde_json::from_slice(&config_bytes)?;
+        serde_json::from_slice(&config_bytes)?
+      } else {
+        Default::default()
+      };
 
-        let source = Source::new(AsarSource(archive));
-        (source, config)
-      }
-      _ => {
-        return Err(From::from((
-          "unknown field name",
-          "first field is neither named `single` nor `multi`",
-        )))
-      }
-    };
-
-    create_service(state, mode, name, config, source, &service_path).await
+      let source = Source::new(AsarSource(archive));
+      (SourceKind::Multi, source, config)
+    }
+    _ => {
+      return Err(From::from((
+        "unknown field name",
+        "first field is neither named `single` nor `multi`",
+      )))
+    }
   };
 
-  match result.await {
-    Ok((service, replaced, error_payload)) => response(service, replaced, error_payload).await,
-    Err(error) => {
-      fs::remove_dir_all(service_path).await?;
-      Err(error)
-    }
-  }
+  let (service, replaced, error_payload) =
+    create_service(state, mode, name, config, source, kind, &temp_path).await?;
+
+  response(service, replaced, error_payload).await
 }
 
 fn parse_multipart(headers: &HeaderMap, body: Body) -> Result<Multipart<'static>> {
@@ -139,7 +131,8 @@ async fn create_service<'a>(
   name: String,
   config: Config,
   source: Source,
-  service_path: &Path,
+  source_kind: SourceKind,
+  temp_path: &Path,
 ) -> Result<(Service<'a>, Option<ServiceImpl>, ErrorPayload)> {
   let (service, replaced, error_payload) = match mode {
     UploadMode::Create if state.abel.get_service(&name).is_ok() => {
@@ -169,6 +162,12 @@ async fn create_service<'a>(
   };
   let guard = service.upgrade();
 
+  let service_path = state.abel_path.join("services").join(guard.name());
+  if service_path.exists() {
+    fs::remove_dir_all(&service_path).await?;
+  }
+  fs::create_dir(&service_path).await?;
+
   let metadata = Metadata {
     uuid: guard.uuid(),
     started: true,
@@ -178,6 +177,11 @@ async fn create_service<'a>(
     serde_json::to_string(&metadata)?,
   )
   .await?;
+
+  match source_kind {
+    SourceKind::Single => fs::rename(temp_path, service_path.join("source.lua")).await?,
+    SourceKind::Multi => fs::hard_link(temp_path, service_path.join("source.asar")).await?,
+  }
 
   Ok((service, replaced, error_payload))
 }
