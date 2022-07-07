@@ -12,7 +12,6 @@ mod lua_std;
 mod runtime;
 mod sandbox;
 
-mod remote_require;
 #[cfg(test)]
 mod tests;
 
