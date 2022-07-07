@@ -1,5 +1,6 @@
 use super::header_name;
 use crate::lua::error::{arg_error, check_string, check_userdata, rt_error_fmt, tag_handler};
+use crate::lua::LuaCacheExt;
 use hyper::header::HeaderValue;
 use hyper::HeaderMap;
 use mlua::{AnyUserData, MultiValue, UserData, UserDataMethods, Variadic};
@@ -42,20 +43,23 @@ impl UserData for LuaHeaderMap {
       }
       .build();
 
-      let iter_fn = lua.create_function(|lua, iter: AnyUserData| {
-        let mut iter = iter.borrow_mut::<LuaHeaderMapIter>()?;
-        let result = iter
-          .with_iter_mut(|x| x.next())
-          .map(|(k, v)| {
-            mlua::Result::Ok(Variadic::from_iter([
-              lua.create_string(k.as_str())?,
-              lua.create_string(v.as_bytes())?,
-            ]))
-          })
-          .transpose()?
-          .unwrap_or_else(Variadic::new);
-        Ok(result)
-      })?;
+      let iter_fn = lua.create_cached_function(
+        "abel:iter_fn@HeaderMap",
+        |lua, iter: AnyUserData| {
+          let mut iter = iter.borrow_mut::<LuaHeaderMapIter>()?;
+          let result = iter
+            .with_iter_mut(|x| x.next())
+            .map(|(k, v)| {
+              mlua::Result::Ok(Variadic::from_iter([
+                lua.create_string(k.as_str())?,
+                lua.create_string(v.as_bytes())?,
+              ]))
+            })
+            .transpose()?
+            .unwrap_or_else(Variadic::new);
+          Ok(result)
+        },
+      )?;
 
       iter_fn.bind(iter)
     });
