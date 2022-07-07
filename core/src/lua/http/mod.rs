@@ -10,20 +10,14 @@ pub use response::LuaResponse;
 use super::error::rt_error_fmt;
 use super::LuaCacheExt;
 use crate::lua::error::{arg_error, check_value, tag_error, tag_handler_async};
-use crate::lua::LuaEither;
+use crate::lua::{LuaEither, LUA_HTTP_CLIENT};
 use bstr::ByteSlice;
-use hyper::client::HttpConnector;
 use hyper::header::{HeaderName, HeaderValue};
-use hyper::{Client, HeaderMap};
-use hyper_tls::HttpsConnector;
+use hyper::HeaderMap;
 use mlua::Value::Nil;
 use mlua::{AnyUserData, Function, Lua, MultiValue, Table};
-use once_cell::sync::Lazy;
 use response::create_fn_http_create_response;
 use uri::{create_fn_http_create_uri, LuaUri};
-
-static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> =
-  Lazy::new(|| Client::builder().build(HttpsConnector::new()));
 
 pub fn create_preload_http(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_function("abel:preload_http", move |lua, ()| {
@@ -65,7 +59,7 @@ pub fn create_fn_http_request(lua: &Lua) -> mlua::Result<Function> {
     "abel:http.request",
     move |lua, mut args: MultiValue| async move {
       let req = check_request_first_arg(lua, args.pop_front())?;
-      let resp = CLIENT.request(req.into()).await;
+      let resp = LUA_HTTP_CLIENT.request(req.into()).await;
       match resp {
         Ok(resp) => lua.pack_multi(LuaResponse::from_hyper(resp)),
         Err(error) => lua.pack_multi((Nil, error.to_string())),

@@ -12,6 +12,7 @@ mod lua_std;
 mod runtime;
 mod sandbox;
 
+mod remote_require;
 #[cfg(test)]
 mod tests;
 
@@ -20,11 +21,18 @@ pub use runtime::Runtime;
 
 use crate::Result;
 use futures::Future;
+use hyper::client::HttpConnector;
+use hyper::Client;
+use hyper_tls::HttpsConnector;
 use log::info;
 use mlua::{
   ExternalError, ExternalResult, FromLua, FromLuaMulti, Function, Lua, MultiValue, Table, ToLua,
   ToLuaMulti,
 };
+use once_cell::sync::Lazy;
+
+static LUA_HTTP_CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> =
+  Lazy::new(|| Client::builder().build(HttpsConnector::new()));
 
 trait LuaTableExt<'a> {
   fn raw_get_path<T: FromLua<'a>>(&self, base: &str, path: &[&str]) -> Result<T>;
