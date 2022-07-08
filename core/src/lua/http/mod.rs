@@ -9,7 +9,7 @@ pub use response::LuaResponse;
 
 use super::error::rt_error_fmt;
 use super::LuaCacheExt;
-use crate::lua::error::{arg_error, check_value, tag_error, tag_handler_async};
+use crate::lua::error::{arg_error, check_value, tag_error, tag_handler};
 use crate::lua::{LuaEither, LUA_HTTP_CLIENT};
 use bstr::ByteSlice;
 use hyper::header::{HeaderName, HeaderValue};
@@ -38,7 +38,7 @@ pub fn create_fn_http_request(lua: &Lua) -> mlua::Result<Function> {
     const EXPECTED: &str = "URI or request";
 
     let either =
-      check_value::<RequestMeta>(lua, value, EXPECTED).map_err(tag_handler_async(lua, 1))?;
+      check_value::<RequestMeta>(lua, value, EXPECTED).map_err(tag_handler(lua, 1, 1))?;
     match either {
       Left(Left(uri)) => Ok(LuaRequest {
         uri: hyper::Uri::try_from(uri.as_bytes())

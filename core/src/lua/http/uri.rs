@@ -22,7 +22,7 @@ impl UserData for LuaUri {
     // TODO: support more complex QS structure (e.g. multiple queries with the same
     // name)
     methods.add_function("query", |lua, mut args: MultiValue| {
-      let this = check_userdata::<Self>(args.pop_front(), "URI").map_err(tag_handler(lua, 1))?;
+      let this = check_userdata::<Self>(args.pop_front(), "URI").map_err(tag_handler(lua, 1, 0))?;
       let result = (this.borrow_borrowed().0.query())
         .map(serde_qs::from_str::<HashMap<String, String>>)
         .transpose()
@@ -56,7 +56,7 @@ impl<'lua> FromLua<'lua> for LuaUri {
 
 pub fn create_fn_http_create_uri(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_function("abel:http.Uri", |lua, mut args: MultiValue| {
-    let s = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1))?;
+    let s = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 0))?;
     Ok(LuaUri(hyper::Uri::try_from(s.as_bytes()).to_lua_err()?))
   })
 }

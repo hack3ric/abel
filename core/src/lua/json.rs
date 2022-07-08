@@ -17,7 +17,7 @@ pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
 
 fn create_fn_json_parse(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_function("abel:json.parse", |lua, mut args: MultiValue| {
-    let string = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1))?;
+    let string = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 0))?;
     let result = serde_json::from_slice::<serde_json::Value>(string.as_bytes());
     match result {
       Ok(result) => lua.pack_multi(lua.to_value(&result)?),
@@ -46,7 +46,8 @@ fn create_fn_json_stringify(lua: &Lua) -> mlua::Result<Function> {
 
 fn create_fn_json_array(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_function("abel:json.array", |lua, mut args: MultiValue| {
-    let table: Table = check_value(lua, args.pop_front(), "table").map_err(tag_handler(lua, 1))?;
+    let table: Table =
+      check_value(lua, args.pop_front(), "table").map_err(tag_handler(lua, 1, 0))?;
     table.set_metatable(Some(lua.array_metatable()));
     Ok(table)
   })
@@ -54,7 +55,8 @@ fn create_fn_json_array(lua: &Lua) -> mlua::Result<Function> {
 
 fn create_fn_json_undo_array(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_function("abel:json.undo_array", |lua, mut args: MultiValue| {
-    let table: Table = check_value(lua, args.pop_front(), "table").map_err(tag_handler(lua, 1))?;
+    let table: Table =
+      check_value(lua, args.pop_front(), "table").map_err(tag_handler(lua, 1, 0))?;
     if table
       .get_metatable()
       .map(|x| x == lua.array_metatable())

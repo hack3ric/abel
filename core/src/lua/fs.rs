@@ -3,8 +3,8 @@ use super::LuaCacheExt;
 use crate::lua::byte_stream::ByteStream;
 use crate::lua::context;
 use crate::lua::error::{
-  check_integer, check_string, check_userdata, check_value, rt_error_fmt, tag_handler_async,
-  UserDataRef, UserDataRefMut,
+  check_integer, check_string, check_userdata, check_value, rt_error_fmt, tag_handler, UserDataRef,
+  UserDataRefMut,
 };
 use crate::path::normalize_path_str;
 use crate::source::{ReadOnlyFile, Source};
@@ -186,14 +186,14 @@ impl UserData for LuaFile {
       lua: &'lua Lua,
       value: Option<mlua::Value<'lua>>,
     ) -> mlua::Result<UserDataRef<'lua, LuaFile>> {
-      check_userdata(value, "file").map_err(tag_handler_async(lua, 1))
+      check_userdata(value, "file").map_err(tag_handler(lua, 1, 1))
     }
 
     fn check_self_mut_async<'lua>(
       lua: &'lua Lua,
       value: Option<mlua::Value<'lua>>,
     ) -> mlua::Result<UserDataRefMut<'lua, LuaFile>> {
-      check_userdata_mut(value, "file").map_err(tag_handler_async(lua, 1))
+      check_userdata_mut(value, "file").map_err(tag_handler(lua, 1, 1))
     }
 
     methods.add_meta_function("__close", |_lua, this: AnyUserData| {
@@ -251,12 +251,12 @@ impl UserData for LuaFile {
         .pop_front()
         .map(|x| check_string(lua, Some(x)))
         .transpose()
-        .map_err(tag_handler_async(lua, 2))?;
+        .map_err(tag_handler(lua, 2, 1))?;
       let offset = args
         .pop_front()
         .map(|x| check_integer(Some(x)))
         .unwrap_or(Ok(0))
-        .map_err(tag_handler_async(lua, 3))?;
+        .map_err(tag_handler(lua, 3, 1))?;
 
       let seekfrom = if let Some(whence) = whence {
         match whence.as_bytes() {
@@ -313,7 +313,7 @@ impl UserData for LuaFile {
 
     methods.add_async_function("into_stream", |lua, mut args: MultiValue| async move {
       let this = check_value::<AnyUserData>(lua, args.pop_front(), "file")
-        .map_err(tag_handler_async(lua, 1))?
+        .map_err(tag_handler(lua, 1, 1))?
         .take::<Self>()
         .map_err(|_| tag_error(lua, 1, "file", "other userdata", 1))?;
       Ok(ByteStream::from_async_read(this.0))
@@ -406,12 +406,12 @@ pub(crate) fn create_fn_fs_open(
     let source = source.clone();
     let local_storage_path = local_storage_path.clone();
     async move {
-      let path = check_string(lua, args.pop_front()).map_err(tag_handler_async(lua, 1))?;
+      let path = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 1))?;
       let mode = args
         .pop_front()
         .map(|x| check_string(lua, Some(x)))
         .transpose()
-        .map_err(tag_handler_async(lua, 2))?;
+        .map_err(tag_handler(lua, 2, 1))?;
 
       let (scheme, path) = parse_path(&path)?;
       let mode = OpenMode::from_lua(mode)?;
@@ -476,7 +476,7 @@ fn create_fn_fs_mkdir(lua: &Lua, local_storage_path: Arc<Path>) -> mlua::Result<
   lua.create_async_function(move |lua, mut args: MultiValue| {
     let local_storage_path = local_storage_path.clone();
     async move {
-      let path = check_string(lua, args.pop_front()).map_err(tag_handler_async(lua, 1))?;
+      let path = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 1))?;
       let all = check_truthiness(args.pop_front());
 
       let (scheme, path) = parse_path(&path)?;
@@ -503,7 +503,7 @@ fn create_fn_fs_remove(lua: &Lua, local_storage_path: Arc<Path>) -> mlua::Result
   lua.create_async_function(move |lua, mut args: MultiValue| {
     let local_storage_path = local_storage_path.clone();
     async move {
-      let path = check_string(lua, args.pop_front()).map_err(tag_handler_async(lua, 1))?;
+      let path = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 1))?;
       let all = check_truthiness(args.pop_front());
 
       let (scheme, path) = parse_path(&path)?;
@@ -539,7 +539,7 @@ pub(crate) fn create_fn_os_remove(
   lua.create_async_function(move |lua, mut args: MultiValue| {
     let local_storage_path = local_storage_path.clone();
     async move {
-      let path = check_string(lua, args.pop_front()).map_err(tag_handler_async(lua, 1))?;
+      let path = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 1))?;
 
       let (scheme, path) = parse_path(&path)?;
       let path: Cow<Path> = match scheme {

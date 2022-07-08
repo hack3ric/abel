@@ -1,4 +1,4 @@
-use super::error::{check_userdata_mut, tag_handler_async};
+use super::error::{check_userdata_mut, tag_handler};
 use crate::Result;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
@@ -35,7 +35,7 @@ impl UserData for ByteStream {
   fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_async_function("to_string", |lua, mut args: MultiValue| async move {
       let mut this = check_userdata_mut::<Self>(args.pop_front(), "byte stream")
-        .map_err(tag_handler_async(lua, 1))?;
+        .map_err(tag_handler(lua, 1, 1))?;
       this
         .with_borrowed_mut(|x| x.aggregate())
         .await
@@ -45,7 +45,7 @@ impl UserData for ByteStream {
 
     methods.add_async_function("parse_json", |lua, mut args: MultiValue| async move {
       let mut this = check_userdata_mut::<Self>(args.pop_front(), "byte stream")
-        .map_err(tag_handler_async(lua, 1))?;
+        .map_err(tag_handler(lua, 1, 1))?;
       lua.pack_multi(
         async {
           let bytes = this.with_borrowed_mut(|x| x.aggregate()).await?;

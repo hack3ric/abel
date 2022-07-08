@@ -108,7 +108,7 @@ pub fn create_fn_pcall(lua: &Lua) -> mlua::Result<Function> {
   })
 }
 
-// pub fn create_fn_xpcall
+// TODO: pub fn create_fn_xpcall
 
 // Error utilities
 
@@ -123,6 +123,13 @@ macro_rules! rt_error_fmt {
 }
 
 pub(crate) use rt_error_fmt;
+
+// Note on `level`:
+//
+// Tells Lua how deep it should dig through stack trace to find the function's
+// name.
+//
+// Initial: 0; async +1; `Function::bind` +1
 
 fn arg_error_msg(lua: &Lua, mut pos: usize, msg: &str, level: usize) -> String {
   if let Some(d) = lua.inspect_stack(level) {
@@ -153,15 +160,9 @@ pub fn tag_error(lua: &Lua, pos: usize, expected: &str, got: &str, level: usize)
 pub fn tag_handler(
   lua: &Lua,
   pos: usize,
+  level: usize,
 ) -> impl Fn((&'static str, &'static str)) -> mlua::Error + '_ {
-  move |(expected, got)| tag_error(lua, pos, expected, got, 0)
-}
-
-pub fn tag_handler_async(
-  lua: &Lua,
-  pos: usize,
-) -> impl Fn((&'static str, &'static str)) -> mlua::Error + '_ {
-  move |(expected, got)| tag_error(lua, pos, expected, got, 1)
+  move |(expected, got)| tag_error(lua, pos, expected, got, level)
 }
 
 pub fn bad_field(field: &str, msg: impl Display) -> mlua::Error {

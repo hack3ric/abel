@@ -95,7 +95,8 @@ impl From<LuaResponse> for Response<Body> {
 
 pub fn create_fn_http_create_response(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_function("abel:http.Response", |lua, mut args: MultiValue| {
-    let params: Table = check_value(lua, args.pop_front(), "table").map_err(tag_handler(lua, 1))?;
+    let params: Table =
+      check_value(lua, args.pop_front(), "table").map_err(tag_handler(lua, 1, 0))?;
     let body = LuaBody::from_value(params.raw_get::<_, mlua::Value>("body")?)
       .map_err(|error| bad_field("body", error))?;
     let mut response = body.into_default_response();

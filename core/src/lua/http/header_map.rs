@@ -14,8 +14,8 @@ impl UserData for LuaHeaderMap {
   fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_function("get", |lua, mut args: MultiValue| {
       let this =
-        check_userdata::<Self>(args.pop_front(), "header map").map_err(tag_handler(lua, 1))?;
-      let name = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 2))?;
+        check_userdata::<Self>(args.pop_front(), "header map").map_err(tag_handler(lua, 1, 0))?;
+      let name = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 2, 0))?;
       let name = header_name(name).map_err(|error| arg_error(lua, 2, &error.to_string(), 0))?;
       let header_map = this.borrow_borrowed().0.borrow();
       header_map
@@ -43,9 +43,8 @@ impl UserData for LuaHeaderMap {
       }
       .build();
 
-      let iter_fn = lua.create_cached_function(
-        "abel:iter_fn@HeaderMap",
-        |lua, iter: AnyUserData| {
+      let iter_fn =
+        lua.create_cached_function("abel:iter_fn@HeaderMap", |lua, iter: AnyUserData| {
           let mut iter = iter.borrow_mut::<LuaHeaderMapIter>()?;
           let result = iter
             .with_iter_mut(|x| x.next())
@@ -58,8 +57,7 @@ impl UserData for LuaHeaderMap {
             .transpose()?
             .unwrap_or_else(Variadic::new);
           Ok(result)
-        },
-      )?;
+        })?;
 
       iter_fn.bind(iter)
     });
