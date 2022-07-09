@@ -4,7 +4,7 @@ mod impls;
 pub use create::ErrorPayload;
 pub use impls::*;
 
-use crate::lua::Runtime;
+use crate::runtime::Runtime;
 use crate::task::RuntimePool;
 use crate::ErrorKind::*;
 use crate::{AbelState, Result};

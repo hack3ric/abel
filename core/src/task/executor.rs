@@ -1,6 +1,6 @@
 use super::task_future::TaskFuture;
 use super::Task;
-use crate::lua::Runtime;
+use crate::runtime::Runtime;
 use crate::Result;
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;

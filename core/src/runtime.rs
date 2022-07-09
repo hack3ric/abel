@@ -1,9 +1,6 @@
-use super::http::LuaResponse;
-use super::isolate::Isolate;
-use super::sandbox::Sandbox;
-use super::LuaTableExt;
 use crate::lua::error::{resolve_callback_error, rt_error_fmt};
-use crate::lua::http::LuaRequest;
+use crate::lua::http::{LuaRequest, LuaResponse};
+use crate::lua::{Isolate, LuaTableExt, Sandbox};
 use crate::path::PathMatcher;
 use crate::service::{get_local_storage_path, RunningService};
 use crate::source::Source;

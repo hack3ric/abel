@@ -5,6 +5,7 @@ pub mod source;
 mod config;
 mod error;
 mod lua;
+mod runtime;
 mod task;
 mod util;
 
@@ -14,7 +15,7 @@ pub use mlua::Error as LuaError;
 pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 
 use hyper::{Body, Request, Response};
-use lua::Runtime;
+use runtime::Runtime;
 use service::{ErrorPayload, Service, ServiceName, ServicePool, StoppedService};
 use source::Source;
 use std::path::PathBuf;

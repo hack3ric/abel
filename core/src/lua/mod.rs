@@ -1,22 +1,21 @@
 pub(crate) mod context;
+pub mod error;
 pub mod http;
 
 mod byte_stream;
 mod crypto;
-mod error;
 mod fs;
 mod global_env;
 mod isolate;
 mod json;
 mod lua_std;
-mod runtime;
 mod sandbox;
 
 #[cfg(test)]
 mod tests;
 
 pub use isolate::Isolate;
-pub use runtime::Runtime;
+pub use sandbox::Sandbox;
 
 use crate::Result;
 use futures::Future;
@@ -33,7 +32,7 @@ use once_cell::sync::Lazy;
 static LUA_HTTP_CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> =
   Lazy::new(|| Client::builder().build(HttpsConnector::new()));
 
-trait LuaTableExt<'a> {
+pub trait LuaTableExt<'a> {
   fn raw_get_path<T: FromLua<'a>>(&self, base: &str, path: &[&str]) -> Result<T>;
 }
 

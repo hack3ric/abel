@@ -1,5 +1,6 @@
 use super::AnyBox;
-use crate::lua::{context, Runtime};
+use crate::lua::context;
+use crate::runtime::Runtime;
 use futures::future::LocalBoxFuture;
 use futures::Future;
 use mlua::{ExternalError, HookTriggers, RegistryKey};

@@ -2,7 +2,8 @@ use super::{
   get_local_storage_path, RunningService, Service, ServiceImpl, ServiceName, ServicePool,
   ServiceState, StoppedService,
 };
-use crate::lua::{Isolate, Runtime};
+use crate::lua::Isolate;
+use crate::runtime::Runtime;
 use crate::source::Source;
 use crate::task::RuntimePool;
 use crate::ErrorKind::{self, ServiceNotFound, ServiceStopped};

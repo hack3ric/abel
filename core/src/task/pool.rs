@@ -1,5 +1,5 @@
 use super::executor::Executor;
-use crate::lua::Runtime;
+use crate::runtime::Runtime;
 use crate::Result;
 use futures::{Future, FutureExt};
 use log::error;

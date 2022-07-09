@@ -4,7 +4,7 @@ mod task_future;
 
 pub use pool::RuntimePool;
 
-use crate::lua::Runtime;
+use crate::runtime::Runtime;
 use futures::future::LocalBoxFuture;
 use std::any::Any;
 use std::rc::Rc;
