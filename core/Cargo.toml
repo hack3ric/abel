@@ -3,13 +3,16 @@ name = "abel-core"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = ["vendored"]
-vendored = ["mlua/vendored"]
+# [features]
+# default = ["vendored"]
+# vendored = ["mlua/vendored"]
 
-[dependencies.mlua]
-version = "0.8.1"
-features = ["lua54", "async", "macros", "serialize"]
+# [dependencies.mlua]
+# version = "0.8.1"
+# features = ["lua54", "async", "macros", "serialize"]
+
+[dependencies.abel-rt]
+path = "../rt"
 
 [dependencies]
 async-trait = "0.1.53"

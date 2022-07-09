@@ -1,15 +1,17 @@
-use crate::lua::error::{resolve_callback_error, rt_error_fmt};
-use crate::lua::http::{LuaRequest, LuaResponse};
-use crate::lua::{Isolate, LuaTableExt, Sandbox};
 use crate::path::PathMatcher;
 use crate::service::{get_local_storage_path, RunningService};
-use crate::source::Source;
 use crate::ErrorKind::{self, *};
 use crate::{AbelState, Error, Result};
+use abel_rt::lua::error::{resolve_callback_error, rt_error_fmt};
+use abel_rt::lua::http::{LuaRequest, LuaResponse};
+use abel_rt::lua::{Isolate, LuaTableExt, Sandbox};
+use abel_rt::mlua::{
+  self, ExternalError, FromLuaMulti, Function, Lua, Table, TableExt, ToLuaMulti,
+};
+use abel_rt::Source;
 use clru::CLruCache;
 use hyper::{Body, Request};
 use log::debug;
-use mlua::{ExternalError, FromLuaMulti, Function, Lua, Table, TableExt, ToLuaMulti};
 use nonzero_ext::nonzero;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -40,7 +42,7 @@ impl Runtime {
   }
 
   pub(crate) fn lua(&self) -> &Lua {
-    &self.sandbox.lua
+    self.sandbox.lua()
   }
 
   async fn call_extract_error<'a, T, R>(&'a self, f: mlua::Value<'a>, v: T) -> Result<R>

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 abel-core = { path = "../core" }
+abel-rt = { path = "../rt" }
 anyhow = { version = "1.0.52", features = ["backtrace"] }
 async-trait = "0.1.56"
 backtrace = "0.3.63"

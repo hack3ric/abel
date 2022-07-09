@@ -1,4 +1,4 @@
-pub(crate) mod context;
+pub mod context; // TODO: change back to pub(crate)
 pub mod error;
 pub mod http;
 

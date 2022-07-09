@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub struct Sandbox {
-  pub(crate) lua: Lua,
+  lua: Lua,
 }
 
 impl Sandbox {
@@ -23,6 +23,10 @@ impl Sandbox {
     let lua = Lua::new();
     modify_global_env(&lua)?;
     Ok(Self { lua })
+  }
+
+  pub fn lua(&self) -> &Lua {
+    &self.lua
   }
 
   pub async fn create_isolate(

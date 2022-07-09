@@ -12,6 +12,7 @@ checksum = "fe438c63458706e03479442743baae6c88256498e6431708f6dfc520a26515d3"
 name = "abel-core"
 version = "0.1.0"
 dependencies = [
+ "abel-rt",
  "anyhow",
  "async-trait",
  "backtrace",
@@ -23,7 +24,6 @@ dependencies = [
  "hyper-tls",
  "libc",
  "log",
- "mlua",
  "nonzero_ext",
  "once_cell",
  "ouroboros",
@@ -78,6 +78,7 @@ name = "abel-server"
 version = "0.1.0"
 dependencies = [
  "abel-core",
+ "abel-rt",
  "anyhow",
  "async-trait",
  "backtrace",

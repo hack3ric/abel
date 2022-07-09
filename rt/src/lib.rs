@@ -1,4 +1,5 @@
-mod lua;
+pub mod lua;
+
 mod path;
 mod source;
 

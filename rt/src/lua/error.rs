@@ -1,3 +1,4 @@
+use hyper::StatusCode;
 use mlua::Value::Nil;
 use mlua::{
   AnyUserData, DebugNames, ExternalError, FromLua, Function, Lua, LuaSerdeExt, MultiValue, Table,
@@ -14,10 +15,10 @@ use std::fmt::Display;
 pub struct CustomError {
   status: StatusCode,
   error: String,
-  detail: serde_json::Value
+  detail: serde_json::Value,
 }
 
-pub(crate) fn resolve_callback_error(error: &mlua::Error) -> &mlua::Error {
+pub fn resolve_callback_error(error: &mlua::Error) -> &mlua::Error {
   match error {
     mlua::Error::CallbackError {
       traceback: _,
@@ -124,14 +125,13 @@ pub fn rt_error(s: impl ToString) -> mlua::Error {
   mlua::Error::RuntimeError(s.to_string())
 }
 
+#[macro_export]
 macro_rules! rt_error_fmt {
   ($($args:tt)*) => {
     $crate::lua::error::rt_error(format!($($args)*))
   };
 }
-
-pub(crate) use rt_error_fmt;
-use hyper::StatusCode;
+pub use rt_error_fmt;
 
 // Note on `level`:
 //
