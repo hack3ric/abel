@@ -127,3 +127,18 @@ impl<T> Sandbox<T> {
     self.lua.expire_registry_values();
   }
 }
+
+impl<T: Cleanup> Sandbox<T> {
+  pub fn cleanup(&self) {
+    self.extra.cleanup();
+    self.expire_registry_values();
+  }
+}
+
+pub trait Cleanup {
+  fn cleanup(&self);
+}
+
+impl Cleanup for () {
+  fn cleanup(&self) {}
+}

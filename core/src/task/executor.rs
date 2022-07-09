@@ -1,11 +1,12 @@
 use super::task_future::TaskFuture;
 use super::Task;
 use crate::Result;
-use abel_rt::Sandbox;
-use futures::future::{select, Either};
+use abel_rt::{Cleanup, Sandbox};
+use futures::future::select;
+use futures::future::Either::*;
 use futures::stream::FuturesUnordered;
 use futures::{pin_mut, Stream};
-use log::{debug, error, info};
+use log::{debug, error};
 use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -55,14 +56,22 @@ impl Drop for PanicNotifier {
   }
 }
 
-pub struct Executor<R: Deref<Target = Sandbox<E>> + 'static, E> {
+pub struct Executor<R, E>
+where
+  R: Deref<Target = Sandbox<E>> + 'static,
+  E: Cleanup,
+{
   pub task_count: Arc<AtomicU32>,
   panicked: Arc<AtomicBool>,
   task_tx: mpsc::Sender<Task<R>>,
   _stop_tx: oneshot::Sender<()>,
 }
 
-impl<R: Deref<Target = Sandbox<E>> + 'static, E> Executor<R, E> {
+impl<R, E> Executor<R, E>
+where
+  R: Deref<Target = Sandbox<E>> + 'static,
+  E: Cleanup,
+{
   pub fn new(f: impl FnOnce() -> Result<R> + Send + 'static, name: String) -> Self {
     let task_count = Arc::new(AtomicU32::new(0));
     let panicked = Arc::new(AtomicBool::new(false));
@@ -98,11 +107,11 @@ impl<R: Deref<Target = Sandbox<E>> + 'static, E> Executor<R, E> {
             )
             .await
             {
-              Either::Left((Either::Left(_), _)) => {
+              Left((Left(_), _)) => {
                 debug!("{} stopping", std::thread::current().name().unwrap());
                 break;
               }
-              Either::Left((Either::Right(_), _)) => {
+              Left((Right(_), _)) => {
                 waker = MyWaker::from_tx(waker_tx.clone());
                 let tasks = Pin::new(&mut tasks);
                 let mut context = Context::from_waker(&waker);
@@ -113,14 +122,9 @@ impl<R: Deref<Target = Sandbox<E>> + 'static, E> Executor<R, E> {
                   waker.wake_by_ref();
                 }
               }
-              Either::Right((Either::Left(_), _)) => {
-                // TODO: better cleaning trigger
-                // let count = rt.clean_loaded().await;
-                // if count > 0 {
-                //   info!("successfully cleaned {count} dropped services");
-                // }
-              }
-              Either::Right((Either::Right((Some(msg), _)), _)) => {
+              // TODO: better cleaning trigger
+              Right((Left(_), _)) => rt.cleanup(),
+              Right((Right((Some(msg), _)), _)) => {
                 if let Some((task_fn, tx)) = msg.try_lock().ok().and_then(|mut x| x.take()) {
                   let task_count = task_count2.clone();
                   task_count.fetch_add(1, Ordering::AcqRel);
@@ -131,7 +135,7 @@ impl<R: Deref<Target = Sandbox<E>> + 'static, E> Executor<R, E> {
               }
               // The new task channel is dropped, stopping the executor.
               // TODO: graceful shutdown?
-              Either::Right((Either::Right((None, _)), _)) => break,
+              Right((Right((None, _)), _)) => break,
             }
           }
         })

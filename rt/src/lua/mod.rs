@@ -15,7 +15,7 @@ mod sandbox;
 mod tests;
 
 pub use isolate::Isolate;
-pub use sandbox::Sandbox;
+pub use sandbox::{Cleanup, Sandbox};
 
 use futures::Future;
 use hyper::client::HttpConnector;

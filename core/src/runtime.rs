@@ -6,10 +6,10 @@ use abel_rt::lua::error::{resolve_callback_error, rt_error_fmt};
 use abel_rt::lua::http::{LuaRequest, LuaResponse};
 use abel_rt::lua::{Isolate, LuaTableExt, Sandbox};
 use abel_rt::mlua::{self, ExternalError, FromLuaMulti, Function, Table, TableExt, ToLuaMulti};
-use abel_rt::{CustomError, Source};
+use abel_rt::{Cleanup, CustomError, Source};
 use clru::CLruCache;
 use hyper::{Body, Request};
-use log::debug;
+use log::{debug, info};
 use nonzero_ext::nonzero;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -241,18 +241,21 @@ impl Runtime {
     extra.loaded.borrow_mut().get(name);
     Ok(Ref::map(extra.loaded.borrow(), |x| x.peek(name).unwrap()))
   }
+}
 
-  pub(crate) async fn clean_loaded(&self) -> u32 {
+impl Cleanup for Extra {
+  fn cleanup(&self) {
     let mut count = 0;
-    self.extra().loaded.borrow_mut().retain(|_, v| {
+    self.loaded.borrow_mut().retain(|_, v| {
       let r = !v.service.is_dropped();
       if !r {
         count += 1;
       }
       r
     });
-    self.expire_registry_values();
-    count
+    if count > 0 {
+      info!("successfully cleaned {count} dropped services");
+    }
   }
 }
 
