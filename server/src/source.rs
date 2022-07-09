@@ -1,5 +1,4 @@
-use abel_core::path::normalize_path_str;
-use abel_core::source::SourceVfs;
+use abel_rt::{normalize_path_str, SourceVfs};
 use async_trait::async_trait;
 use hive_asar::{Archive, DuplicableFile};
 use std::io::Cursor;

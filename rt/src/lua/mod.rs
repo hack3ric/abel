@@ -1,21 +1,18 @@
-pub(crate) mod context;
+pub mod byte_stream;
+pub mod crypto;
 pub mod error;
+pub mod fs;
+pub mod global_env;
 pub mod http;
+pub mod isolate;
+pub mod json;
+pub mod lua_std;
+pub mod sandbox;
 
-mod byte_stream;
-mod crypto;
-mod fs;
-mod global_env;
-mod isolate;
-mod json;
-mod lua_std;
-mod sandbox;
+pub(crate) mod context;
 
 #[cfg(test)]
 mod tests;
-
-pub use isolate::Isolate;
-pub use sandbox::Sandbox;
 
 use futures::Future;
 use hyper::client::HttpConnector;

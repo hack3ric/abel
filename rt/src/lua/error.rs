@@ -1,4 +1,4 @@
-use crate::ErrorKind;
+use hyper::StatusCode;
 use mlua::Value::Nil;
 use mlua::{
   AnyUserData, DebugNames, ExternalError, FromLua, Function, Lua, LuaSerdeExt, MultiValue, Table,
@@ -9,7 +9,15 @@ use std::borrow::Cow;
 use std::cell::{Ref, RefMut};
 use std::fmt::Display;
 
-pub(crate) fn resolve_callback_error(error: &mlua::Error) -> &mlua::Error {
+#[derive(Debug, thiserror::Error, Clone)]
+#[error("{error} {detail:?}")]
+pub struct CustomError {
+  pub status: StatusCode,
+  pub error: String,
+  pub detail: serde_json::Value,
+}
+
+pub fn resolve_callback_error(error: &mlua::Error) -> &mlua::Error {
   match error {
     mlua::Error::CallbackError {
       traceback: _,
@@ -36,12 +44,12 @@ fn error_fn(lua: &Lua, error: mlua::Value) -> mlua::Result<()> {
       let detail = lua
         .from_value(detail)
         .map_err(|error| bad_field("detail", error))?;
-      let result = ErrorKind::Custom {
+      let result = CustomError {
         status,
         error,
         detail,
       };
-      Err(crate::Error::from(result).to_lua_err())
+      Err(result.to_lua_err())
     }
     Error(error) => Err(resolve_callback_error(&error).clone()),
     _ => {
@@ -116,13 +124,13 @@ pub fn rt_error(s: impl ToString) -> mlua::Error {
   mlua::Error::RuntimeError(s.to_string())
 }
 
+#[macro_export]
 macro_rules! rt_error_fmt {
   ($($args:tt)*) => {
     $crate::lua::error::rt_error(format!($($args)*))
   };
 }
-
-pub(crate) use rt_error_fmt;
+pub use rt_error_fmt;
 
 // Note on `level`:
 //

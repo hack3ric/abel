@@ -1,4 +1,3 @@
-use crate::Result;
 use async_trait::async_trait;
 use mlua::{ExternalResult, Function, Lua, Table, UserData};
 use std::fmt::Debug;
@@ -69,7 +68,7 @@ impl Source {
     lua: &'a Lua,
     path: &'b str,
     env: Table<'a>,
-  ) -> Result<Function<'a>> {
+  ) -> mlua::Result<Function<'a>> {
     let code = self.get_bytes(path).await?;
     let result = lua
       .load(&code)

@@ -14,15 +14,28 @@ use mlua::{FromLuaMulti, Lua, Table, ToLuaMulti};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub struct Sandbox {
-  pub(crate) lua: Lua,
+pub struct Sandbox<T> {
+  lua: Lua,
+  extra: T,
 }
 
-impl Sandbox {
-  pub fn new() -> mlua::Result<Self> {
+impl<T> Sandbox<T> {
+  pub fn new(extra: T) -> mlua::Result<Self> {
     let lua = Lua::new();
     modify_global_env(&lua)?;
-    Ok(Self { lua })
+    Ok(Self { lua, extra })
+  }
+
+  pub fn lua(&self) -> &Lua {
+    &self.lua
+  }
+
+  pub fn extra(&self) -> &T {
+    &self.extra
+  }
+
+  pub fn extra_mut(&mut self) -> &mut T {
+    &mut self.extra
   }
 
   pub async fn create_isolate(
@@ -113,4 +126,19 @@ impl Sandbox {
   pub fn expire_registry_values(&self) {
     self.lua.expire_registry_values();
   }
+}
+
+impl<T: Cleanup> Sandbox<T> {
+  pub fn cleanup(&self) {
+    self.extra.cleanup();
+    self.expire_registry_values();
+  }
+}
+
+pub trait Cleanup {
+  fn cleanup(&self);
+}
+
+impl Cleanup for () {
+  fn cleanup(&self) {}
 }

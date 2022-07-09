@@ -1,11 +1,12 @@
 use super::AnyBox;
 use crate::lua::context;
-use crate::runtime::Runtime;
+use crate::Sandbox;
 use futures::future::LocalBoxFuture;
 use futures::Future;
-use mlua::{ExternalError, HookTriggers, RegistryKey};
+use mlua::{self, ExternalError, HookTriggers, RegistryKey};
 use pin_project::pin_project;
 use std::cell::RefCell;
+use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
@@ -13,8 +14,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 
 #[pin_project]
-pub struct TaskFuture {
-  rt: Rc<Runtime>,
+pub struct TaskFuture<R: Deref<Target = Sandbox<E>>, E> {
+  rt: Rc<R>,
   context: Option<RegistryKey>,
   #[pin]
   task: LocalBoxFuture<'static, AnyBox>,
@@ -22,10 +23,10 @@ pub struct TaskFuture {
   cpu_time: Rc<RefCell<Duration>>,
 }
 
-impl TaskFuture {
+impl<R: Deref<Target = Sandbox<E>>, E> TaskFuture<R, E> {
   pub fn new_with_context(
-    rt: Rc<Runtime>,
-    task_fn: impl FnOnce(Rc<Runtime>) -> LocalBoxFuture<'static, AnyBox>,
+    rt: Rc<R>,
+    task_fn: impl FnOnce(Rc<R>) -> LocalBoxFuture<'static, AnyBox>,
     tx: oneshot::Sender<AnyBox>,
   ) -> mlua::Result<Self> {
     let context = context::create(rt.lua())?;
@@ -39,8 +40,7 @@ impl TaskFuture {
   }
 }
 
-// TODO: implement CPU timeout
-impl Future for TaskFuture {
+impl<R: Deref<Target = Sandbox<E>>, E> Future for TaskFuture<R, E> {
   type Output = mlua::Result<()>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

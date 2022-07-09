@@ -4,7 +4,6 @@ use regex::Regex;
 use serde::ser::SerializeStruct;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::{Component, Path, PathBuf};
 
 static PATH_PARAMS_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r":([^/]+)|\*").unwrap());
 
@@ -78,60 +77,9 @@ impl Serialize for PathMatcher {
   }
 }
 
-/// Taken from [Cargo](https://github.com/rust-lang/cargo/blob/af307a38c20a753ec60f0ad18be5abed3db3c9ac/src/cargo/util/paths.rs#L60-L85),
-/// and modified to force absolute path.
-pub fn normalize_path(path: impl AsRef<Path>) -> PathBuf {
-  let mut components = path.as_ref().components().peekable();
-  let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
-    components.next();
-    PathBuf::from(c.as_os_str())
-  } else {
-    PathBuf::new()
-  };
-  ret.push("/");
-
-  for component in components {
-    match component {
-      Component::Prefix(..) => unreachable!(),
-      Component::RootDir => {
-        ret.push(component.as_os_str());
-      }
-      Component::CurDir => {}
-      Component::ParentDir => {
-        ret.pop();
-      }
-      Component::Normal(c) => {
-        ret.push(c);
-      }
-    }
-  }
-  ret
-}
-
-/// Similar to `abel_core::path::normalize_path`, but for `str`s instead of
-/// `Path`s.
-///
-/// The returned path is always relative, which is intentional and convenient
-/// for concatenating to other paths in usual cases.
-pub fn normalize_path_str(path: &str) -> String {
-  let mut result = Vec::new();
-  let segments = path
-    .split(['/', '\\'])
-    .filter(|&x| !x.is_empty() && x != ".");
-  for s in segments {
-    if s == ".." {
-      result.pop();
-    } else {
-      result.push(s);
-    }
-  }
-  result.join("/")
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::ffi::OsString;
   use test_case::test_case;
 
   macro_rules! some_map {
@@ -147,20 +95,5 @@ mod tests {
   #[test_case("/files/*", "/files/path/to/secret/file" => some_map!("*" => "path/to/secret/file"); "asterisk")]
   fn test_path_matcher(matcher: &str, path: &str) -> Option<Params> {
     PathMatcher::new(matcher).unwrap().gen_params(path)
-  }
-
-  #[cfg(unix)]
-  #[test_case("" => "/"; "empty string")]
-  #[test_case("etc/rpc" => "/etc/rpc"; "force absolute")]
-  #[test_case("../../././///etc/rpc" => "/etc/rpc"; "special path components")]
-  fn test_normalize_path_unix(path: impl AsRef<Path>) -> OsString {
-    normalize_path(path).into_os_string()
-  }
-
-  #[test_case("" => ""; "empty string")]
-  #[test_case("etc/rpc" => "etc/rpc"; "force absolute")]
-  #[test_case("../../././///etc/rpc" => "etc/rpc"; "special path components")]
-  fn test_normalize_path_str(path: &str) -> String {
-    normalize_path_str(path)
   }
 }
