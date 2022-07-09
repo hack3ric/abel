@@ -3,6 +3,7 @@ pub mod service;
 
 mod config;
 mod error;
+mod pool;
 mod runtime;
 mod task;
 mod util;
@@ -14,11 +15,11 @@ pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 
 use abel_rt::{mlua, Source};
 use hyper::{Body, Request, Response};
+use pool::RuntimePool;
 use runtime::Runtime;
 use service::{ErrorPayload, Service, ServiceName, ServicePool, StoppedService};
 use std::path::PathBuf;
 use std::sync::Arc;
-use task::RuntimePool;
 use uuid::Uuid;
 
 pub struct Abel {

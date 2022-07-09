@@ -2,8 +2,8 @@ use super::{
   get_local_storage_path, RunningService, Service, ServiceImpl, ServiceName, ServicePool,
   ServiceState, StoppedService,
 };
+use crate::pool::RuntimePool;
 use crate::runtime::Runtime;
-use crate::task::RuntimePool;
 use crate::ErrorKind::{self, ServiceNotFound, ServiceStopped};
 use crate::{Config, Error, Result};
 use abel_rt::{Isolate, Source};

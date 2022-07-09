@@ -4,8 +4,8 @@ mod impls;
 pub use create::ErrorPayload;
 pub use impls::*;
 
+use crate::pool::RuntimePool;
 use crate::runtime::Runtime;
-use crate::task::RuntimePool;
 use crate::ErrorKind::*;
 use crate::{AbelState, Result};
 use dashmap::DashMap;

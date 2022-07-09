@@ -1,5 +1,5 @@
-use super::executor::Executor;
-use crate::runtime::Runtime;
+use crate::runtime::{Extra, Runtime};
+use crate::task::Executor;
 use crate::Result;
 use futures::{Future, FutureExt};
 use log::error;
@@ -10,13 +10,10 @@ use tokio::sync::{oneshot, Mutex, RwLock};
 
 pub struct RuntimePool {
   name: String,
-  executors: Vec<RwLock<Executor>>,
+  executors: Vec<RwLock<Executor<Runtime, Extra>>>,
   init: Arc<dyn Fn() -> Result<Runtime> + Send + Sync + 'static>,
 }
 
-// Since `Arc<dyn Fn> does not implement `Fn{,Mut,Once}`, we need to stop clippy
-// from complaining us to wrap it in another closure.
-#[allow(clippy::redundant_closure)]
 impl RuntimePool {
   pub fn new(
     name: String,
@@ -29,6 +26,9 @@ impl RuntimePool {
       .map(|i| {
         let init = init.clone();
         Ok(RwLock::new(Executor::new(
+          // Since `Arc<dyn Fn> does not implement `Fn{,Mut,Once}`, we need to stop clippy
+          // from complaining us to wrap it in another closure.
+          #[allow(clippy::redundant_closure)]
           move || init(),
           format!("{}-{i}", name),
         )))

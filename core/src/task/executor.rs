@@ -1,11 +1,12 @@
 use super::task_future::TaskFuture;
 use super::Task;
-use crate::runtime::Runtime;
 use crate::Result;
+use abel_rt::Sandbox;
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::{pin_mut, Stream};
 use log::{debug, error, info};
+use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Relaxed;
@@ -54,19 +55,19 @@ impl Drop for PanicNotifier {
   }
 }
 
-pub struct Executor {
+pub struct Executor<R: Deref<Target = Sandbox<E>> + 'static, E> {
   pub task_count: Arc<AtomicU32>,
   panicked: Arc<AtomicBool>,
-  task_tx: mpsc::Sender<Task>,
+  task_tx: mpsc::Sender<Task<R>>,
   _stop_tx: oneshot::Sender<()>,
 }
 
-impl Executor {
-  pub fn new(f: impl FnOnce() -> Result<Runtime> + Send + 'static, name: String) -> Self {
+impl<R: Deref<Target = Sandbox<E>> + 'static, E> Executor<R, E> {
+  pub fn new(f: impl FnOnce() -> Result<R> + Send + 'static, name: String) -> Self {
     let task_count = Arc::new(AtomicU32::new(0));
     let panicked = Arc::new(AtomicBool::new(false));
     let panic_notifier = PanicNotifier(panicked.clone());
-    let (task_tx, mut task_rx) = mpsc::channel::<Task>(16);
+    let (task_tx, mut task_rx) = mpsc::channel::<Task<_>>(16);
     let (_stop_tx, mut stop_rx) = oneshot::channel();
 
     let rt = Handle::current();
@@ -77,7 +78,7 @@ impl Executor {
         let _panic_notifier = panic_notifier;
         rt.block_on(async move {
           let rt = Rc::new(f().unwrap());
-          let mut tasks = FuturesUnordered::<TaskFuture>::new();
+          let mut tasks = FuturesUnordered::<TaskFuture<R, E>>::new();
           let (waker_tx, mut waker_rx) = mpsc::unbounded_channel();
           let mut waker = MyWaker::from_tx(waker_tx.clone());
 
@@ -114,10 +115,10 @@ impl Executor {
               }
               Either::Right((Either::Left(_), _)) => {
                 // TODO: better cleaning trigger
-                let count = rt.clean_loaded().await;
-                if count > 0 {
-                  info!("successfully cleaned {count} dropped services");
-                }
+                // let count = rt.clean_loaded().await;
+                // if count > 0 {
+                //   info!("successfully cleaned {count} dropped services");
+                // }
               }
               Either::Right((Either::Right((Some(msg), _)), _)) => {
                 if let Some((task_fn, tx)) = msg.try_lock().ok().and_then(|mut x| x.take()) {
@@ -145,7 +146,7 @@ impl Executor {
     }
   }
 
-  pub async fn send(&self, task: Task) -> Result<(), mpsc::error::SendError<Task>> {
+  pub async fn send(&self, task: Task<R>) -> Result<(), mpsc::error::SendError<Task<R>>> {
     self.task_tx.send(task).await
   }
 
