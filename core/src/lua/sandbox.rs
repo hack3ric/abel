@@ -9,7 +9,7 @@ use super::lua_std::{
   create_preload_coroutine, create_preload_io, create_preload_math, create_preload_os,
   create_preload_string, create_preload_table, create_preload_utf8, global_whitelist,
 };
-use crate::source::{Source, SourceUserData};
+use crate::source::Source;
 use mlua::{FromLuaMulti, Lua, Table, ToLuaMulti};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -36,7 +36,6 @@ impl Sandbox {
       .create_isolate_builder(source.clone())?
       .add_side_effect(global_whitelist)?
       .add_side_effect(|lua, env, _| env.raw_set("print", create_fn_print_to_log(lua, name)?))?
-      .add_side_effect(|_, _, i| i.raw_set("source", SourceUserData(source.clone())))?
       // Lua std, modified
       .add_lib("math", create_preload_math)?
       .add_lib("string", create_preload_string)?

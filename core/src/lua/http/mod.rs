@@ -6,6 +6,7 @@ mod uri;
 
 pub use request::LuaRequest;
 pub use response::LuaResponse;
+pub(crate) use uri::create_fn_http_create_uri;
 
 use super::error::rt_error_fmt;
 use super::LuaCacheExt;
@@ -17,7 +18,7 @@ use hyper::HeaderMap;
 use mlua::Value::Nil;
 use mlua::{AnyUserData, Function, Lua, MultiValue, Table};
 use response::create_fn_http_create_response;
-use uri::{create_fn_http_create_uri, LuaUri};
+use uri::LuaUri;
 
 pub fn create_preload_http(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_function("abel:preload_http", move |lua, ()| {
