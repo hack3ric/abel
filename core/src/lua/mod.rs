@@ -17,7 +17,6 @@ mod tests;
 pub use isolate::Isolate;
 pub use sandbox::Sandbox;
 
-use crate::Result;
 use futures::Future;
 use hyper::client::HttpConnector;
 use hyper::Client;
@@ -33,11 +32,11 @@ static LUA_HTTP_CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> =
   Lazy::new(|| Client::builder().build(HttpsConnector::new()));
 
 pub trait LuaTableExt<'a> {
-  fn raw_get_path<T: FromLua<'a>>(&self, base: &str, path: &[&str]) -> Result<T>;
+  fn raw_get_path<T: FromLua<'a>>(&self, base: &str, path: &[&str]) -> mlua::Result<T>;
 }
 
 impl<'a> LuaTableExt<'a> for Table<'a> {
-  fn raw_get_path<T: FromLua<'a>>(&self, base: &str, path: &[&str]) -> Result<T> {
+  fn raw_get_path<T: FromLua<'a>>(&self, base: &str, path: &[&str]) -> mlua::Result<T> {
     fn raw_get_path<'a, T: FromLua<'a>>(
       table: &Table<'a>,
       base: &mut String,
