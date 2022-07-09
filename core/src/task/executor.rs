@@ -1,7 +1,6 @@
 use super::task_future::TaskFuture;
 use super::Task;
-use crate::Result;
-use abel_rt::{Cleanup, Sandbox};
+use abel_rt::{mlua, Cleanup, Sandbox};
 use futures::future::select;
 use futures::future::Either::*;
 use futures::stream::FuturesUnordered;
@@ -72,7 +71,7 @@ where
   R: Deref<Target = Sandbox<E>> + 'static,
   E: Cleanup,
 {
-  pub fn new(f: impl FnOnce() -> Result<R> + Send + 'static, name: String) -> Self {
+  pub fn new(f: impl FnOnce() -> mlua::Result<R> + Send + 'static, name: String) -> Self {
     let task_count = Arc::new(AtomicU32::new(0));
     let panicked = Arc::new(AtomicBool::new(false));
     let panic_notifier = PanicNotifier(panicked.clone());

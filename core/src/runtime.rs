@@ -31,7 +31,7 @@ struct LoadedService {
 }
 
 impl Runtime {
-  pub fn new(state: Arc<AbelState>) -> Result<Self> {
+  pub fn new(state: Arc<AbelState>) -> mlua::Result<Self> {
     let loaded = RefCell::new(CLruCache::new(nonzero!(16usize)));
     Ok(Self(Sandbox::new(Extra { loaded, state })?))
   }

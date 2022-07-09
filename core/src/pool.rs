@@ -1,6 +1,7 @@
 use crate::runtime::{Extra, Runtime};
 use crate::task::Executor;
 use crate::Result;
+use abel_rt::mlua;
 use futures::{Future, FutureExt};
 use log::error;
 use std::any::Any;
@@ -11,14 +12,14 @@ use tokio::sync::{oneshot, Mutex, RwLock};
 pub struct RuntimePool {
   name: String,
   executors: Vec<RwLock<Executor<Runtime, Extra>>>,
-  init: Arc<dyn Fn() -> Result<Runtime> + Send + Sync + 'static>,
+  init: Arc<dyn Fn() -> mlua::Result<Runtime> + Send + Sync + 'static>,
 }
 
 impl RuntimePool {
   pub fn new(
     name: String,
     size: usize,
-    init: impl Fn() -> Result<Runtime> + Send + Sync + 'static,
+    init: impl Fn() -> mlua::Result<Runtime> + Send + Sync + 'static,
   ) -> Result<Self> {
     let init: Arc<dyn Fn() -> _ + Send + Sync + 'static> = Arc::new(init);
 
