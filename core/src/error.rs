@@ -1,10 +1,9 @@
 use crate::service::ServiceName;
-use abel_rt::mlua;
+use abel_rt::{mlua, CustomError};
 use backtrace::Backtrace;
 use hyper::StatusCode;
 use serde::{Serialize, Serializer};
 use serde_json::json;
-use smallstr::SmallString;
 use std::fmt::Debug;
 use strum::EnumProperty;
 use thiserror::Error;
@@ -112,22 +111,10 @@ pub enum ErrorKind {
     regex::Error,
   ),
 
-  #[error(transparent)]
-  #[strum(props(status = "500", error = "hyper error"))]
-  Hyper(
-    #[from]
-    #[serde(serialize_with = "serialize_error")]
-    hyper::Error,
-  ),
-
   // -- Custom --
-  #[error("{error} ({detail:?})")]
+  #[error("{0}")]
   #[serde(skip)]
-  Custom {
-    status: StatusCode,
-    error: SmallString<[u8; 32]>,
-    detail: serde_json::Value,
-  },
+  Custom(CustomError),
 }
 
 fn serialize_error<E, S>(error: E, ser: S) -> Result<S::Ok, S::Error>
@@ -141,21 +128,21 @@ where
 impl ErrorKind {
   pub fn status(&self) -> StatusCode {
     match self {
-      Self::Custom { status, .. } => *status,
+      Self::Custom(CustomError { status, .. }) => *status,
       _ => self.get_str("status").unwrap().parse().unwrap(),
     }
   }
 
   pub fn error(&self) -> &str {
     match self {
-      Self::Custom { error, .. } => error,
+      Self::Custom(CustomError { error, .. }) => error,
       _ => self.get_str("error").unwrap(),
     }
   }
 
   pub fn detail(&self) -> serde_json::Value {
     match self {
-      Self::Custom { detail, .. } => detail.clone(),
+      Self::Custom(CustomError { detail, .. }) => detail.clone(),
       _ => serde_json::to_value(self).unwrap(),
     }
   }

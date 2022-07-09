@@ -16,33 +16,24 @@ dependencies = [
  "anyhow",
  "async-trait",
  "backtrace",
- "bstr",
  "clru",
  "dashmap",
  "futures",
  "hyper",
- "hyper-tls",
- "libc",
  "log",
  "nonzero_ext",
  "once_cell",
- "ouroboros",
  "pin-project",
  "pretty_env_logger",
- "rand",
  "regex",
  "replace_with",
  "serde",
  "serde_json",
- "serde_qs",
  "smallstr",
- "smallvec",
  "strum",
- "tempfile",
  "test-case",
  "thiserror",
  "tokio",
- "tokio-util",
  "uuid",
 ]
 
@@ -318,7 +309,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3495912c9c1ccf2e18976439f4443f3fee0fd61f424ff99fde6a66b15ecb448f"
 dependencies = [
  "cfg-if",
- "hashbrown 0.12.1",
+ "hashbrown 0.12.2",
  "lock_api",
  "parking_lot_core",
 ]
@@ -549,9 +540,9 @@ checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
 
 [[package]]
 name = "hashbrown"
-version = "0.12.1"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db0d4cf898abf0081f964436dc980e96670a0f36863e4b83aaacdb65c9d7ccc3"
+checksum = "607c8a29735385251a339424dd462993c0fed8fa09d378f259377df08c126022"
 
 [[package]]
 name = "heck"

@@ -9,13 +9,12 @@ use std::borrow::Cow;
 use std::cell::{Ref, RefMut};
 use std::fmt::Display;
 
-// TODO: replace `abel_rt::ErrorKind::CustomError`
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Clone)]
 #[error("{error} {detail:?}")]
 pub struct CustomError {
-  status: StatusCode,
-  error: String,
-  detail: serde_json::Value,
+  pub status: StatusCode,
+  pub error: String,
+  pub detail: serde_json::Value,
 }
 
 pub fn resolve_callback_error(error: &mlua::Error) -> &mlua::Error {

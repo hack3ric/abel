@@ -8,7 +8,7 @@ use abel_rt::lua::{Isolate, LuaTableExt, Sandbox};
 use abel_rt::mlua::{
   self, ExternalError, FromLuaMulti, Function, Lua, Table, TableExt, ToLuaMulti,
 };
-use abel_rt::Source;
+use abel_rt::{CustomError, Source};
 use clru::CLruCache;
 use hyper::{Body, Request};
 use log::debug;
@@ -54,21 +54,8 @@ impl Runtime {
       fn extract_custom_error(
         error: &Arc<dyn std::error::Error + Send + Sync + 'static>,
       ) -> Option<Error> {
-        let maybe_custom = error.downcast_ref::<Error>().map(Error::kind);
-        if let Some(ErrorKind::Custom {
-          status,
-          error,
-          detail,
-        }) = maybe_custom
-        {
-          Some(From::from(ErrorKind::Custom {
-            status: *status,
-            error: error.clone(),
-            detail: detail.clone(),
-          }))
-        } else {
-          None
-        }
+        let maybe_custom = error.downcast_ref::<CustomError>();
+        maybe_custom.map(|x| ErrorKind::Custom(x.clone()).into())
       }
 
       match error {
