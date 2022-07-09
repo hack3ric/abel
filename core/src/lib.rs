@@ -1,8 +1,8 @@
-pub mod path;
 pub mod service;
 
 mod config;
 mod error;
+mod path;
 mod pool;
 mod runtime;
 mod util;

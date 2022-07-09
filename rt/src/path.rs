@@ -21,3 +21,16 @@ pub fn normalize_path_str(path: &str) -> String {
   }
   result.join("/")
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use test_case::test_case;
+
+  #[test_case("" => ""; "empty string")]
+  #[test_case("etc/rpc" => "etc/rpc"; "force absolute")]
+  #[test_case("../../././///etc/rpc" => "etc/rpc"; "special path components")]
+  fn test_normalize_path_str(path: &str) -> String {
+    normalize_path_str(path)
+  }
+}
