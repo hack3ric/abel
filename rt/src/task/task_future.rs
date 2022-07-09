@@ -1,9 +1,9 @@
 use super::AnyBox;
-use abel_rt::lua::context;
-use abel_rt::mlua::{self, ExternalError, HookTriggers, RegistryKey};
-use abel_rt::Sandbox;
+use crate::lua::context;
+use crate::Sandbox;
 use futures::future::LocalBoxFuture;
 use futures::Future;
+use mlua::{self, ExternalError, HookTriggers, RegistryKey};
 use pin_project::pin_project;
 use std::cell::RefCell;
 use std::ops::Deref;

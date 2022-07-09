@@ -5,7 +5,6 @@ mod config;
 mod error;
 mod pool;
 mod runtime;
-mod task;
 mod util;
 
 pub use config::Config;
