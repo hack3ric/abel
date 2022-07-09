@@ -24,6 +24,9 @@ impl SourceVfs for EmptySource {
 macro_rules! run_lua_test {
   ($test_name:expr, $code:literal) => {
     async {
+      if option_env!("RUST_LOG").is_none() {
+        std::env::set_var("RUST_LOG", "INFO");
+      }
       let _ = pretty_env_logger::try_init();
       let sandbox = Sandbox::new()?;
       let local_storage = TempDir::new()?;
