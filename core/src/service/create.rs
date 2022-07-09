@@ -68,7 +68,7 @@ impl ServicePool {
 
         let (service_impl, isolate) =
           prepare_service(&rt, name2.clone(), uuid, source, config).await?;
-        rt.sandbox.remove_isolate(isolate)?;
+        rt.remove_isolate(isolate)?;
 
         match Self::scope_stop(services, &rt, &*name2).await {
           Ok(_) => {}
@@ -134,7 +134,7 @@ impl ServicePool {
           Err(err) => {
             error_payload.start = Some(err);
             let service_impl = state.into_impl();
-            rt.sandbox.expire_registry_values();
+            rt.expire_registry_values();
             ServiceState::Stopped(service_impl)
           }
         };
