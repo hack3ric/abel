@@ -12,7 +12,6 @@ use bstr::ByteSlice;
 use mlua::Value::Nil;
 use mlua::{AnyUserData, ExternalResult, Function, Lua, MultiValue, UserData, UserDataMethods};
 use pin_project::pin_project;
-use std::borrow::Cow;
 use std::io::SeekFrom;
 use std::path::Path;
 use std::pin::Pin;
@@ -26,27 +25,21 @@ use tokio::io::{
 };
 use tokio::task::spawn_blocking;
 
+// Note that "lsp" stands for "local storage path".
 pub fn create_preload_fs(
   source: Source,
-  local_storage_path: Arc<Path>,
+  lsp: Arc<Path>,
 ) -> impl FnOnce(&Lua) -> mlua::Result<Function> {
   |lua| {
     lua.create_function(move |lua, ()| {
       let fs = lua.create_table()?;
-      fs.raw_set(
-        "open",
-        create_fn_fs_open(lua, source.clone(), local_storage_path.clone())?,
-      )?;
+      fs.raw_set("open", create_fn_fs_open(lua, source.clone(), lsp.clone())?)?;
       fs.raw_set("type", create_fn_fs_type(lua)?)?;
       fs.raw_set("tmpfile", create_fn_fs_tmpfile(lua)?)?;
-      fs.raw_set(
-        "mkdir",
-        create_fn_fs_mkdir(lua, local_storage_path.clone())?,
-      )?;
-      fs.raw_set(
-        "remove",
-        create_fn_fs_remove(lua, local_storage_path.clone())?,
-      )?;
+      fs.raw_set("mkdir", create_fn_fs_mkdir(lua, lsp.clone())?)?;
+      fs.raw_set("remove", create_fn_fs_remove(lua, lsp.clone())?)?;
+      fs.raw_set("rename", create_fn_fs_rename(lua, lsp.clone())?)?;
+      // TODO: fs.metadata
       Ok(fs)
     })
   }
@@ -122,6 +115,32 @@ impl ReadMode {
       )),
     }
   }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Scheme {
+  Local,
+  Source,
+}
+
+impl Scheme {
+  fn from_str(s: &str) -> mlua::Result<Self> {
+    match s {
+      "local" => Ok(Self::Local),
+      "source" => Ok(Self::Source),
+      _ => Err(rt_error_fmt!("scheme currently not supported: {s}")),
+    }
+  }
+}
+
+fn parse_path<'a>(path: &'a mlua::String<'a>) -> mlua::Result<(Scheme, &'a str)> {
+  let path = path.as_bytes();
+  let path =
+    std::str::from_utf8(path).map_err(|_| rt_error_fmt!("invalid path: '{}'", path.as_bstr()))?;
+  path
+    .split_once(':')
+    .map(|(s, p)| mlua::Result::Ok((Scheme::from_str(s)?, p)))
+    .unwrap_or(Ok((Scheme::Local, path)))
 }
 
 pub struct LuaFile(BufReader<GenericFile>);
@@ -400,11 +419,11 @@ impl AsyncSeek for GenericFile {
 pub(crate) fn create_fn_fs_open(
   lua: &Lua,
   source: Source,
-  local_storage_path: Arc<Path>,
+  lsp: Arc<Path>,
 ) -> mlua::Result<Function<'_>> {
   lua.create_async_function(move |lua, mut args: MultiValue| {
     let source = source.clone();
-    let local_storage_path = local_storage_path.clone();
+    let lsp = lsp.clone();
     async move {
       let path = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 1))?;
       let mode = args
@@ -417,25 +436,21 @@ pub(crate) fn create_fn_fs_open(
       let mode = OpenMode::from_lua(mode)?;
 
       let file = match scheme {
-        "local" => {
+        Scheme::Local => {
           let path = normalize_path_str(path);
-          let file = mode
-            .to_open_options()
-            .open(local_storage_path.join(path))
-            .await;
+          let file = mode.to_open_options().open(lsp.join(path)).await;
           match file {
             Ok(file) => GenericFile::File(file),
             Err(error) => return lua.pack_multi((Nil, error.to_string())),
           }
         }
-        "source" => {
+        Scheme::Source => {
           // For `source:`, the only open mode is "read"
           match source.get(path).await {
             Ok(file) => GenericFile::ReadOnly(file),
             Err(error) => return lua.pack_multi((Nil, error.to_string())),
           }
         }
-        _ => return Err(scheme_not_supported(scheme)),
       };
       let file = LuaFile(BufReader::new(file));
       let file = lua.create_userdata(file)?;
@@ -472,18 +487,17 @@ pub(crate) fn create_fn_fs_tmpfile(lua: &Lua) -> mlua::Result<Function> {
   })
 }
 
-fn create_fn_fs_mkdir(lua: &Lua, local_storage_path: Arc<Path>) -> mlua::Result<Function> {
+fn create_fn_fs_mkdir(lua: &Lua, lsp: Arc<Path>) -> mlua::Result<Function> {
   lua.create_async_function(move |lua, mut args: MultiValue| {
-    let local_storage_path = local_storage_path.clone();
+    let lsp = lsp.clone();
     async move {
       let path = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 1))?;
       let all = check_truthiness(args.pop_front());
 
       let (scheme, path) = parse_path(&path)?;
-      let path: Cow<Path> = match scheme {
-        "local" => local_storage_path.join(normalize_path_str(path)).into(),
-        "source" => return Err(rt_error("cannot modify service source")),
-        _ => return Err(scheme_not_supported(scheme)),
+      let path = match scheme {
+        Scheme::Local => lsp.join(normalize_path_str(path)),
+        Scheme::Source => return Err(rt_error("cannot modify service source")),
       };
 
       let result = async move {
@@ -499,18 +513,17 @@ fn create_fn_fs_mkdir(lua: &Lua, local_storage_path: Arc<Path>) -> mlua::Result<
   })
 }
 
-fn create_fn_fs_remove(lua: &Lua, local_storage_path: Arc<Path>) -> mlua::Result<Function> {
+fn create_fn_fs_remove(lua: &Lua, lsp: Arc<Path>) -> mlua::Result<Function> {
   lua.create_async_function(move |lua, mut args: MultiValue| {
-    let local_storage_path = local_storage_path.clone();
+    let lsp = lsp.clone();
     async move {
       let path = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 1))?;
       let all = check_truthiness(args.pop_front());
 
       let (scheme, path) = parse_path(&path)?;
-      let path: Cow<Path> = match scheme {
-        "local" => local_storage_path.join(normalize_path_str(path)).into(),
-        "source" => return Err(rt_error("cannot modify service source")),
-        _ => return Err(scheme_not_supported(scheme)),
+      let path = match scheme {
+        Scheme::Local => lsp.join(normalize_path_str(path)),
+        Scheme::Source => return Err(rt_error("cannot modify service source")),
       };
 
       let result = async move {
@@ -532,20 +545,16 @@ fn create_fn_fs_remove(lua: &Lua, local_storage_path: Arc<Path>) -> mlua::Result
 }
 
 // Simplified version of `fs.remove`
-pub(crate) fn create_fn_os_remove(
-  lua: &Lua,
-  local_storage_path: Arc<Path>,
-) -> mlua::Result<Function> {
+pub(crate) fn create_fn_os_remove(lua: &Lua, lsp: Arc<Path>) -> mlua::Result<Function> {
   lua.create_async_function(move |lua, mut args: MultiValue| {
-    let local_storage_path = local_storage_path.clone();
+    let lsp = lsp.clone();
     async move {
       let path = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 1))?;
 
       let (scheme, path) = parse_path(&path)?;
-      let path: Cow<Path> = match scheme {
-        "local" => local_storage_path.join(normalize_path_str(path)).into(),
-        "source" => return Err(rt_error("cannot modify service source")),
-        _ => return Err(scheme_not_supported(scheme)),
+      let path = match scheme {
+        Scheme::Local => lsp.join(normalize_path_str(path)),
+        Scheme::Source => return Err(rt_error("cannot modify service source")),
       };
 
       let result = async move {
@@ -562,15 +571,23 @@ pub(crate) fn create_fn_os_remove(
   })
 }
 
-// TODO: create_fn_fs_rename
+// Also used in `os.rename`
+pub(crate) fn create_fn_fs_rename(lua: &Lua, lsp: Arc<Path>) -> mlua::Result<Function> {
+  lua.create_async_function(move |lua, mut args: MultiValue| {
+    let lsp = lsp.clone();
+    async move {
+      let from = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 1))?;
+      let to = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 2, 1))?;
+      let (from_scheme, from) = parse_path(&from)?;
+      let (to_scheme, to) = parse_path(&to)?;
 
-fn parse_path<'a>(path: &'a mlua::String<'a>) -> mlua::Result<(&'a str, &'a str)> {
-  let path = path.as_bytes();
-  let path =
-    std::str::from_utf8(path).map_err(|_| rt_error_fmt!("invalid path: {:?}", path.as_bstr()))?;
-  Ok(path.split_once(':').unwrap_or(("local", path)))
-}
-
-fn scheme_not_supported(scheme: &str) -> mlua::Error {
-  rt_error_fmt!("scheme currently not supported: {scheme}")
+      if from_scheme == Scheme::Local && to_scheme == Scheme::Local {
+        let from = lsp.join(normalize_path_str(from));
+        let to = lsp.join(normalize_path_str(to));
+        Ok(fs::rename(from, to).await.map(|_| Nil).to_lua_err())
+      } else {
+        Err(rt_error("'rename' only works on local storage"))
+      }
+    }
+  })
 }
