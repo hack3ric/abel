@@ -1,2 +1,5 @@
 [workspace]
 members = ["core", "rt", "server"]
+
+[profile.release]
+lto = true
