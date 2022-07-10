@@ -24,19 +24,36 @@ pub struct TaskFuture<R: Deref<Target = Sandbox<E>>, E> {
 }
 
 impl<R: Deref<Target = Sandbox<E>>, E> TaskFuture<R, E> {
+  fn _new(
+    rt: Rc<R>,
+    task_fn: impl FnOnce(Rc<R>) -> LocalBoxFuture<'static, AnyBox>,
+    context: Option<RegistryKey>,
+    tx: oneshot::Sender<AnyBox>,
+  ) -> Self {
+    Self {
+      rt: rt.clone(),
+      context,
+      task: task_fn(rt),
+      tx: Some(tx),
+      cpu_time: Rc::new(RefCell::new(Duration::new(0, 0))),
+    }
+  }
+
+  pub fn new(
+    rt: Rc<R>,
+    task_fn: impl FnOnce(Rc<R>) -> LocalBoxFuture<'static, AnyBox>,
+    tx: oneshot::Sender<AnyBox>,
+  ) -> Self {
+    Self::_new(rt, task_fn, None, tx)
+  }
+
   pub fn new_with_context(
     rt: Rc<R>,
     task_fn: impl FnOnce(Rc<R>) -> LocalBoxFuture<'static, AnyBox>,
     tx: oneshot::Sender<AnyBox>,
   ) -> mlua::Result<Self> {
     let context = context::create(rt.lua())?;
-    Ok(Self {
-      rt: rt.clone(),
-      context: Some(context),
-      task: task_fn(rt),
-      tx: Some(tx),
-      cpu_time: Rc::new(RefCell::new(Duration::new(0, 0))),
-    })
+    Ok(Self::_new(rt, task_fn, Some(context), tx))
   }
 }
 

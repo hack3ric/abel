@@ -10,5 +10,5 @@ pub use lua::isolate::{Isolate, IsolateBuilder};
 pub use lua::sandbox::{Cleanup, Sandbox};
 pub use mlua;
 pub use path::normalize_path_str;
-pub use source::{Source, SourceVfs};
+pub use source::{Metadata, Source, SourceVfs};
 pub use task::Executor;

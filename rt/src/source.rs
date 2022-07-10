@@ -12,6 +12,13 @@ pub trait SourceVfs {
   type File: AsyncRead + AsyncSeek;
   async fn get(&self, path: &str) -> io::Result<Self::File>;
   async fn exists(&self, path: &str) -> io::Result<bool>;
+  async fn metadata(&self, path: &str) -> io::Result<Metadata>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Metadata {
+  Dir,
+  File { size: u64 },
 }
 
 pub trait AsyncReadSeek: AsyncRead + AsyncSeek {}
@@ -39,6 +46,10 @@ where
 
   async fn exists(&self, path: &str) -> io::Result<bool> {
     self.0.exists(path).await
+  }
+
+  async fn metadata(&self, path: &str) -> io::Result<Metadata> {
+    self.0.metadata(path).await
   }
 }
 

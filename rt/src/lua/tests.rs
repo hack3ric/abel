@@ -1,6 +1,6 @@
 use super::error::resolve_callback_error;
 use super::sandbox::Sandbox;
-use crate::source::{Source, SourceVfs};
+use crate::source::{Metadata, Source, SourceVfs};
 use async_trait::async_trait;
 use std::io::Cursor;
 use tempfile::TempDir;
@@ -13,11 +13,21 @@ impl SourceVfs for EmptySource {
   type File = Cursor<Vec<u8>>;
 
   async fn get(&self, _path: &str) -> io::Result<Self::File> {
-    Err(io::Error::from_raw_os_error(libc::ENOENT))
+    Err(io::Error::new(
+      io::ErrorKind::NotFound,
+      "No such file or directory",
+    ))
   }
 
   async fn exists(&self, _path: &str) -> io::Result<bool> {
     Ok(false)
+  }
+
+  async fn metadata(&self, _path: &str) -> io::Result<Metadata> {
+    Err(io::Error::new(
+      io::ErrorKind::NotFound,
+      "No such file or directory",
+    ))
   }
 }
 
@@ -109,5 +119,9 @@ lua_tests! {
     assert(type(rng:random()) == "number")
     assert(math.tointeger(rng:gen_range(1, 5)))
     assert(not pcall(rng.gen_range, rng, 1, -1))
+  "#
+
+  test_error_msg r#"
+    io.open()
   "#
 }
