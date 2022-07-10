@@ -1,8 +1,9 @@
+use bstr::ByteSlice;
 use hyper::StatusCode;
 use mlua::Value::Nil;
 use mlua::{
-  AnyUserData, DebugNames, ExternalError, FromLua, Function, Lua, LuaSerdeExt, MultiValue, Table,
-  TableExt, UserData,
+  AnyUserData, DebugNames, DebugSource, ExternalError, FromLua, Function, Lua, LuaSerdeExt,
+  MultiValue, Table, TableExt, UserData,
 };
 use ouroboros::self_referencing;
 use std::borrow::Cow;
@@ -31,23 +32,21 @@ fn error_fn(lua: &Lua, error: mlua::Value) -> mlua::Result<()> {
   use mlua::Value::*;
   match error {
     Table(custom_error) => {
-      let status = custom_error
-        .check_raw_get::<u16>(lua, "status", "u16")
-        .map_err(rt_error)?
-        .try_into()
-        .map_err(|_| bad_field("status", "invalid status code"))?;
-      let error = custom_error.check_raw_get::<mlua::String>(lua, "error", "string")?;
-      let error = std::str::from_utf8(error.as_bytes())
-        .map_err(|error| bad_field("error", error))?
-        .into();
-      let detail = custom_error.raw_get::<_, mlua::Value>("detail")?;
-      let detail = lua
-        .from_value(detail)
-        .map_err(|error| bad_field("detail", error))?;
       let result = CustomError {
-        status,
-        error,
-        detail,
+        status: custom_error
+          .check_raw_get::<Option<u16>>(lua, "status", "u16")?
+          .unwrap_or(500)
+          .try_into()
+          .map_err(|_| bad_field("status", "invalid status code"))?,
+        error: custom_error
+          .check_raw_get::<Option<mlua::String>>(lua, "error", "string")?
+          .map(|x| mlua::Result::Ok(x.to_str()?.into()).map_err(|error| bad_field("error", error)))
+          .transpose()?
+          .unwrap_or_else(|| "".into()),
+        detail: custom_error
+          .raw_get::<_, mlua::Value>("detail")
+          .and_then(|x| lua.from_value(x))
+          .map_err(|error| bad_field("detail", error))?,
       };
       Err(result.to_lua_err())
     }
@@ -145,13 +144,23 @@ fn arg_error_msg(lua: &Lua, mut pos: usize, msg: &str, level: usize) -> String {
     let name = name
       .map(String::from_utf8_lossy)
       .unwrap_or(Cow::Borrowed("?"));
+
+    let prefix = lua
+      .inspect_stack(level + 1)
+      .and_then(|d| {
+        let DebugSource { short_src, .. } = d.source();
+        let line = d.curr_line();
+        short_src.map(|x| Cow::Owned(format!("{}:{line} ", x.as_bstr())))
+      })
+      .unwrap_or(Cow::Borrowed(""));
+
     if name_what == Some(b"method") {
       pos -= 1;
       if pos == 0 {
-        return format!("calling '{name}' on bad self ({msg})");
+        return format!("{prefix}calling '{name}' on bad self ({msg})");
       }
     }
-    format!("bad argument #{pos} to '{name}' ({msg})")
+    format!("{prefix}bad argument #{pos} to '{name}' ({msg})")
   } else {
     format!("bad argument #{pos} ({msg})")
   }
@@ -275,7 +284,6 @@ pub fn check_userdata_mut<'lua, T: UserData + 'static>(
   .map_err(|got| (expected, got))
 }
 
-// #[deprecated]
 pub trait TableCheckExt<'lua> {
   fn check_raw_get<T: FromLua<'lua>>(
     &self,
