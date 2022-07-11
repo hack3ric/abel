@@ -8,6 +8,7 @@ use crate::lua::error::{
 };
 use crate::path::normalize_path_str;
 use crate::source::{ReadOnlyFile, Source};
+use crate::Metadata;
 use bstr::ByteSlice;
 use mlua::Value::Nil;
 use mlua::{AnyUserData, ExternalResult, Function, Lua, MultiValue, UserData, UserDataMethods};
@@ -39,7 +40,7 @@ pub fn create_preload_fs(
       fs.raw_set("mkdir", create_fn_fs_mkdir(lua, lsp.clone())?)?;
       fs.raw_set("remove", create_fn_fs_remove(lua, lsp.clone())?)?;
       fs.raw_set("rename", create_fn_fs_rename(lua, lsp.clone())?)?;
-      // TODO: fs.metadata
+      fs.raw_set("metadata", create_fn_fs_metadata(lua, source.clone(), lsp.clone())?)?;
       Ok(fs)
     })
   }
@@ -588,6 +589,50 @@ pub(crate) fn create_fn_fs_rename(lua: &Lua, lsp: Arc<Path>) -> mlua::Result<Fun
       } else {
         Err(rt_error("'rename' only works on local storage"))
       }
+    }
+  })
+}
+
+fn create_fn_fs_metadata(lua: &Lua, source: Source, lsp: Arc<Path>) -> mlua::Result<Function> {
+  lua.create_async_function(move |lua, mut args: MultiValue| {
+    let source = source.clone();
+    let lsp = lsp.clone();
+    async move {
+      let path = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 1))?;
+      let (scheme, path) = parse_path(&path)?;
+
+      let result = match scheme {
+        Scheme::Local => {
+          let path = lsp.join(normalize_path_str(path));
+          async {
+            let md = fs::metadata(path).await?;
+            if md.is_dir() {
+              Ok(Metadata::Dir)
+            } else if md.is_file() {
+              Ok(Metadata::File { size: md.len() })
+            } else {
+              Err(rt_error("the entity is neither a file nor a directory"))
+            }
+          }
+          .await
+        }
+        Scheme::Source => Ok(source.metadata(&normalize_path_str(path)).await?),
+      };
+      let result = match result {
+        Ok(md) => {
+          let t = lua.create_table()?;
+          match md {
+            Metadata::Dir => t.raw_set("kind", "dir")?,
+            Metadata::File { size } => {
+              t.raw_set("kind", "file")?;
+              t.raw_set("size", size)?;
+            }
+          }
+          Ok(t)
+        }
+        Err(e) => Err(e),
+      };
+      Ok(result)
     }
   })
 }
