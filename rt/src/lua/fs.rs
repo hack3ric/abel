@@ -331,9 +331,9 @@ impl UserData for LuaFile {
       )
     });
 
-    methods.add_async_function("into_stream", |lua, mut args: MultiValue| async move {
+    methods.add_function("into_stream", |lua, mut args: MultiValue| {
       let this = check_value::<AnyUserData>(lua, args.pop_front(), "file")
-        .map_err(tag_handler(lua, 1, 1))?
+        .map_err(tag_handler(lua, 1, 0))?
         .take::<Self>()
         .map_err(|_| tag_error(lua, 1, "file", "other userdata", 1))?;
       Ok(ByteStream::from_async_read(this.0))

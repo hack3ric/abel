@@ -72,14 +72,14 @@ pub fn create_fn_assert(lua: &Lua) -> mlua::Result<Function> {
     let pred = args
       .pop_front()
       .ok_or_else(|| arg_error(lua, 1, "value expected", 0))?;
-    let error = args
-      .pop_front()
-      .map(Ok)
-      .unwrap_or_else(|| lua.pack("assertion failed!"))?;
-    if let mlua::Value::Boolean(false) | mlua::Value::Nil = pred {
-      error_fn(lua, error).map(|_| unreachable!())
-    } else {
+    if check_truthiness(Some(pred.clone())) {
       Ok(pred)
+    } else {
+      let error = args
+        .pop_front()
+        .map(Ok)
+        .unwrap_or_else(|| lua.pack("assertion failed!"))?;
+      error_fn(lua, error).map(|_| unreachable!())
     }
   })
 }

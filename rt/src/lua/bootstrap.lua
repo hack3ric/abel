@@ -1,10 +1,12 @@
+local bstr_debug_fmt = ...
+
 function abel_Error(obj)
-  local status = obj.status
-  local error = obj.error
+  local status, error, detail = obj.status, obj.error, obj.detail
 
   local result = {
     status = status,
     error = error,
+    detail = detail,
   }
   local result_mt = {
     __call = function(detail)
@@ -31,3 +33,19 @@ function getmetatable(t)
 end
 
 string.dump = nil
+
+function debug_fmt(v)
+  local vt = type(v)
+  if vt == "function" or vt == "table" or vt == "thread" or vt == "userdata" then
+    local s = tostring(v)
+    if string.find(s, "^" .. vt) then
+      return "<" .. s .. ">"
+    else
+      return bstr_debug_fmt(s)
+    end
+  elseif vt == "string" then
+    return bstr_debug_fmt(v)
+  else
+    return tostring(v)
+  end
+end
