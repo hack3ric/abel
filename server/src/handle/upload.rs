@@ -23,13 +23,16 @@ use uuid::Uuid;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum UploadMode {
+  #[default]
   #[serde(rename = "create")]
   Create,
+
   #[serde(rename = "hot")]
-  #[default]
   Hot,
+
   #[serde(rename = "cold")]
   Cold,
+
   #[serde(rename = "load")]
   Load,
 }
