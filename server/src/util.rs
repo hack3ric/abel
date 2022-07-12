@@ -17,7 +17,7 @@ pub fn json_response_raw(status: StatusCode, body: impl Serialize) -> Response<B
 pub(crate) fn authenticate(state: &MainState, req: &Request<Body>) -> bool {
   let result = if let Some(uuid) = state.auth_token {
     (req.headers())
-      .get("authentication")
+      .get("authorization")
       .map(|x| x == &format!("Abel {uuid}"))
       .unwrap_or(false)
   } else {
