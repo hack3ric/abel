@@ -120,8 +120,4 @@ lua_tests! {
     assert(math.tointeger(rng:gen_range(1, 5)))
     assert(not pcall(rng.gen_range, rng, 1, -1))
   "#
-
-  test_error_msg r#"
-    io.open()
-  "#
 }
