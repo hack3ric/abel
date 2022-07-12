@@ -102,8 +102,11 @@ impl<T> Sandbox<T> {
     A: ToLuaMulti<'lua>,
     R: FromLuaMulti<'lua>,
   {
+    use mlua::ChunkMode;
+
     let env: Table = self.get_local_env(isolate)?;
     (self.lua.load(chunk))
+      .set_mode(ChunkMode::Text)
       .set_environment(env)?
       .set_name(name)?
       .call_async::<A, R>(args)
