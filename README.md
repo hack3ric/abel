@@ -11,6 +11,18 @@ Abel (formerly Hive) is a Lua microservices framework written in Rust. It provid
 - Compliant to HTTP standards and JSON RESTful API conventions
 - Sandbox environment, with limited yet powerful Sandbox API
 
+## Basic Concepts
+
+Abel follows three major principles:
+
+- **Asynchronous.** Reading a file, requesting an API, or other things that can be made asynchronous, will never block other instance to execute.
+
+- **Sandboxed.** an Abel service can only access its own contained resources, and is fully blocked from the outside world.
+
+- **Standardized.** Abel conforms with HTTP standards and RESTful JSON API conventions (unless you want to break them intentionally).
+
+Thanks to [Rust](https://rust-lang.org), [Tokio](https://tokio.rs), [Hyper](https://hyper.rs) and [Lua](https://lua.org) (as well as its binding [mlua](https://github.com/khvzak/mlua)), these ideal designs are way easier to realize.
+
 ## Getting Started
 
 Write a hello world service and save it to `hello.lua`:
