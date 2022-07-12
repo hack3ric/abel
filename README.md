@@ -6,6 +6,40 @@ Abel's name comes from *abelo*, which means bee in Esperanto. It further comes f
 
 *Abel is currently under heavy development, and many functionalities are yet to be implemented. Nevertheless, feel free to try it out, and any feedback would be appreciated!*
 
+## Quick Start
+
+Write a hello world service and save it to `hello.lua`:
+```lua
+abel.register("/:name", function(req)
+  return { greeting = "Hello, " .. req.params.name .. "!" }
+end)
+```
+
+Run Abel:
+```console
+$ cargo run
+ INFO  abel_server > Authentication token: <your-auth-token>
+ INFO  abel_server > Abel is listening to 127.0.0.1:3000
+```
+
+In another shell, upload the source code and run the service:
+```console
+$ curl localhost:3000/services/hello \
+    -X PUT -F single=@hello.lua \
+    -H "Authentication: Abel <your-auth-token>" \
+    | jq
+{
+  "new_service": {
+    "name": "hello"
+    ...
+  }
+}
+$ curl localhost:3000/hello/world | jq
+{
+  "greeting": "Hello, world!"
+}
+```
+
 ## Getting Started
 
 There are a few places you can start reading:
@@ -32,35 +66,6 @@ Abel follows three major principles:
 - **Standardized.** Abel conforms with HTTP standards and RESTful JSON API conventions (unless you want to break them intentionally).
 
 Thanks to [Rust](https://rust-lang.org), [Tokio](https://tokio.rs), [Hyper](https://hyper.rs) and [Lua](https://lua.org) (as well as its binding [mlua](https://github.com/khvzak/mlua)), these ideal designs are way easier to realize.
-
-## Quick Start
-
-Write a hello world service and save it to `hello.lua`:
-```lua
-abel.register("/:name", function(req)
-  return { greeting = "Hello, " .. req.params.name .. "!" }
-end)
-```
-
-Run Abel:
-```console
-$ cargo run
-```
-
-In another shell, upload the source code and run the service:
-```console
-$ curl localhost:3000/services/hello -X PUT -F single=@hello.lua | jq
-{
-  "new_service": {
-    "name": "hello"
-    ...
-  }
-}
-$ curl localhost:3000/hello/world | jq
-{
-  "greeting": "Hello, world!"
-}
-```
 
 ## Lua Version Compatibility
 
