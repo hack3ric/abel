@@ -336,7 +336,9 @@ impl UserData for LuaFile {
         .map_err(tag_handler(lua, 1, 0))?
         .take::<Self>()
         .map_err(|_| tag_error(lua, 1, "file", "other userdata", 1))?;
-      Ok(ByteStream::from_async_read(this.0))
+      let bs = lua.create_userdata(ByteStream::from_async_read(this.0))?;
+      context::register(lua, bs.clone())?;
+      Ok(bs)
     });
   }
 }

@@ -4,7 +4,7 @@ use futures::{StreamExt, TryStreamExt};
 use hyper::body::Bytes;
 use hyper::Body;
 use mlua::Value::Nil;
-use mlua::{ExternalResult, LuaSerdeExt, MultiValue, UserData, UserDataMethods};
+use mlua::{ExternalResult, LuaSerdeExt, MultiValue, UserData, UserDataMethods, AnyUserData};
 use tokio::io::AsyncRead;
 use tokio_util::io::ReaderStream;
 
@@ -32,6 +32,12 @@ impl From<Body> for ByteStream {
 
 impl UserData for ByteStream {
   fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+    // Added since a file may turn into `ByteStream`
+    methods.add_meta_function("__close", |_lua, this: AnyUserData| {
+      drop(this.take::<Self>());
+      Ok(())
+    });
+
     methods.add_async_function("to_string", |lua, mut args: MultiValue| async move {
       let mut this = check_userdata_mut::<Self>(args.pop_front(), "byte stream")
         .map_err(tag_handler(lua, 1, 1))?;
