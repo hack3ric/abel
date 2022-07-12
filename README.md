@@ -1,8 +1,18 @@
 # Abel 🐝
 
-Abel (formerly Hive) is a Lua microservices framework written in Rust. It provides an easy and fun way of writing JSON RESTful APIs while maintaining great performance.
+Abel is a lightweight microservices framework for Lua. It focuses on simple, fun experience of writing modular web services.
+
+Abel's name comes from *abelo*, which means bee in Esperanto. It further comes from *abelujo*, which means Hive (the project's former name).
 
 *Abel is currently under heavy development, and many functionalities are yet to be implemented. Nevertheless, feel free to try it out, and any feedback would be appreciated!*
+
+## Getting Started
+
+There are a few places you can start reading:
+
+- If you haven't learned Lua yet, [the official Lua 5.4 reference](https://www.lua.org/manual/5.4/) is a good way to go.
+- [Manual](https://hack3ric.github.io/abel-doc/getting-started/installation) contains introduction to aspects of Abel.
+- [API reference](https://hack3ric.github.io/abel-doc/api/builtins) contains detailed definition of Sandbox API.
 
 ## Features
 
@@ -23,7 +33,7 @@ Abel follows three major principles:
 
 Thanks to [Rust](https://rust-lang.org), [Tokio](https://tokio.rs), [Hyper](https://hyper.rs) and [Lua](https://lua.org) (as well as its binding [mlua](https://github.com/khvzak/mlua)), these ideal designs are way easier to realize.
 
-## Getting Started
+## Quick Start
 
 Write a hello world service and save it to `hello.lua`:
 ```lua
