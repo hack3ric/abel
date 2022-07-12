@@ -327,7 +327,7 @@ impl UserData for LuaFile {
           .with_borrowed_mut(|x| x.0.flush())
           .await
           .to_lua_err()
-          .map(|_| Nil),
+          .map(|_| true),
       )
     });
 
@@ -509,7 +509,7 @@ fn create_fn_fs_mkdir(lua: &Lua, lsp: Arc<Path>) -> mlua::Result<Function> {
         } else {
           fs::create_dir(path).await?;
         }
-        mlua::Result::Ok(Nil)
+        mlua::Result::Ok(true)
       };
       Ok(result.await)
     }
@@ -540,7 +540,7 @@ fn create_fn_fs_remove(lua: &Lua, lsp: Arc<Path>) -> mlua::Result<Function> {
         } else {
           fs::remove_file(path).await?;
         }
-        mlua::Result::Ok(Nil)
+        mlua::Result::Ok(true)
       };
       Ok(result.await)
     }
@@ -567,7 +567,7 @@ pub(crate) fn create_fn_os_remove(lua: &Lua, lsp: Arc<Path>) -> mlua::Result<Fun
         } else {
           fs::remove_file(path).await?
         }
-        mlua::Result::Ok(Nil)
+        mlua::Result::Ok(true)
       };
       Ok(result.await)
     }
@@ -587,7 +587,7 @@ pub(crate) fn create_fn_fs_rename(lua: &Lua, lsp: Arc<Path>) -> mlua::Result<Fun
       if from_scheme == Scheme::Local && to_scheme == Scheme::Local {
         let from = lsp.join(normalize_path_str(from));
         let to = lsp.join(normalize_path_str(to));
-        Ok(fs::rename(from, to).await.map(|_| Nil).to_lua_err())
+        Ok(fs::rename(from, to).await.map(|_| true).to_lua_err())
       } else {
         Err(rt_error("'rename' only works on local storage"))
       }
