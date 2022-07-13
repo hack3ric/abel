@@ -21,21 +21,21 @@ function fs.tmpfile() end
 
 --- @async
 --- @param path string
---- @return nil
+--- @return boolean?
 --- @return string? error
 function fs.mkdir(path) end
 
 --- @async
 --- @param path string
 --- @param all? boolean
---- @return nil
+--- @return boolean?
 --- @return string? error
 function fs.remove(path, all) end
 
 --- @async
 --- @param from string
 --- @param to string
---- @return nil
+--- @return boolean?
 --- @return string? error
 function fs.rename(from, to) end
 
@@ -73,7 +73,7 @@ function File:seek(whence, pos) end
 function File:lines(mode) end
 
 --- @async
---- @return nil
+--- @return boolean?
 --- @return string? error
 function File:flush() end
 
