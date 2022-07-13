@@ -3,7 +3,7 @@ mod upload;
 use super::error::ErrorKind::Unauthorized;
 use super::error::{method_not_allowed, ErrorAuthWrapper};
 use super::metadata::modify_metadata;
-use super::{authenticate, json_response, ServerState, Result};
+use super::{authenticate, json_response, Result, ServerState};
 use abel_core::service::Service;
 use abel_core::ErrorKind::{ServiceDropped, ServiceNotFound};
 use hyper::{Body, Method, Request, Response, StatusCode};

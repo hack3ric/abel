@@ -1,16 +1,16 @@
+mod config;
 mod error;
 mod handle;
 mod metadata;
 mod source;
-mod config;
 
 use self::metadata::Metadata;
 use self::source::{AsarSource, SingleSource};
-use config::Config;
 use abel_core::service::Service;
 use abel_core::{Abel, AbelOptions};
 use abel_rt::Source;
 use anyhow::bail;
+use config::Config;
 use error::Error;
 use handle::handle;
 use hive_asar::Archive;
@@ -27,7 +27,7 @@ use tokio::fs;
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
-pub use config::{HALF_NUM_CPUS, ServerArgs};
+pub use config::{ServerArgs, HALF_NUM_CPUS};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 

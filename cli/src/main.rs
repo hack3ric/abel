@@ -1,9 +1,7 @@
 mod server;
 
-use clap::Parser;
-use clap::Subcommand;
-use server::ServerArgs;
-use server::HALF_NUM_CPUS;
+use clap::{Parser, Subcommand};
+use server::{ServerArgs, HALF_NUM_CPUS};
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about)]
