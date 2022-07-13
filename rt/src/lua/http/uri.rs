@@ -6,7 +6,8 @@ use bstr::ByteSlice;
 use hyper::http::uri::{Authority, Parts, PathAndQuery, Scheme};
 use hyper::Uri;
 use mlua::Value::Nil;
-use mlua::{ExternalResult, FromLua, Function, Lua, MultiValue, Table, UserData};
+use mlua::{ExternalResult, FromLua, Function, Lua, MultiValue, Table, ToLua, UserData};
+use serde::Deserialize;
 use std::borrow::Cow;
 use std::collections::HashMap;
 
@@ -94,12 +95,30 @@ impl UserData for LuaUri {
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_meta_method("__tostring", |_lua, this, ()| Ok(this.0.to_string()));
 
-    // TODO: support more complex QS structure (e.g. multiple queries with the same
-    // name)
     methods.add_function("query", |lua, mut args: MultiValue| {
+      type QueryMap<'a> = HashMap<Cow<'a, str>, QueryField<'a>>;
+
+      #[derive(Deserialize)]
+      #[serde(untagged)]
+      enum QueryField<'a> {
+        Single(Cow<'a, str>),
+        Map(QueryMap<'a>),
+        Sequence(Vec<QueryField<'a>>),
+      }
+
+      impl<'a, 'lua> ToLua<'lua> for QueryField<'a> {
+        fn to_lua(self, lua: &'lua Lua) -> mlua::Result<mlua::Value<'lua>> {
+          match self {
+            Self::Single(s) => lua.pack(s),
+            Self::Map(x) => lua.pack(x),
+            Self::Sequence(x) => lua.pack(x),
+          }
+        }
+      }
+
       let this = check_userdata::<Self>(args.pop_front(), "URI").map_err(tag_handler(lua, 1, 0))?;
       let result = (this.borrow_borrowed().0.query())
-        .map(serde_qs::from_str::<HashMap<String, String>>)
+        .map(serde_qs::from_str::<QueryMap>)
         .transpose()
         .map(Option::unwrap_or_default);
       match result {
