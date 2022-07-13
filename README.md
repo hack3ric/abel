@@ -46,7 +46,7 @@ There are a few places you can start reading:
 
 - If you haven't learned Lua yet, [the official Lua 5.4 reference](https://www.lua.org/manual/5.4/) is a good way to go.
 - [Manual](https://hack3ric.github.io/abel-doc/getting-started/installation) contains introduction to aspects of Abel.
-- [API reference](https://hack3ric.github.io/abel-doc/api/builtins) contains detailed definitions of Service and Sandbox APIs.
+- [API reference](https://hack3ric.github.io/abel-doc/api/service) contains detailed definitions of Service and Sandbox APIs.
 
 ## Features
 
