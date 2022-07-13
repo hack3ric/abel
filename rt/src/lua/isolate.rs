@@ -50,6 +50,19 @@ impl<'lua> IsolateBuilder<'lua> {
     Ok(self)
   }
 
+  pub fn add_lua_lib(self, name: &str, code: &str) -> mlua::Result<Self> {
+    let key = format!("abel:lua_preload_{name}");
+    let preload: Function = self.lua.create_cached_value(&key, |lua| {
+      lua
+        .load(code)
+        .set_name(&key)?
+        .set_environment(self.local_env.clone())?
+        .call(())
+    })?;
+    self.preload.raw_set(name, preload)?;
+    Ok(self)
+  }
+
   pub fn load_libs<'a>(self, names: impl IntoIterator<Item = &'a str>) -> mlua::Result<Self> {
     for name in names {
       let lib: mlua::Value = self.local_env.call_function("require", name)?;

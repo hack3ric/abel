@@ -65,6 +65,7 @@ impl<T> Sandbox<T> {
       .add_lib("http", create_preload_http)?
       .add_lib("json", create_preload_json)?
       .add_lib("crypto", create_preload_crypto)?
+      .add_lua_lib("testing", include_str!("lib/testing.lua"))?
       // ...and load some of then into local env
       .load_libs(["math", "string", "table", "coroutine", "os", "utf8", "io"])?
       .build()

@@ -125,6 +125,7 @@ local remote_local_env_mt = {
   __metatable = false
 }
 
+-- TODO: add cache
 local function remote_searcher(modname)
   local a, z = string.find(modname, "%s*@")
   if a then
@@ -165,7 +166,7 @@ local function remote_searcher(modname)
     elseif file_resp and init_resp then
       error(
         "module '" .. modname .. "' not found\n" ..
-        "\t file '" .. tostring(init_uri) .. "' and '" .. tostring(file_uri) .. "' conflicts"
+        "\tfile '" .. tostring(init_uri) .. "' and '" .. tostring(file_uri) .. "' conflicts"
       )
     end
     local code = resp.body:to_string()

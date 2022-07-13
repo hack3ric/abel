@@ -21,8 +21,7 @@ local Uri = {}
 --- @overload fun(builder: UriBuilder): Uri
 function http.Uri(uri) end
 
---- @alias QueryMap table<string, QueryField>
---- @alias QueryField string | QueryMap | QueryField[]
+--- @alias QueryMap table<string, string | string[] | QueryMap | QueryMap[]>
 
 --- @return QueryMap
 function Uri:query() end
