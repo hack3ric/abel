@@ -26,7 +26,7 @@ In another shell, upload the source code and run the service:
 ```console
 $ curl localhost:3000/services/hello \
     -X PUT -F single=@hello.lua \
-    -H "Authentication: Abel <your-auth-token>" \
+    -H "Authorization: Abel <your-auth-token>" \
     | jq
 {
   "new_service": {
@@ -46,7 +46,7 @@ There are a few places you can start reading:
 
 - If you haven't learned Lua yet, [the official Lua 5.4 reference](https://www.lua.org/manual/5.4/) is a good way to go.
 - [Manual](https://hack3ric.github.io/abel-doc/getting-started/installation) contains introduction to aspects of Abel.
-- [API reference](https://hack3ric.github.io/abel-doc/api/builtins) contains detailed definition of Sandbox API.
+- [API reference](https://hack3ric.github.io/abel-doc/api/builtins) contains detailed definitions of Service and Sandbox APIs.
 
 ## Features
 
