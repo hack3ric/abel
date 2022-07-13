@@ -1,49 +1,50 @@
-mod config;
 mod error;
 mod handle;
 mod metadata;
 mod source;
-mod util;
+mod config;
 
-use crate::config::Config;
+use self::metadata::Metadata;
+use self::source::{AsarSource, SingleSource};
+use config::Config;
 use abel_core::service::Service;
 use abel_core::{Abel, AbelOptions};
 use abel_rt::Source;
 use anyhow::bail;
-use clap::Parser;
-use config::{Args, HALF_NUM_CPUS};
 use error::Error;
 use handle::handle;
 use hive_asar::Archive;
 use hyper::service::{make_service_fn, service_fn};
-use hyper::Server;
+use hyper::{Body, Request, Response, Server, StatusCode};
 use log::{error, info, warn};
-use metadata::Metadata;
 use owo_colors::OwoColorize;
-use source::{AsarSource, SingleSource};
+use serde::Serialize;
 use std::convert::Infallible;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tokio::fs;
 use tokio::io::AsyncReadExt;
-use tokio::{fs, io};
 use uuid::Uuid;
+
+pub use config::{HALF_NUM_CPUS, ServerArgs};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
-pub(crate) struct MainState {
+pub(crate) struct ServerState {
   abel: Abel,
   abel_path: PathBuf,
   auth_token: Option<Uuid>,
 }
 
-async fn run() -> anyhow::Result<()> {
+pub async fn run(args: ServerArgs) -> anyhow::Result<()> {
   if option_env!("RUST_LOG").is_none() {
     std::env::set_var("RUST_LOG", "INFO");
   }
   pretty_env_logger::init();
   info!("Starting abel-server v{}", env!("CARGO_PKG_VERSION"));
 
-  let Args { config, abel_path } = Args::parse();
+  let ServerArgs { config, abel_path } = args;
 
   info!("Abel working path: {}", abel_path.display().underline());
   let local_storage_path = init_paths(&abel_path).await;
@@ -51,7 +52,7 @@ async fn run() -> anyhow::Result<()> {
   let config_path = abel_path.join("config.json");
   let config = Config::get(config_path, config).await?;
 
-  let state = Arc::new(MainState {
+  let state = Arc::new(ServerState {
     abel: Abel::new(AbelOptions {
       runtime_pool_size: config.pool_size(),
       local_storage_path,
@@ -118,7 +119,7 @@ async fn init_paths(abel_path: &Path) -> PathBuf {
   local_storage_path
 }
 
-async fn load_saved_services(state: &MainState, config_path: PathBuf) -> anyhow::Result<()> {
+async fn load_saved_services(state: &ServerState, config_path: PathBuf) -> anyhow::Result<()> {
   let mut services = fs::read_dir(config_path.join("services")).await?;
 
   while let Some(service_folder) = services.next_entry().await? {
@@ -219,11 +220,26 @@ async fn shutdown_signal() {
   info!("gracefully shutting down");
 }
 
-fn main() -> anyhow::Result<()> {
-  tokio::runtime::Builder::new_multi_thread()
-    .enable_all()
-    .worker_threads(*HALF_NUM_CPUS)
-    .build()
+pub fn json_response(status: StatusCode, body: impl Serialize) -> Result<Response<Body>> {
+  Ok(json_response_raw(status, body))
+}
+
+pub fn json_response_raw(status: StatusCode, body: impl Serialize) -> Response<Body> {
+  Response::builder()
+    .status(status)
+    .header("content-type", "application/json")
+    .body(serde_json::to_string(&body).unwrap().into())
     .unwrap()
-    .block_on(run())
+}
+
+pub(crate) fn authenticate(state: &ServerState, req: &Request<Body>) -> bool {
+  let result = if let Some(uuid) = state.auth_token {
+    (req.headers())
+      .get("authorization")
+      .map(|x| x == &format!("Abel {uuid}"))
+      .unwrap_or(false)
+  } else {
+    true
+  };
+  result
 }

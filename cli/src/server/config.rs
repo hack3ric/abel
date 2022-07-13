@@ -10,8 +10,8 @@ use uuid::Uuid;
 pub static HALF_NUM_CPUS: Lazy<usize> = Lazy::new(|| 1.max(num_cpus::get() / 2));
 
 #[derive(Debug, Parser)]
-#[clap(author, version, about)]
-pub struct Args {
+#[clap(version)]
+pub struct ServerArgs {
   #[clap(flatten)]
   pub config: ConfigArgs,
 

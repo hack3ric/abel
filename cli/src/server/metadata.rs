@@ -1,4 +1,4 @@
-use crate::Result;
+use super::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tokio::fs;

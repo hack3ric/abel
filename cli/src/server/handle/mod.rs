@@ -1,10 +1,9 @@
 mod upload;
 
-use crate::error::ErrorKind::Unauthorized;
-use crate::error::{method_not_allowed, ErrorAuthWrapper};
-use crate::metadata::modify_metadata;
-use crate::util::{authenticate, json_response};
-use crate::{MainState, Result};
+use super::error::ErrorKind::Unauthorized;
+use super::error::{method_not_allowed, ErrorAuthWrapper};
+use super::metadata::modify_metadata;
+use super::{authenticate, json_response, ServerState, Result};
 use abel_core::service::Service;
 use abel_core::ErrorKind::{ServiceDropped, ServiceNotFound};
 use hyper::{Body, Method, Request, Response, StatusCode};
@@ -17,7 +16,7 @@ use std::sync::Arc;
 use upload::upload;
 
 pub(crate) async fn handle(
-  state: Arc<MainState>,
+  state: Arc<ServerState>,
   req: Request<Body>,
 ) -> Result<Response<Body>, Infallible> {
   const GET: &Method = &Method::GET;
@@ -101,18 +100,18 @@ async fn hello_world() -> Result<Response<Body>> {
   json_response(StatusCode::OK, json!({ "msg": "Hello, world!" }))
 }
 
-fn list(state: &MainState) -> Result<Response<Body>> {
+fn list(state: &ServerState) -> Result<Response<Body>> {
   let services = state.abel.list_services().collect::<Vec<_>>();
   let services = (services.iter()).map(Service::upgrade).collect::<Vec<_>>();
   json_response(StatusCode::OK, services)
 }
 
-fn get(state: &MainState, name: &str) -> Result<Response<Body>> {
+fn get(state: &ServerState, name: &str) -> Result<Response<Body>> {
   let service = state.abel.get_service(name)?;
   json_response(StatusCode::OK, service.upgrade())
 }
 
-async fn start_stop(state: &MainState, name: &str, query: &str) -> Result<Response<Body>> {
+async fn start_stop(state: &ServerState, name: &str, query: &str) -> Result<Response<Body>> {
   #[derive(Deserialize)]
   struct Query {
     op: Operation,
@@ -148,7 +147,7 @@ async fn start_stop(state: &MainState, name: &str, query: &str) -> Result<Respon
   }
 }
 
-async fn remove(state: &MainState, service_name: &str) -> Result<Response<Body>> {
+async fn remove(state: &ServerState, service_name: &str) -> Result<Response<Body>> {
   let removed = state.abel.remove_service(service_name).await?;
   tokio::fs::remove_dir_all(state.abel_path.join("services").join(service_name)).await?;
   info!("Removed service '{}' ({})", removed.name(), removed.uuid());

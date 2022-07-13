@@ -17,9 +17,9 @@ end)
 
 Run Abel:
 ```console
-$ cargo run
- INFO  abel_server > Authentication token: <your-auth-token>
- INFO  abel_server > Abel is listening to 127.0.0.1:3000
+$ cargo run -- server
+ INFO  abel::server > Authentication token: <your-auth-token>
+ INFO  abel::server > Abel is listening to 127.0.0.1:3000
 ```
 
 In another shell, upload the source code and run the service:

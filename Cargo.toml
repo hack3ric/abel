@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "rt", "server"]
+members = ["core", "rt", "cli"]
 
 [profile.release]
 lto = true

@@ -1,8 +1,7 @@
-use crate::error::{Error, ErrorKind};
-use crate::metadata::Metadata;
-use crate::source::{AsarSource, SingleSource};
-use crate::util::json_response;
-use crate::{MainState, Result};
+use crate::server::error::{Error, ErrorKind};
+use crate::server::metadata::Metadata;
+use crate::server::source::{AsarSource, SingleSource};
+use crate::server::{json_response, ServerState, Result};
 use abel_core::service::{ErrorPayload, Service};
 use abel_core::ErrorKind::ServiceExists;
 use abel_core::{Config, ServiceImpl};
@@ -50,7 +49,7 @@ enum SourceKind {
 }
 
 pub(crate) async fn upload(
-  state: &MainState,
+  state: &ServerState,
   name: String,
   req: Request<Body>,
 ) -> Result<Response<Body>> {
@@ -129,7 +128,7 @@ fn parse_multipart(headers: &HeaderMap, body: Body) -> Result<Multipart<'static>
 }
 
 async fn create_service<'a>(
-  state: &'a MainState,
+  state: &'a ServerState,
   mode: UploadMode,
   name: String,
   config: Config,
