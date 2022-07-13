@@ -4,7 +4,7 @@ use futures::{StreamExt, TryStreamExt};
 use hyper::body::Bytes;
 use hyper::Body;
 use mlua::Value::Nil;
-use mlua::{ExternalResult, LuaSerdeExt, MultiValue, UserData, UserDataMethods, AnyUserData};
+use mlua::{AnyUserData, ExternalResult, LuaSerdeExt, MultiValue, UserData, UserDataMethods};
 use tokio::io::AsyncRead;
 use tokio_util::io::ReaderStream;
 

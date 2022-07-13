@@ -106,10 +106,23 @@ lua_tests! {
     -- Ignores fragment intentionally (see https://github.com/hyperium/hyper/issues/1345)
     assert(tostring(uri) == "https://test.example.com:8080/path?foo=bar&baz=%20")
 
-    local query = uri:query()
+    local query, err = assert(uri:query())
     assert(type(query) == "table")
     assert(query.foo == "bar")
     assert(query.baz == " ")
+
+    local uri2 = http.Uri {
+      scheme = "https",
+      authority = "example.com",
+      query = {
+        foo = { bar = "baz", test = { 1, 1, 2 } },
+      },
+    }
+    print(uri2)
+    print(uri2:query())
+    -- for k, v in pairs(uri2:query()) do
+    --   print(k, v)
+    -- end
   "#
 
   test_crypto_random r#"

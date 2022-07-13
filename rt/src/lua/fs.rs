@@ -40,7 +40,10 @@ pub fn create_preload_fs(
       fs.raw_set("mkdir", create_fn_fs_mkdir(lua, lsp.clone())?)?;
       fs.raw_set("remove", create_fn_fs_remove(lua, lsp.clone())?)?;
       fs.raw_set("rename", create_fn_fs_rename(lua, lsp.clone())?)?;
-      fs.raw_set("metadata", create_fn_fs_metadata(lua, source.clone(), lsp.clone())?)?;
+      fs.raw_set(
+        "metadata",
+        create_fn_fs_metadata(lua, source.clone(), lsp.clone())?,
+      )?;
       Ok(fs)
     })
   }
