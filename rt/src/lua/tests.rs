@@ -81,56 +81,49 @@ macro_rules! lua_tests {
 lua_tests! {
   test_json r#"
     local json = require "json"
+    local t = require "testing"
 
-    assert(json.stringify {} == '{}')
-    assert(json.stringify { "foo", "bar" } == '["foo","bar"]')
-    assert(json.stringify(nil) == 'null')
+    t.assert_eq(assert(json.stringify {}), '{}')
+    t.assert_eq(assert(json.stringify { "foo", "bar" }), '["foo","bar"]')
+    t.assert_eq(assert(json.stringify(nil)), 'null')
 
     local table = {}
-    assert(json.stringify(table) == '{}')
-    assert(json.stringify(json.array(table)) == '[]')
-    assert(json.stringify(json.undo_array(table)) == '{}')
+    t.assert_eq(assert(json.stringify(table)), '{}')
+    t.assert_eq(assert(json.stringify(json.array(table))), '[]')
+    t.assert_eq(assert(json.stringify(json.undo_array(table))), '{}')
   "#
 
   test_http_uri r#"
     local http = require "http"
+    local t = require "testing"
 
-    local uri = http.Uri "https://test.example.com:8080/path?foo=bar&baz=%20#segment"
+    local uri = http.Uri "https://test.example.com:8080/path?foo=bar&baz=%20#fragment"
 
-    assert(uri.scheme == "https")
-    assert(uri.host == "test.example.com")
-    assert(uri.port == 8080)
-    assert(uri.path == "/path")
-    assert(uri.query_string == "foo=bar&baz=%20")
+    t.assert_eq(uri.scheme, "https")
+    t.assert_eq(uri.host, "test.example.com")
+    t.assert_eq(uri.port, 8080)
+    t.assert_eq(uri.path, "/path")
+    t.assert_eq(uri.query_string, "foo=bar&baz=%20")
 
     -- Ignores fragment intentionally (see https://github.com/hyperium/hyper/issues/1345)
-    assert(tostring(uri) == "https://test.example.com:8080/path?foo=bar&baz=%20")
+    t.assert_eq(
+      tostring(uri),
+      "https://test.example.com:8080/path?foo=bar&baz=%20"
+    )
 
-    local query, err = assert(uri:query())
-    assert(type(query) == "table")
-    assert(query.foo == "bar")
-    assert(query.baz == " ")
-
-    local uri2 = http.Uri {
-      scheme = "https",
-      authority = "example.com",
-      query = {
-        foo = { bar = "baz", test = { 1, 1, 2 } },
-      },
-    }
-    print(uri2)
-    print(uri2:query())
-    -- for k, v in pairs(uri2:query()) do
-    --   print(k, v)
-    -- end
+    local query = assert(uri:query())
+    t.assert_eq(type(query), "table")
+    t.assert_eq(query.foo, "bar")
+    t.assert_eq(query.baz, " ")
   "#
 
   test_crypto_random r#"
     local crypto = require "crypto"
     local rng = crypto.thread_rng
+    local t = require "testing"
 
-    assert(type(rng:random()) == "number")
-    assert(math.tointeger(rng:gen_range(1, 5)))
-    assert(not pcall(rng.gen_range, rng, 1, -1))
+    t.assert_eq(type(rng:random()), "number")
+    t.assert(math.tointeger(rng:gen_range(1, 5)))
+    t.assert_false(pcall(rng.gen_range, rng, 1, -1))
   "#
 }

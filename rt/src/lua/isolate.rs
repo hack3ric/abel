@@ -52,12 +52,12 @@ impl<'lua> IsolateBuilder<'lua> {
 
   pub fn add_lua_lib(self, name: &str, code: &str) -> mlua::Result<Self> {
     let key = format!("abel:lua_preload_{name}");
-    let preload: Function = self.lua.create_cached_value(&key, |lua| {
+    let preload = self.lua.create_cached_value(&key, |lua| {
       lua
         .load(code)
         .set_name(&key)?
         .set_environment(self.local_env.clone())?
-        .call(())
+        .into_function()
     })?;
     self.preload.raw_set(name, preload)?;
     Ok(self)
