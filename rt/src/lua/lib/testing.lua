@@ -10,7 +10,7 @@ function testing.assert_false(value, msg)
   assert(not value, msg)
 end
 
---- Throws error if `left` or `right` are not equal.
+--- Throws error if `left` and `right` are not equal.
 ---
 --- @generic T
 --- @param left T
@@ -25,7 +25,7 @@ function testing.assert_eq(left, right, msg)
   end
 end
 
---- Throws error if `left` or `right` are equal.
+--- Throws error if `left` and `right` are equal.
 ---
 --- @generic T
 --- @param left T
