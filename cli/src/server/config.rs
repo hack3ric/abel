@@ -45,40 +45,46 @@ pub struct ConfigArgs {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
   pub listen: SocketAddr,
-  pub auth_token: Uuid,
-  pool_size: Option<usize>,
+  pub auth_token: Option<Uuid>,
+  pub(crate) pool_size: Option<usize>,
+}
+
+impl Default for Config {
+  fn default() -> Self {
+    Self {
+      listen: ([127, 0, 0, 1], 3000).into(),
+      auth_token: Some(Uuid::new_v4()),
+      pool_size: None,
+    }
+  }
 }
 
 impl Config {
-  async fn init(path: impl AsRef<Path>) -> io::Result<Config> {
-    let default_config = Self {
-      listen: ([127, 0, 0, 1], 3000).into(),
-      auth_token: Uuid::new_v4(),
-      pool_size: None,
-    };
+  async fn init(path: impl AsRef<Path>) -> io::Result<Self> {
+    let default_config = Self::default();
     let content = serde_json::to_string_pretty(&default_config)?;
     fs::write(path, content.as_bytes()).await?;
     Ok(default_config)
   }
 
-  pub async fn get(config_path: impl AsRef<Path>, args: ConfigArgs) -> io::Result<Config> {
-    let config_path = config_path.as_ref();
-    let mut config = if !config_path.exists() {
-      Config::init(config_path).await?
+  pub async fn load(path: impl AsRef<Path>) -> io::Result<Self> {
+    let path = path.as_ref();
+    let config = if !path.exists() {
+      Config::init(path).await?
     } else {
-      let content = fs::read(config_path).await?;
+      let content = fs::read(path).await?;
       serde_json::from_slice(&content)?
     };
 
-    // merge
-    #[allow(clippy::option_map_unit_fn)]
-    {
-      args.listen.map(|x| config.listen = x);
-      args.auth_token.map(|x| config.auth_token = x);
-      args.pool_size.map(|x| config.pool_size = Some(x));
-    }
-
     Ok(config)
+  }
+
+  #[allow(clippy::option_map_unit_fn)]
+  pub fn merge(mut self, args: ConfigArgs) -> Self {
+    args.listen.map(|x| self.listen = x);
+    args.auth_token.map(|x| self.auth_token = Some(x));
+    args.pool_size.map(|x| self.pool_size = Some(x));
+    self
   }
 
   pub fn pool_size(&self) -> usize {

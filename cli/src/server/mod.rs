@@ -10,7 +10,6 @@ use abel_core::service::Service;
 use abel_core::{Abel, AbelOptions};
 use abel_rt::Source;
 use anyhow::bail;
-use config::Config;
 use error::Error;
 use handle::handle;
 use hive_asar::Archive;
@@ -27,7 +26,7 @@ use tokio::fs;
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
-pub use config::{ServerArgs, HALF_NUM_CPUS};
+pub use config::{Config, ConfigArgs, ServerArgs, HALF_NUM_CPUS};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -37,7 +36,12 @@ pub(crate) struct ServerState {
   auth_token: Option<Uuid>,
 }
 
-pub async fn run(args: ServerArgs) -> anyhow::Result<()> {
+pub async fn run_with_stored_config(args: ServerArgs) -> anyhow::Result<()> {
+  let config_path = args.abel_path.join("config.json");
+  run(args, Config::load(config_path).await?).await
+}
+
+pub async fn run(args: ServerArgs, init_config: Config) -> anyhow::Result<()> {
   if option_env!("RUST_LOG").is_none() {
     std::env::set_var("RUST_LOG", "INFO");
   }
@@ -49,8 +53,7 @@ pub async fn run(args: ServerArgs) -> anyhow::Result<()> {
   info!("Abel working path: {}", abel_path.display().underline());
   let local_storage_path = init_paths(&abel_path).await;
 
-  let config_path = abel_path.join("config.json");
-  let config = Config::get(config_path, config).await?;
+  let config = init_config.merge(config);
 
   let state = Arc::new(ServerState {
     abel: Abel::new(AbelOptions {
@@ -58,7 +61,7 @@ pub async fn run(args: ServerArgs) -> anyhow::Result<()> {
       local_storage_path,
     })?,
     abel_path: abel_path.clone(),
-    auth_token: Some(config.auth_token),
+    auth_token: config.auth_token,
   });
 
   if let Some(auth_token) = &state.auth_token {

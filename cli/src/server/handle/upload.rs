@@ -58,8 +58,6 @@ pub(crate) async fn upload(
 
   let UploadQuery { mode } = serde_qs::from_str(parts.uri.query().unwrap_or(""))?;
 
-  // TODO: check name in `state.abel`
-
   let source_field = multipart.next_field().await?.ok_or((
     "no source uploaded",
     "specify either `single` or `multi` field in multipart",
