@@ -30,48 +30,13 @@ pub use config::{Config, ConfigArgs, ServerArgs, HALF_NUM_CPUS};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
-pub(crate) struct ServerState {
-  abel: Abel,
-  abel_path: PathBuf,
-  auth_token: Option<Uuid>,
+pub struct ServerState {
+  pub abel: Abel,
+  pub abel_path: PathBuf,
+  pub auth_token: Option<Uuid>,
 }
 
-pub async fn run_with_stored_config(args: ServerArgs) -> anyhow::Result<()> {
-  let config_path = args.abel_path.join("config.json");
-  run(args, Config::load(config_path).await?).await
-}
-
-pub async fn run(args: ServerArgs, init_config: Config) -> anyhow::Result<()> {
-  if option_env!("RUST_LOG").is_none() {
-    std::env::set_var("RUST_LOG", "INFO");
-  }
-  pretty_env_logger::init();
-  info!("Starting abel-server v{}", env!("CARGO_PKG_VERSION"));
-
-  let ServerArgs { config, abel_path } = args;
-
-  info!("Abel working path: {}", abel_path.display().underline());
-  let local_storage_path = init_paths(&abel_path).await;
-
-  let config = init_config.merge(config);
-
-  let state = Arc::new(ServerState {
-    abel: Abel::new(AbelOptions {
-      runtime_pool_size: config.pool_size(),
-      local_storage_path,
-    })?,
-    abel_path: abel_path.clone(),
-    auth_token: config.auth_token,
-  });
-
-  if let Some(auth_token) = &state.auth_token {
-    info!("Authentication token: {auth_token}");
-  } else {
-    warn!("No authentication token set. Don't do this in production environment!");
-  }
-
-  load_saved_services(&state, abel_path).await?;
-
+pub async fn run(config: Config, state: Arc<ServerState>) -> anyhow::Result<()> {
   let state2 = state.clone();
   let make_svc = make_service_fn(move |_conn| {
     let state = state2.clone();
@@ -91,6 +56,41 @@ pub async fn run(args: ServerArgs, init_config: Config) -> anyhow::Result<()> {
   state.abel.stop_all_services().await;
 
   Ok(())
+}
+
+pub fn init_logger() {
+  if option_env!("RUST_LOG").is_none() {
+    std::env::set_var("RUST_LOG", "INFO");
+  }
+  pretty_env_logger::init();
+}
+
+pub async fn init_state(
+  args: ServerArgs,
+  init_config: Config,
+) -> anyhow::Result<(PathBuf, Config, Arc<ServerState>)> {
+  let ServerArgs { config, abel_path } = args;
+
+  let local_storage_path = init_paths(&abel_path).await;
+
+  let config = init_config.merge(config);
+
+  let state = Arc::new(ServerState {
+    abel: Abel::new(AbelOptions {
+      runtime_pool_size: config.pool_size(),
+      local_storage_path,
+    })?,
+    abel_path: abel_path.clone(),
+    auth_token: config.auth_token,
+  });
+  Ok((abel_path, config, state))
+}
+
+pub async fn init_state_with_stored_config(
+  args: ServerArgs,
+) -> anyhow::Result<(PathBuf, Config, Arc<ServerState>)> {
+  let config_path = args.abel_path.join("config.json");
+  init_state(args, Config::load(config_path).await?).await
 }
 
 async fn init_paths(abel_path: &Path) -> PathBuf {
@@ -122,8 +122,8 @@ async fn init_paths(abel_path: &Path) -> PathBuf {
   local_storage_path
 }
 
-async fn load_saved_services(state: &ServerState, config_path: PathBuf) -> anyhow::Result<()> {
-  let mut services = fs::read_dir(config_path.join("services")).await?;
+pub async fn load_saved_services(state: &ServerState, abel_path: PathBuf) -> anyhow::Result<()> {
+  let mut services = fs::read_dir(abel_path.join("services")).await?;
 
   while let Some(service_folder) = services.next_entry().await? {
     if service_folder.file_type().await?.is_dir() {
@@ -133,30 +133,30 @@ async fn load_saved_services(state: &ServerState, config_path: PathBuf) -> anyho
         let metadata: Metadata = serde_json::from_slice(&metadata_bytes)?;
 
         let asar_path = service_folder.path().join("source.asar");
-        let asar_exists = asar_path.exists();
         let lua_path = service_folder.path().join("source.lua");
-        let lua_exists = lua_path.exists();
-        let (source, config) = if asar_exists && lua_exists {
-          bail!("both source.asar and source.lua found");
-        } else if asar_exists {
-          let mut archive = Archive::new_from_file(asar_path).await?;
 
-          let config = if let Ok(mut config_file) = archive.get("abel.json").await {
-            let mut config_bytes = vec![0; config_file.metadata().size as _];
-            config_file.read_to_end(&mut config_bytes).await?;
-            serde_json::from_slice(&config_bytes)?
-          } else {
-            Default::default()
-          };
+        let (source, config) = match (asar_path.exists(), lua_path.exists()) {
+          (true, false) => {
+            let mut archive = Archive::new_from_file(asar_path).await?;
 
-          let source = Source::new(AsarSource(archive));
-          (source, config)
-        } else if lua_exists {
-          let code = fs::read(lua_path).await?;
-          let source = Source::new(SingleSource::new(code));
-          (source, Default::default())
-        } else {
-          bail!("neither source.asar nor source.lua found")
+            let config = if let Ok(mut config_file) = archive.get("abel.json").await {
+              let mut config_bytes = vec![0; config_file.metadata().size as _];
+              config_file.read_to_end(&mut config_bytes).await?;
+              serde_json::from_slice(&config_bytes)?
+            } else {
+              Default::default()
+            };
+
+            let source = Source::new(AsarSource(archive));
+            (source, config)
+          }
+          (false, true) => {
+            let code = fs::read(lua_path).await?;
+            let source = Source::new(SingleSource::new(code));
+            (source, Default::default())
+          }
+          (true, true) => bail!("both source.asar and source.lua found"),
+          (false, false) => bail!("neither source.asar nor source.lua found"),
         };
 
         let (service, error_payload) = if metadata.started {

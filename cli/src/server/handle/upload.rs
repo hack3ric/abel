@@ -48,7 +48,7 @@ enum SourceKind {
   Multi,
 }
 
-pub(crate) async fn upload(
+pub async fn upload(
   state: &ServerState,
   name: String,
   req: Request<Body>,
