@@ -10,6 +10,7 @@ mod util;
 pub use config::Config;
 pub use error::{Error, ErrorKind, Result};
 pub use mlua::Error as LuaError;
+pub use runtime::check_name;
 pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 
 use abel_rt::{mlua, Source};

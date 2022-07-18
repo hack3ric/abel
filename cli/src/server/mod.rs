@@ -4,8 +4,6 @@ mod handle;
 mod metadata;
 mod source;
 
-use self::metadata::Metadata;
-use self::source::{AsarSource, SingleSource};
 use abel_core::service::Service;
 use abel_core::{Abel, AbelOptions};
 use abel_rt::Source;
@@ -18,6 +16,7 @@ use hyper::{Body, Request, Response, Server, StatusCode};
 use log::{error, info, warn};
 use owo_colors::OwoColorize;
 use serde::Serialize;
+use source::{AsarSource, SingleSource};
 use std::convert::Infallible;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -27,6 +26,7 @@ use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
 pub use config::{Config, ConfigArgs, ServerArgs, HALF_NUM_CPUS};
+pub use metadata::Metadata;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -122,15 +122,15 @@ async fn init_paths(abel_path: &Path) -> PathBuf {
   local_storage_path
 }
 
-pub async fn load_saved_services(state: &ServerState, abel_path: PathBuf) -> anyhow::Result<()> {
-  let mut services = fs::read_dir(abel_path.join("services")).await?;
+pub async fn load_saved_services(state: &ServerState, services_path: &Path) -> anyhow::Result<()> {
+  let mut services = fs::read_dir(services_path).await?;
 
   while let Some(service_folder) = services.next_entry().await? {
     if service_folder.file_type().await?.is_dir() {
       let name = service_folder.file_name().to_string_lossy().into_owned();
       let result = async {
-        let metadata_bytes = fs::read(service_folder.path().join("metadata.json")).await?;
-        let metadata: Metadata = serde_json::from_slice(&metadata_bytes)?;
+        let metadata_path = service_folder.path().join("metadata.json");
+        let mut metadata = Metadata::read(&metadata_path).await?;
 
         let asar_path = service_folder.path().join("source.asar");
         let lua_path = service_folder.path().join("source.lua");
@@ -140,7 +140,7 @@ pub async fn load_saved_services(state: &ServerState, abel_path: PathBuf) -> any
             let mut archive = Archive::new_from_file(asar_path).await?;
 
             let config = if let Ok(mut config_file) = archive.get("abel.json").await {
-              let mut config_bytes = vec![0; config_file.metadata().size as _];
+              let mut config_bytes = Vec::with_capacity(config_file.metadata().size as _);
               config_file.read_to_end(&mut config_bytes).await?;
               serde_json::from_slice(&config_bytes)?
             } else {
@@ -170,6 +170,9 @@ pub async fn load_saved_services(state: &ServerState, abel_path: PathBuf) -> any
             .await?;
           (Service::Stopped(service), error_payload)
         };
+
+        metadata.started = service.is_running();
+        metadata.write(&metadata_path).await?;
 
         let service = service.upgrade();
         if !error_payload.is_empty() {

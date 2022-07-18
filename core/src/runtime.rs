@@ -120,12 +120,7 @@ impl Runtime {
     name: &str,
     source: Source,
   ) -> Result<(Vec<PathMatcher>, Isolate)> {
-    static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}$").unwrap());
-
-    if !NAME_CHECK_REGEX.is_match(name) {
-      return Err(InvalidServiceName { name: name.into() }.into());
-    }
-
+    check_name(name)?;
     let (isolate, internal) = self.run_source(name, source).await?;
 
     let mut paths = Vec::new();
@@ -270,5 +265,15 @@ impl Deref for Runtime {
 impl DerefMut for Runtime {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.0
+  }
+}
+
+pub fn check_name(name: &str) -> Result<()> {
+  static NAME_CHECK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^[a-z0-9-]{1,64}$").unwrap());
+
+  if NAME_CHECK_REGEX.is_match(name) {
+    Ok(())
+  } else {
+    Err(InvalidServiceName { name: name.into() }.into())
   }
 }

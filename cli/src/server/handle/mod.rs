@@ -2,8 +2,7 @@ mod upload;
 
 use super::error::ErrorKind::Unauthorized;
 use super::error::{method_not_allowed, ErrorAuthWrapper};
-use super::metadata::modify_metadata;
-use super::{authenticate, json_response, Result, ServerState};
+use super::{authenticate, json_response, Metadata, Result, ServerState};
 use abel_core::service::Service;
 use abel_core::ErrorKind::{ServiceDropped, ServiceNotFound};
 use hyper::{Body, Method, Request, Response, StatusCode};
@@ -134,12 +133,12 @@ async fn start_stop(state: &ServerState, name: &str, query: &str) -> Result<Resp
   match op {
     Operation::Start => {
       let service = state.abel.start_service(name).await?;
-      modify_metadata(&metadata_path, |m| m.started = true).await?;
+      Metadata::modify(&metadata_path, |m| m.started = true).await?;
       json_response(StatusCode::OK, json!({ "started": service.upgrade() }))
     }
     Operation::Stop => {
       let result = state.abel.stop_service(name).await;
-      modify_metadata(&metadata_path, |m| m.started = false).await?;
+      Metadata::modify(&metadata_path, |m| m.started = false).await?;
       result
         .map_err(From::from)
         .and_then(|x| json_response(StatusCode::OK, json!({ "stopped": &*x })))

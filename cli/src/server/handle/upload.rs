@@ -2,6 +2,7 @@ use crate::server::error::{Error, ErrorKind};
 use crate::server::metadata::Metadata;
 use crate::server::source::{AsarSource, SingleSource};
 use crate::server::{json_response, Result, ServerState};
+use crate::SourceKind;
 use abel_core::service::{ErrorPayload, Service};
 use abel_core::ErrorKind::ServiceExists;
 use abel_core::{Config, ServiceImpl};
@@ -40,12 +41,6 @@ enum UploadMode {
 struct UploadQuery {
   #[serde(default)]
   mode: UploadMode,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SourceKind {
-  Single,
-  Multi,
 }
 
 pub async fn upload(
@@ -172,11 +167,7 @@ async fn create_service<'a>(
     uuid: guard.uuid(),
     started: true,
   };
-  fs::write(
-    service_path.join("metadata.json"),
-    serde_json::to_string(&metadata)?,
-  )
-  .await?;
+  metadata.write(&service_path.join("metadata.json")).await?;
 
   match source_kind {
     SourceKind::Single => fs::rename(temp_path, service_path.join("source.lua")).await?,
