@@ -14,6 +14,8 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use upload::upload;
 
+pub use upload::{log_result, upload_local, UploadMode};
+
 pub(crate) async fn handle(
   state: Arc<ServerState>,
   req: Request<Body>,

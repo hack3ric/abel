@@ -13,6 +13,7 @@ local internal = {
   package = package,
 }
 
+-- TODO: move `abel` table to `core`
 local abel = {
   current_worker = current_worker,
   Error = abel_Error,

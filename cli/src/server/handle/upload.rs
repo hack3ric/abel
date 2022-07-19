@@ -7,7 +7,8 @@ use abel_core::service::{ErrorPayload, Service};
 use abel_core::ErrorKind::ServiceExists;
 use abel_core::{Config, ServiceImpl};
 use abel_rt::Source;
-use futures::TryStreamExt;
+use bytes::{Bytes, BytesMut};
+use futures::{Stream, TryStreamExt};
 use hive_asar::Archive;
 use hyper::{Body, HeaderMap, Request, Response, StatusCode};
 use log::{info, warn};
@@ -15,14 +16,14 @@ use multer::{Constraints, Multipart, SizeLimit};
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncReadExt};
 use tokio_util::io::StreamReader;
 use uuid::Uuid;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-enum UploadMode {
+pub enum UploadMode {
   #[default]
   #[serde(rename = "create")]
   Create,
@@ -58,35 +59,9 @@ pub async fn upload(
     "specify either `single` or `multi` field in multipart",
   ))?;
 
-  let temp_path = state.abel_path.join(format!("tmp/{}", Uuid::new_v4()));
-
-  let (kind, source, config): (_, Source, Config) = match source_field.name() {
-    Some("single") => {
-      let code = source_field.bytes().await?;
-      fs::write(&temp_path, &code).await?;
-
-      let source = Source::new(SingleSource::new(code));
-      (SourceKind::Single, source, Default::default())
-    }
-    Some("multi") => {
-      let mut reader =
-        StreamReader::new(source_field.map_err(|e| io::Error::new(io::ErrorKind::Other, e)));
-      let mut writer = File::create(&temp_path).await?;
-      io::copy(&mut reader, &mut writer).await?;
-
-      let mut archive = Archive::new_from_file(&temp_path).await?;
-
-      let config = if let Ok(mut config_file) = archive.get("abel.json").await {
-        let mut config_bytes = vec![0; config_file.metadata().size as _];
-        config_file.read_to_end(&mut config_bytes).await?;
-        serde_json::from_slice(&config_bytes)?
-      } else {
-        Default::default()
-      };
-
-      let source = Source::new(AsarSource(archive));
-      (SourceKind::Multi, source, config)
-    }
+  let kind = match source_field.name() {
+    Some("single") => SourceKind::Single,
+    Some("multi") => SourceKind::Multi,
     _ => {
       return Err(From::from((
         "unknown field name",
@@ -95,10 +70,23 @@ pub async fn upload(
     }
   };
 
+  let source_stream = source_field.map_err(|e| io::Error::new(io::ErrorKind::Other, e));
   let (service, replaced, error_payload) =
-    create_service(state, mode, name, config, source, kind, &temp_path).await?;
+    upload_local(state, name, mode, kind, source_stream).await?;
 
   response(service, replaced, error_payload).await
+}
+
+pub async fn upload_local(
+  state: &ServerState,
+  name: String,
+  mode: UploadMode,
+  kind: SourceKind,
+  source_stream: impl Stream<Item = io::Result<Bytes>> + Unpin,
+) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
+  let (temp_path, source, config) =
+    read_store_service_temp(&state.abel_path, kind, source_stream).await?;
+  create_service(state, mode, name, config, source, kind, &temp_path).await
 }
 
 fn parse_multipart(headers: &HeaderMap, body: Body) -> Result<Multipart<'static>> {
@@ -118,6 +106,47 @@ fn parse_multipart(headers: &HeaderMap, body: Body) -> Result<Multipart<'static>
     .allowed_fields(allowed_fields)
     .size_limit(size_limit);
   Ok(Multipart::with_constraints(body, boundary, constraints))
+}
+
+async fn read_store_service_temp(
+  abel_path: &Path,
+  kind: SourceKind,
+  mut source_stream: impl Stream<Item = io::Result<Bytes>> + Unpin,
+) -> Result<(PathBuf, Source, Config)> {
+  let temp_path = abel_path.join(format!("tmp/{}", Uuid::new_v4()));
+
+  let (source, config) = match kind {
+    SourceKind::Single => {
+      let mut code = BytesMut::new();
+      while let Some(chunk) = source_stream.try_next().await? {
+        code.extend(chunk);
+      }
+      fs::write(&temp_path, &code).await?;
+
+      let source = Source::new(SingleSource::new(code));
+      (source, Default::default())
+    }
+    SourceKind::Multi => {
+      let mut reader = StreamReader::new(source_stream);
+      let mut writer = File::create(&temp_path).await?;
+      io::copy(&mut reader, &mut writer).await?;
+
+      let mut archive = Archive::new_from_file(&temp_path).await?;
+
+      let config = if let Ok(mut config_file) = archive.get("abel.json").await {
+        let mut config_bytes = vec![0; config_file.metadata().size as _];
+        config_file.read_to_end(&mut config_bytes).await?;
+        serde_json::from_slice(&config_bytes)?
+      } else {
+        Default::default()
+      };
+
+      let source = Source::new(AsarSource(archive));
+      (source, config)
+    }
+  };
+
+  Ok((temp_path, source, config))
 }
 
 async fn create_service<'a>(
@@ -177,22 +206,18 @@ async fn create_service<'a>(
   Ok((service, replaced, error_payload))
 }
 
-async fn response(
-  service: Service<'_>,
-  replaced: Option<ServiceImpl>,
-  error_payload: ErrorPayload,
-) -> Result<Response<Body>> {
+pub fn log_result(
+  service: &Service<'_>,
+  replaced: &Option<ServiceImpl>,
+  error_payload: &ErrorPayload,
+) {
   let service = service.upgrade();
-  let mut body = serde_json::Map::<String, serde_json::Value>::new();
-  body.insert("new_service".into(), json!(service));
-
   if let Some(replaced) = replaced {
     info!(
       "Updated service '{}' {}",
       service.name(),
       format!("({} -> {})", replaced.uuid(), service.uuid()).dimmed(),
     );
-    body.insert("replaced_service".into(), json!(replaced));
   } else {
     info!(
       "Created service '{}' {}",
@@ -200,9 +225,27 @@ async fn response(
       format!("({})", service.uuid()).dimmed(),
     );
   }
-
   if !error_payload.is_empty() {
     warn!("error payload: {error_payload:?}");
+  }
+}
+
+async fn response(
+  service: Service<'_>,
+  replaced: Option<ServiceImpl>,
+  error_payload: ErrorPayload,
+) -> Result<Response<Body>> {
+  log_result(&service, &replaced, &error_payload);
+
+  let service = service.upgrade();
+  let mut body = serde_json::Map::<String, serde_json::Value>::new();
+  body.insert("new_service".into(), json!(service));
+
+  if let Some(replaced) = replaced {
+    body.insert("replaced_service".into(), json!(replaced));
+  }
+
+  if !error_payload.is_empty() {
     let mut map = serde_json::Map::<String, serde_json::Value>::new();
     if let Some(stop) = error_payload.stop {
       map.insert(

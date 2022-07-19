@@ -9,14 +9,16 @@ abel-rt = { path = "../rt" }
 anyhow = { version = "1.0.52", features = ["backtrace"] }
 async-trait = "0.1.56"
 backtrace = "0.3.63"
+bytes = "1.2.0"
 clap = { version = "3.2.5", features = ["derive"] }
 futures = "0.3.19"
-hive-asar = "0.3.2"
+hive-asar = "0.4.0"
 home = "0.5.3"
 hyper = { version = "0.14.16", features = ["full"] }
 libc = "0.2.126"
 log = "0.4.14"
 multer = "2.0.2"
+notify = "=5.0.0-pre.15"
 num_cpus = "1.13.1"
 once_cell = "1.9.0"
 owo-colors = "3.4.0"

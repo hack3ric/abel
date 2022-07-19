@@ -26,6 +26,7 @@ use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
 pub use config::{Config, ConfigArgs, ServerArgs, HALF_NUM_CPUS};
+pub use handle::{log_result, upload_local, UploadMode};
 pub use metadata::Metadata;
 
 type Result<T, E = Error> = std::result::Result<T, E>;

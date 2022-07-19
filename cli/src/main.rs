@@ -1,17 +1,27 @@
 mod server;
 
-use crate::server::{init_state, init_state_with_stored_config, load_saved_services, Metadata};
+use crate::server::{
+  init_state, init_state_with_stored_config, load_saved_services, log_result, upload_local,
+  Metadata, UploadMode,
+};
 use anyhow::anyhow;
 use clap::{Parser, Subcommand};
 use futures::{Future, TryFutureExt};
-use log::{info, warn};
+use hive_asar::pack_dir_into_stream;
+use log::{error, info, warn};
+use notify::RecursiveMode::Recursive;
+use notify::{Event, Watcher};
 use owo_colors::OwoColorize;
 use server::{init_logger, Config, ConfigArgs, ServerArgs, HALF_NUM_CPUS};
 use slug::slugify;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tempfile::tempdir;
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncReadExt};
+use tokio::runtime::Handle;
+use tokio_util::io::ReaderStream;
 use uuid::Uuid;
 
 #[derive(Debug, Parser)]
@@ -36,7 +46,7 @@ enum Command {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SourceKind {
+pub enum SourceKind {
   Single,
   Multi,
 }
@@ -76,17 +86,72 @@ fn main() -> anyhow::Result<()> {
         auth_token: None,
         ..Default::default()
       };
+      let services = Arc::<[_]>::from(services);
 
       block_on(async {
         let (_, config, state) = init_state(server_args, default_config).await?;
 
         let services_path = abel_path.path().join("services");
-        save_services_from_paths(services, &services_path).await?;
-
-        // TODO: watch changes
+        let kinds_and_names = save_services_from_paths(&services, &services_path).await?;
 
         load_saved_services(&state, &services_path).await?;
-        server::run(config, state).await
+        let server_handle = tokio::spawn(server::run(config, state.clone()));
+
+        let rt = Handle::current();
+        let mut watcher = notify::recommended_watcher({
+          let mut time = Instant::now();
+          let services = services.clone();
+          let state = state.clone();
+          move |result: Result<Event, notify::Error>| {
+            let now = Instant::now();
+            let dur = now.duration_since(time);
+            match result {
+              Ok(event) if dur > Duration::from_millis(100) => {
+                time = now;
+                let mut event_paths_iter = event.paths.into_iter();
+                'services: for ((kind, name), path) in kinds_and_names.iter().zip(&*services) {
+                  if event_paths_iter.len() == 0 {
+                    break;
+                  }
+                  for event_path in &mut event_paths_iter {
+                    if &event_path == path
+                      || *kind == SourceKind::Multi && event_path.starts_with(path)
+                    {
+                      let result = rt.block_on(async {
+                        const MODE: UploadMode = UploadMode::Hot; // FIXME: is hot update okay?
+                        let (service, replaced, error_payload) = match kind {
+                          SourceKind::Single => {
+                            let stream = ReaderStream::new(File::open(&path).await?);
+                            upload_local(&state, name.clone(), MODE, *kind, stream).await?
+                          }
+                          SourceKind::Multi => {
+                            let stream = pack_dir_into_stream(&path).await?;
+                            upload_local(&state, name.clone(), MODE, *kind, stream).await?
+                          }
+                        };
+                        log_result(&service, &replaced, &error_payload);
+                        anyhow::Ok(())
+                      });
+
+                      if let Err(error) = result {
+                        warn!("Error updating service '{name}': {error}; maybe check '{path:?}'?")
+                      }
+
+                      continue 'services;
+                    }
+                  }
+                }
+              }
+              Ok(_) => {}
+              Err(error) => error!("failed to watch files: {error}"),
+            }
+          }
+        })?;
+        for path in &*services {
+          watcher.watch(path, Recursive)?;
+        }
+
+        server_handle.await?
       })
     }
   }
@@ -102,9 +167,10 @@ fn block_on<F: Future>(f: F) -> F::Output {
 }
 
 async fn save_services_from_paths(
-  services: Vec<PathBuf>,
+  services: &[PathBuf],
   services_path: &Path,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<(SourceKind, String)>> {
+  let mut kinds_and_names = Vec::with_capacity(services.len());
   for path in services {
     let path = fs::canonicalize(path).await?;
     let fs_metadata = fs::metadata(&path).await?;
@@ -143,6 +209,8 @@ async fn save_services_from_paths(
       warn!("service '{name}' already exists; skipping");
       continue;
     }
+    kinds_and_names.push((kind, name));
+
     fs::create_dir(&service_path).await?;
     Metadata {
       uuid: Uuid::new_v4(),
@@ -164,5 +232,5 @@ async fn save_services_from_paths(
     }
   }
 
-  Ok(())
+  Ok(kinds_and_names)
 }
