@@ -110,7 +110,7 @@ pub fn create_fn_http_create_response(lua: &Lua) -> mlua::Result<Function> {
 
     let headers_table: Option<Table> = params.check_raw_get(lua, "headers", "table")?;
     if let Some(t) = headers_table {
-      *response.headers.borrow_mut() = check_headers(lua, t)?;
+      response.headers.borrow_mut().extend(check_headers(lua, t)?)
     }
 
     Ok(response)
