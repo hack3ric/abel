@@ -1,12 +1,11 @@
 use crate::runtime::{Extra, Runtime};
 use crate::Result;
-use abel_rt::{mlua, Executor};
-use futures::{Future, FutureExt};
+use abel_rt::{mlua, Executor, SharedTask};
+use futures::Future;
 use log::error;
-use std::any::Any;
 use std::rc::Rc;
 use std::sync::Arc;
-use tokio::sync::{oneshot, Mutex, RwLock};
+use tokio::sync::RwLock;
 
 pub struct RuntimePool {
   name: String,
@@ -48,11 +47,7 @@ impl RuntimePool {
     Fut: Future<Output = R> + 'a,
     R: Send + 'static,
   {
-    let wrapped_task_fn =
-      Box::new(|t| async move { Box::new(task_fn(t).await) as Box<dyn Any + Send> }.boxed_local())
-        as Box<_>;
-    let (tx, rx) = oneshot::channel();
-    let task = Arc::new(Mutex::new(Some((wrapped_task_fn, tx))));
+    let (task, rx) = SharedTask::new(task_fn);
 
     for (i, e) in self.executors.iter().enumerate() {
       let rl = e.read().await;
@@ -70,6 +65,6 @@ impl RuntimePool {
       }
     }
 
-    *rx.await.unwrap().downcast().unwrap()
+    *rx.await.unwrap()
   }
 }

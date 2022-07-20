@@ -1,5 +1,6 @@
 use super::task_future::TaskFuture;
 use super::Task;
+use crate::task::OwnedTask;
 use crate::{Cleanup, Sandbox};
 use futures::future::select;
 use futures::future::Either::*;
@@ -124,7 +125,7 @@ where
               // TODO: better cleaning trigger
               Right((Left(_), _)) => rt.cleanup(),
               Right((Right((Some(msg), _)), _)) => {
-                if let Some((task_fn, tx)) = msg.try_lock().ok().and_then(|mut x| x.take()) {
+                if let Some(OwnedTask(task_fn, tx)) = msg.take() {
                   let task_count = task_count2.clone();
                   task_count.fetch_add(1, Ordering::AcqRel);
                   let task = TaskFuture::new_with_context(rt.clone(), task_fn, tx).unwrap();
@@ -149,8 +150,15 @@ where
     }
   }
 
-  pub async fn send(&self, task: Task<R>) -> Result<(), mpsc::error::SendError<Task<R>>> {
-    self.task_tx.send(task).await
+  pub async fn send(
+    &self,
+    task: impl Into<Task<R>>,
+  ) -> Result<(), mpsc::error::SendError<Task<R>>> {
+    self.task_tx.send(task.into()).await
+  }
+
+  pub fn task_tx(&self) -> &mpsc::Sender<Task<R>> {
+    &self.task_tx
   }
 
   pub fn is_panicked(&self) -> bool {
