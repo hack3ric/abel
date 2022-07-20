@@ -44,6 +44,12 @@ struct UploadQuery {
   mode: UploadMode,
 }
 
+pub struct UploadResponse<'a> {
+  pub service: Service<'a>,
+  pub replaced: Option<ServiceImpl>,
+  pub error_payload: ErrorPayload,
+}
+
 pub async fn upload(
   state: &ServerState,
   name: String,
@@ -71,10 +77,9 @@ pub async fn upload(
   };
 
   let source_stream = source_field.map_err(|e| io::Error::new(io::ErrorKind::Other, e));
-  let (service, replaced, error_payload) =
-    upload_local(state, name, mode, kind, source_stream).await?;
+  let resp = upload_local(state, name, mode, kind, source_stream).await?;
 
-  response(service, replaced, error_payload).await
+  response(resp).await
 }
 
 pub async fn upload_local(
@@ -83,7 +88,7 @@ pub async fn upload_local(
   mode: UploadMode,
   kind: SourceKind,
   source_stream: impl Stream<Item = io::Result<Bytes>> + Unpin,
-) -> Result<(Service<'_>, Option<ServiceImpl>, ErrorPayload)> {
+) -> Result<UploadResponse> {
   let (temp_path, source, config) =
     read_store_service_temp(&state.abel_path, kind, source_stream).await?;
   create_service(state, mode, name, config, source, kind, &temp_path).await
@@ -157,7 +162,7 @@ async fn create_service<'a>(
   source: Source,
   source_kind: SourceKind,
   temp_path: &Path,
-) -> Result<(Service<'a>, Option<ServiceImpl>, ErrorPayload)> {
+) -> Result<UploadResponse<'a>> {
   let (service, replaced, error_payload) = match mode {
     UploadMode::Create if state.abel.get_service(&name).is_ok() => {
       return Err(ServiceExists { name: name.into() }.into())
@@ -203,13 +208,19 @@ async fn create_service<'a>(
     SourceKind::Multi => fs::hard_link(temp_path, service_path.join("source.asar")).await?,
   }
 
-  Ok((service, replaced, error_payload))
+  Ok(UploadResponse {
+    service,
+    replaced,
+    error_payload,
+  })
 }
 
 pub fn log_result(
-  service: &Service<'_>,
-  replaced: &Option<ServiceImpl>,
-  error_payload: &ErrorPayload,
+  UploadResponse {
+    service,
+    replaced,
+    error_payload,
+  }: &UploadResponse,
 ) {
   let service = service.upgrade();
   if let Some(replaced) = replaced {
@@ -230,12 +241,13 @@ pub fn log_result(
   }
 }
 
-async fn response(
-  service: Service<'_>,
-  replaced: Option<ServiceImpl>,
-  error_payload: ErrorPayload,
-) -> Result<Response<Body>> {
-  log_result(&service, &replaced, &error_payload);
+async fn response(resp: UploadResponse<'_>) -> Result<Response<Body>> {
+  log_result(&resp);
+  let UploadResponse {
+    service,
+    replaced,
+    error_payload,
+  } = resp;
 
   let service = service.upgrade();
   let mut body = serde_json::Map::<String, serde_json::Value>::new();

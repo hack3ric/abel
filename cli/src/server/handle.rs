@@ -1,7 +1,6 @@
-mod upload;
-
 use super::error::ErrorKind::Unauthorized;
 use super::error::{method_not_allowed, ErrorAuthWrapper};
+use super::upload::upload;
 use super::{authenticate, json_response, Metadata, Result, ServerState};
 use abel_core::service::Service;
 use abel_core::ErrorKind::{ServiceDropped, ServiceNotFound};
@@ -12,9 +11,6 @@ use serde::Deserialize;
 use serde_json::json;
 use std::convert::Infallible;
 use std::sync::Arc;
-use upload::upload;
-
-pub use upload::{log_result, upload_local, UploadMode};
 
 pub(crate) async fn handle(
   state: Arc<ServerState>,
