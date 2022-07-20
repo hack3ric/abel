@@ -135,7 +135,7 @@ impl<T> Sandbox<T> {
 impl<T: Cleanup> Sandbox<T> {
   pub fn cleanup(&self) {
     self.extra.cleanup();
-    self.expire_registry_values();
+    // self.expire_registry_values();
   }
 }
 
