@@ -85,7 +85,7 @@ fn main() -> anyhow::Result<()> {
 
         load_saved_services(&state, &services_path).await?;
         let server_handle = tokio::spawn(server::run(config, state.clone()));
-        init_watcher(state, kinds_and_names, services)?;
+        let _watcher = init_watcher(state, kinds_and_names, services)?;
         server_handle.await?
       })
     }
