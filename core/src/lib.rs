@@ -16,7 +16,6 @@ pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 use abel_rt::{mlua, Source};
 use hyper::{Body, Request, Response};
 use pool::RuntimePool;
-use runtime::Runtime;
 use service::{ErrorPayload, Service, ServiceName, ServicePool, StoppedService};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -43,12 +42,11 @@ impl Abel {
     let state = Arc::new(AbelState {
       local_storage_path: options.local_storage_path,
     });
-    let state2 = state.clone();
     Ok(Self {
       runtime_pool: RuntimePool::new(
         "abel-worker".to_string(),
         options.runtime_pool_size,
-        move || Runtime::new(state2.clone()),
+        state.clone(),
       )?,
       service_pool: ServicePool::new(state.clone()),
       state,

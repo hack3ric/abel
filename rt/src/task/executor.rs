@@ -72,7 +72,10 @@ where
   R: Deref<Target = Sandbox<E>> + 'static,
   E: Cleanup,
 {
-  pub fn new(f: impl FnOnce() -> mlua::Result<R> + Send + 'static, name: String) -> Self {
+  pub fn new(
+    f: impl FnOnce(&mpsc::Sender<Task<R>>) -> mlua::Result<R> + Send + 'static,
+    name: String,
+  ) -> Self {
     let task_count = Arc::new(AtomicU32::new(0));
     let panicked = Arc::new(AtomicBool::new(false));
     let panic_notifier = PanicNotifier(panicked.clone());
@@ -81,12 +84,13 @@ where
 
     let rt = Handle::current();
     let task_count2 = task_count.clone();
+    let task_tx2 = task_tx.clone();
     std::thread::Builder::new()
       .name(name)
       .spawn(move || {
         let _panic_notifier = panic_notifier;
         rt.block_on(async move {
-          let rt = Rc::new(f().unwrap());
+          let rt = Rc::new(f(&task_tx2).unwrap());
           let mut tasks = FuturesUnordered::<TaskFuture<R, E>>::new();
           let (waker_tx, mut waker_rx) = mpsc::unbounded_channel();
           let mut waker = MyWaker::from_tx(waker_tx.clone());

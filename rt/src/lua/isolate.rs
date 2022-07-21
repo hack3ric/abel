@@ -82,7 +82,7 @@ impl<'lua> IsolateBuilder<'lua> {
   }
 }
 
-pub fn isolate_bootstrap(lua: &Lua, source: Source) -> mlua::Result<(Table, Table)> {
+fn isolate_bootstrap(lua: &Lua, source: Source) -> mlua::Result<(Table, Table)> {
   let bootstrap = lua.create_cached_value("abel:isolate_bootstrap", |lua| {
     lua
       .load(include_str!("isolate_bootstrap.lua"))
