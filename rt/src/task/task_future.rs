@@ -1,9 +1,10 @@
 use super::AnyBox;
-use crate::lua::context;
+use crate::lua::context::TaskContext;
 use crate::Sandbox;
 use futures::future::LocalBoxFuture;
 use futures::Future;
-use mlua::{self, ExternalError, HookTriggers, RegistryKey};
+use log::error;
+use mlua::{self, ExternalError, HookTriggers};
 use pin_project::pin_project;
 use std::cell::RefCell;
 use std::ops::Deref;
@@ -17,44 +18,25 @@ use tokio::sync::oneshot;
 #[pin_project]
 pub struct TaskFuture<R: Deref<Target = Sandbox<E>>, E> {
   rt: Rc<R>,
-  context: Option<RegistryKey>,
+  context: TaskContext,
   #[pin]
   task: LocalBoxFuture<'static, AnyBox>,
   tx: Option<oneshot::Sender<AnyBox>>,
-  cpu_time: Rc<RefCell<Duration>>,
 }
 
 impl<R: Deref<Target = Sandbox<E>>, E> TaskFuture<R, E> {
-  fn _new(
+  pub fn new(
     rt: Rc<R>,
     task_fn: impl FnOnce(Rc<R>) -> LocalBoxFuture<'static, AnyBox>,
-    context: Option<RegistryKey>,
     tx: oneshot::Sender<AnyBox>,
+    context: TaskContext,
   ) -> Self {
     Self {
       rt: rt.clone(),
       context,
       task: task_fn(rt),
       tx: Some(tx),
-      cpu_time: Rc::new(RefCell::new(Duration::new(0, 0))),
     }
-  }
-
-  pub fn new(
-    rt: Rc<R>,
-    task_fn: impl FnOnce(Rc<R>) -> LocalBoxFuture<'static, AnyBox>,
-    tx: oneshot::Sender<AnyBox>,
-  ) -> Self {
-    Self::_new(rt, task_fn, None, tx)
-  }
-
-  pub fn new_with_context(
-    rt: Rc<R>,
-    task_fn: impl FnOnce(Rc<R>) -> LocalBoxFuture<'static, AnyBox>,
-    tx: oneshot::Sender<AnyBox>,
-  ) -> mlua::Result<Self> {
-    let context = context::create(rt.lua())?;
-    Ok(Self::_new(rt, task_fn, Some(context), tx))
   }
 }
 
@@ -63,19 +45,21 @@ impl<R: Deref<Target = Sandbox<E>>, E> Future for TaskFuture<R, E> {
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.project();
+    let lua = this.rt.lua();
 
-    context::set_current(this.rt.lua(), this.context.as_ref())?;
+    this.context.set_current(lua);
 
     let hook_triggers = HookTriggers::every_nth_instruction(1048576);
-    this.rt.lua().set_hook(hook_triggers, {
+    lua.set_hook(hook_triggers, {
       let t1 = RefCell::new(Instant::now());
-      let cpu_time = this.cpu_time.clone();
+      let cpu_time = this.context.cpu_time.clone();
       move |_lua, _| {
+        let mut cpu_time = cpu_time.lock();
         let t2 = Instant::now();
         let dur = t2.duration_since(*t1.borrow());
-        *cpu_time.borrow_mut() += dur;
+        *cpu_time += dur;
 
-        if *cpu_time.borrow() >= Duration::from_secs(1) {
+        if *cpu_time >= Duration::from_secs(1) {
           Err(TimeoutError(()).to_lua_err())
         } else {
           *t1.borrow_mut() = t2;
@@ -85,22 +69,20 @@ impl<R: Deref<Target = Sandbox<E>>, E> Future for TaskFuture<R, E> {
     })?;
 
     let poll = this.task.poll(cx);
-    this.rt.lua().remove_hook();
+    lua.remove_hook();
+    let x = TaskContext::remove_current(lua);
+    assert_eq!(x.as_ref(), Some(&*this.context));
+    drop(x);
 
     match poll {
       Poll::Ready(result) => {
         if let Some(tx) = this.tx.take() {
           let _ = tx.send(result);
-          if let Some(context) = this.context.take() {
-            context::destroy(this.rt.lua(), context)?;
-          }
+          this.context.try_close(lua)?;
         }
         Poll::Ready(Ok(()))
       }
-      Poll::Pending => {
-        context::set_current(this.rt.lua(), None)?;
-        Poll::Pending
-      }
+      Poll::Pending => Poll::Pending,
     }
   }
 }

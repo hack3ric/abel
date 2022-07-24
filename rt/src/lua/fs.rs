@@ -1,7 +1,7 @@
 use super::error::{arg_error, check_truthiness, check_userdata_mut, rt_error, tag_error};
 use super::LuaCacheExt;
 use crate::lua::byte_stream::ByteStream;
-use crate::lua::context;
+use crate::lua::context::TaskContext;
 use crate::lua::error::{
   check_integer, check_string, check_userdata, check_value, rt_error_fmt, tag_handler, UserDataRef,
   UserDataRefMut,
@@ -340,7 +340,7 @@ impl UserData for LuaFile {
         .take::<Self>()
         .map_err(|_| tag_error(lua, 1, "file", "other userdata", 1))?;
       let bs = lua.create_userdata(ByteStream::from_async_read(this.0))?;
-      context::register(lua, bs.clone())?;
+      TaskContext::register(lua, bs.clone())?;
       Ok(bs)
     });
   }
@@ -460,7 +460,7 @@ pub(crate) fn create_fn_fs_open(
       };
       let file = LuaFile(BufReader::new(file));
       let file = lua.create_userdata(file)?;
-      context::register(lua, file.clone())?;
+      TaskContext::register(lua, file.clone())?;
       lua.pack_multi(file)
     }
   })

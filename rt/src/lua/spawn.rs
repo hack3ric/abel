@@ -16,10 +16,12 @@ pub fn create_fn_spawn<R: Deref<Target = Sandbox<E>>, E>(
     async move {
       let f: Function =
         check_value(lua, args.pop_front(), "function").map_err(tag_handler(lua, 1, 1))?;
+
       // HACK: `Function::bind` is still somehow buggy. Fixed in the next version.
       // let f = f.bind(args)?;
       let f = if args.is_empty() { f } else { f.bind(args)? };
       let key = lua.create_registry_value(f)?;
+
       let (task, rx) = OwnedTask::<R>::new(move |rt| async move {
         let lua = rt.lua();
         let f: Function = lua.registry_value(&key)?;

@@ -1,5 +1,6 @@
 use super::task_future::TaskFuture;
 use super::Task;
+use crate::lua::context::TaskContext;
 use crate::task::OwnedTask;
 use crate::{Cleanup, Sandbox};
 use futures::future::select;
@@ -82,14 +83,15 @@ where
     let (task_tx, mut task_rx) = mpsc::channel::<Task<_>>(16);
     let (_stop_tx, mut stop_rx) = oneshot::channel();
 
-    let rt = Handle::current();
+    let handle = Handle::current();
     let task_count2 = task_count.clone();
     let task_tx2 = task_tx.clone();
     std::thread::Builder::new()
       .name(name)
       .spawn(move || {
         let _panic_notifier = panic_notifier;
-        rt.block_on(async move {
+
+        handle.block_on(async move {
           let rt = Rc::new(f(&task_tx2).unwrap());
           let mut tasks = FuturesUnordered::<TaskFuture<R, E>>::new();
           let (waker_tx, mut waker_rx) = mpsc::unbounded_channel();
@@ -129,10 +131,11 @@ where
               // TODO: better cleaning trigger
               Right((Left(_), _)) => rt.cleanup(),
               Right((Right((Some(msg), _)), _)) => {
-                if let Some(OwnedTask(task_fn, tx)) = msg.take() {
+                if let Some(OwnedTask { task_fn, tx }) = msg.take() {
                   let task_count = task_count2.clone();
                   task_count.fetch_add(1, Ordering::AcqRel);
-                  let task = TaskFuture::new_with_context(rt.clone(), task_fn, tx).unwrap();
+                  let ctx = TaskContext::new_with_close_table(rt.lua()).unwrap();
+                  let task = TaskFuture::new(rt.clone(), task_fn, tx, ctx);
                   tasks.push(task);
                   waker.wake_by_ref();
                 }

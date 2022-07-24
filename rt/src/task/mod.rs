@@ -46,7 +46,10 @@ impl<T> Clone for SharedTask<T> {
   }
 }
 
-pub struct OwnedTask<T: 'static>(TaskFn<T>, oneshot::Sender<AnyBox>);
+pub struct OwnedTask<T: 'static> {
+  task_fn: TaskFn<T>,
+  tx: oneshot::Sender<AnyBox>,
+}
 
 impl<T> OwnedTask<T> {
   pub fn new<'a, F, Fut>(
@@ -60,11 +63,9 @@ impl<T> OwnedTask<T> {
     Fut: Future + 'a,
     Fut::Output: Send + 'static,
   {
-    let wrapped_task_fn =
-      Box::new(|t| async move { Box::new(task_fn(t).await) as Box<dyn Any + Send> }.boxed_local())
-        as Box<_>;
+    let task_fn = Box::new(|t| async move { Box::new(task_fn(t).await) as AnyBox }.boxed_local());
     let (tx, rx) = oneshot::channel();
-    let task = Self(wrapped_task_fn, tx);
+    let task = Self { task_fn, tx };
     let rx = rx.map_ok(|x| x.downcast::<Fut::Output>().unwrap());
     (task, rx)
   }
