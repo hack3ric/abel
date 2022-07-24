@@ -1,6 +1,6 @@
 use super::AnyBox;
 use crate::lua::context::TaskContext;
-use crate::Sandbox;
+use crate::lua::sandbox::Sandbox;
 use futures::future::LocalBoxFuture;
 use futures::Future;
 use log::error;

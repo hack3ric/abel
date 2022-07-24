@@ -1,7 +1,7 @@
 use super::task_future::TaskFuture;
 use super::Task;
+use crate::lua::sandbox::{Cleanup, Sandbox};
 use crate::task::LocalTask;
-use crate::{Cleanup, Sandbox, SharedTask};
 use futures::future::select;
 use futures::future::Either::*;
 use futures::stream::FuturesUnordered;
@@ -11,7 +11,7 @@ use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Relaxed;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Wake, Waker};
 use std::time::Duration;
@@ -61,7 +61,6 @@ where
   R: Deref<Target = Sandbox<E>> + 'static,
   E: Cleanup,
 {
-  pub task_count: Arc<AtomicU32>,
   panicked: Arc<AtomicBool>,
   task_tx: mpsc::Sender<Task<R>>,
   _stop_tx: oneshot::Sender<()>,
@@ -73,14 +72,12 @@ where
   E: Cleanup,
 {
   pub fn new(f: impl FnOnce() -> mlua::Result<R> + Send + 'static, name: String) -> Self {
-    let task_count = Arc::new(AtomicU32::new(0));
     let panicked = Arc::new(AtomicBool::new(false));
     let panic_notifier = PanicNotifier(panicked.clone());
     let (task_tx, mut task_rx) = mpsc::channel::<Task<_>>(16);
     let (_stop_tx, mut stop_rx) = oneshot::channel();
 
     let handle = Handle::current();
-    let task_count2 = task_count.clone();
     std::thread::Builder::new()
       .name(name)
       .spawn(move || {
@@ -132,8 +129,6 @@ where
                   context,
                 }) = msg.take(rt.lua()).unwrap()
                 {
-                  let task_count = task_count2.clone();
-                  task_count.fetch_add(1, Ordering::AcqRel);
                   let task = TaskFuture::new(rt.clone(), task_fn, tx, context);
                   tasks.push(task);
                   waker.wake_by_ref();
@@ -149,7 +144,6 @@ where
       .unwrap();
 
     Self {
-      task_count,
       panicked,
       task_tx,
       _stop_tx,

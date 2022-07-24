@@ -77,6 +77,23 @@ impl Serialize for PathMatcher {
   }
 }
 
+/// The returned path is always relative, which is intentional and convenient
+/// for concatenating to other paths in usual cases.
+pub fn normalize_path_str(path: &str) -> String {
+  let mut result = Vec::new();
+  let segments = path
+    .split(['/', '\\'])
+    .filter(|&x| !x.is_empty() && x != ".");
+  for s in segments {
+    if s == ".." {
+      result.pop();
+    } else {
+      result.push(s);
+    }
+  }
+  result.join("/")
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -95,5 +112,12 @@ mod tests {
   #[test_case("/files/*", "/files/path/to/secret/file" => some_map!("*" => "path/to/secret/file"); "asterisk")]
   fn test_path_matcher(matcher: &str, path: &str) -> Option<Params> {
     PathMatcher::new(matcher).unwrap().gen_params(path)
+  }
+
+  #[test_case("" => ""; "empty string")]
+  #[test_case("etc/rpc" => "etc/rpc"; "force absolute")]
+  #[test_case("../../././///etc/rpc" => "etc/rpc"; "special path components")]
+  fn test_normalize_path_str(path: &str) -> String {
+    normalize_path_str(path)
   }
 }

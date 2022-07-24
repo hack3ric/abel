@@ -1,6 +1,6 @@
 use crate::runtime::{Extra, Runtime};
+use crate::task::{Executor, SharedTask};
 use crate::{AbelState, Result};
-use abel_rt::{Executor, SharedTask};
 use futures::Future;
 use log::error;
 use std::rc::Rc;

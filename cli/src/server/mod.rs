@@ -7,8 +7,8 @@ mod handle;
 mod source;
 
 use abel_core::service::Service;
+use abel_core::source::Source;
 use abel_core::{Abel, AbelOptions};
-use abel_rt::Source;
 use anyhow::bail;
 use config::{Config, ServerArgs};
 use error::Error;

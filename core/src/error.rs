@@ -1,5 +1,5 @@
+use crate::lua::error::CustomError;
 use crate::service::ServiceName;
-use abel_rt::{mlua, CustomError};
 use backtrace::Backtrace;
 use hyper::StatusCode;
 use serde::{Serialize, Serializer};

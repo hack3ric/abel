@@ -7,8 +7,7 @@ use crate::lua::error::{
   UserDataRefMut,
 };
 use crate::path::normalize_path_str;
-use crate::source::{ReadOnlyFile, Source};
-use crate::Metadata;
+use crate::source::{Metadata, ReadOnlyFile, Source};
 use bstr::ByteSlice;
 use mlua::Value::Nil;
 use mlua::{AnyUserData, ExternalResult, Function, Lua, MultiValue, UserData, UserDataMethods};

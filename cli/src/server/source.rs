@@ -1,4 +1,5 @@
-use abel_rt::{normalize_path_str, Metadata, SourceVfs};
+use abel_core::normalize_path_str;
+use abel_core::source::{Metadata, SourceVfs};
 use async_trait::async_trait;
 use hive_asar::header::Entry;
 use hive_asar::{Archive, DuplicableFile};
