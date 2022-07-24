@@ -11,6 +11,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
+use thiserror::Error;
 use tokio::sync::oneshot;
 
 #[pin_project]
@@ -75,7 +76,7 @@ impl<R: Deref<Target = Sandbox<E>>, E> Future for TaskFuture<R, E> {
         *cpu_time.borrow_mut() += dur;
 
         if *cpu_time.borrow() >= Duration::from_secs(1) {
-          Err("timeout".to_lua_err())
+          Err(TimeoutError(()).to_lua_err())
         } else {
           *t1.borrow_mut() = t2;
           Ok(())
@@ -103,3 +104,7 @@ impl<R: Deref<Target = Sandbox<E>>, E> Future for TaskFuture<R, E> {
     }
   }
 }
+
+#[derive(Debug, Error)]
+#[error("timeout")]
+pub struct TimeoutError(pub(crate) ());

@@ -1,5 +1,7 @@
+use crate::task::TimeoutError;
 use bstr::ByteSlice;
 use hyper::StatusCode;
+use mlua::Error::*;
 use mlua::Value::Nil;
 use mlua::{
   AnyUserData, DebugNames, DebugSource, ExternalError, FromLua, Function, Lua, LuaSerdeExt,
@@ -85,7 +87,6 @@ pub fn create_fn_assert(lua: &Lua) -> mlua::Result<Function> {
 }
 
 pub fn get_error_msg(error: mlua::Error) -> String {
-  use mlua::Error::*;
   match error {
     SyntaxError { message, .. } => message,
     RuntimeError(e) | MemoryError(e) => e,
@@ -100,17 +101,26 @@ pub fn create_fn_pcall(lua: &Lua) -> mlua::Result<Function> {
       .pop_front()
       .ok_or_else(|| arg_error(lua, 1, "value expected", 1))?;
     let result = match f {
-      mlua::Value::Function(f) => f
-        .call_async::<_, MultiValue>(args)
-        .await
-        .map_err(get_error_msg),
-      mlua::Value::Table(f) => f.call_async(args).await.map_err(get_error_msg),
-      _ => Err(format!("attempt to call a {} value", f.type_name())),
+      mlua::Value::Function(f) => f.call_async::<_, MultiValue>(args).await,
+      mlua::Value::Table(f) => f.call_async(args).await,
+      _ => {
+        return Ok((
+          false,
+          lua.pack_multi(rt_error_fmt!("attempt to call a {} value", f.type_name()))?,
+        ))
+      }
     };
 
     match result {
       Ok(result) => Ok((true, result)),
-      Err(error) => Ok((false, lua.pack_multi(error)?)),
+      Err(error) => {
+        if let ExternalError(x) = resolve_callback_error(&error) {
+          if x.is::<TimeoutError>() {
+            return Err(error);
+          }
+        }
+        Ok((false, lua.pack_multi(get_error_msg(error))?))
+      }
     }
   })
 }

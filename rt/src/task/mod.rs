@@ -2,6 +2,7 @@ mod executor;
 mod task_future;
 
 pub use executor::Executor;
+pub use task_future::TimeoutError;
 
 use futures::future::LocalBoxFuture;
 use futures::{Future, FutureExt, TryFutureExt};
