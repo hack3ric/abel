@@ -9,16 +9,12 @@ use super::lua_std::{
   create_preload_coroutine, create_preload_io, create_preload_math, create_preload_os,
   create_preload_string, create_preload_table, create_preload_utf8, global_whitelist,
 };
-use super::spawn::create_fn_spawn;
 use crate::source::Source;
-use crate::Task;
 use mlua::{FromLuaMulti, Lua, Table, ToLuaMulti};
-use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::mpsc;
 
-pub struct Sandbox<T> {
+pub struct Sandbox<T = ()> {
   lua: Lua,
   extra: T,
 }
@@ -28,17 +24,6 @@ impl<T> Sandbox<T> {
     let lua = Lua::new();
     modify_global_env(&lua)?;
     Ok(Self { lua, extra })
-  }
-
-  pub fn new_with_executor_features<R: Deref<Target = Sandbox<E>>, E>(
-    extra: T,
-    task_tx: mpsc::Sender<Task<R>>,
-  ) -> mlua::Result<Self> {
-    let sandbox = Self::new(extra)?;
-    (sandbox.lua)
-      .globals()
-      .raw_set("spawn", create_fn_spawn(&sandbox.lua, task_tx)?)?;
-    Ok(sandbox)
   }
 
   pub fn lua(&self) -> &Lua {

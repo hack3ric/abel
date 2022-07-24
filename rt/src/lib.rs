@@ -11,4 +11,4 @@ pub use lua::sandbox::{Cleanup, Sandbox};
 pub use mlua;
 pub use path::normalize_path_str;
 pub use source::{Metadata, Source, SourceVfs};
-pub use task::{Executor, OwnedTask, SharedTask, Task};
+pub use task::{Executor, LocalTask, OwnedTask, SharedTask, Task};

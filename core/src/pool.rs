@@ -19,7 +19,7 @@ impl RuntimePool {
       .map(|i| {
         let state = state.clone();
         Ok(RwLock::new(Executor::new(
-          |tx| Runtime::new(state, tx.clone()),
+          || Runtime::new(state),
           format!("{}-{i}", name),
         )))
       })
@@ -38,7 +38,7 @@ impl RuntimePool {
     Fut: Future<Output = R> + 'a,
     R: Send + 'static,
   {
-    let (task, rx) = SharedTask::new(task_fn);
+    let (task, rx) = SharedTask::new(Default::default(), task_fn);
 
     for (i, e) in self.executors.iter().enumerate() {
       let rl = e.read().await;
@@ -46,10 +46,7 @@ impl RuntimePool {
         drop(rl);
         let mut wl = e.write().await;
         let state = self.state.clone();
-        *wl = Executor::new(
-          |tx| Runtime::new(state, tx.clone()),
-          format!("{}-{i}", self.name),
-        );
+        *wl = Executor::new(|| Runtime::new(state), format!("{}-{i}", self.name));
         wl.send(task.clone()).await
       } else {
         rl.send(task.clone()).await

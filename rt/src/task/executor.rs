@@ -1,8 +1,7 @@
 use super::task_future::TaskFuture;
 use super::Task;
-use crate::lua::context::TaskContext;
-use crate::task::OwnedTask;
-use crate::{Cleanup, Sandbox};
+use crate::task::LocalTask;
+use crate::{Cleanup, Sandbox, SharedTask};
 use futures::future::select;
 use futures::future::Either::*;
 use futures::stream::FuturesUnordered;
@@ -73,10 +72,7 @@ where
   R: Deref<Target = Sandbox<E>> + 'static,
   E: Cleanup,
 {
-  pub fn new(
-    f: impl FnOnce(&mpsc::Sender<Task<R>>) -> mlua::Result<R> + Send + 'static,
-    name: String,
-  ) -> Self {
+  pub fn new(f: impl FnOnce() -> mlua::Result<R> + Send + 'static, name: String) -> Self {
     let task_count = Arc::new(AtomicU32::new(0));
     let panicked = Arc::new(AtomicBool::new(false));
     let panic_notifier = PanicNotifier(panicked.clone());
@@ -85,14 +81,13 @@ where
 
     let handle = Handle::current();
     let task_count2 = task_count.clone();
-    let task_tx2 = task_tx.clone();
     std::thread::Builder::new()
       .name(name)
       .spawn(move || {
         let _panic_notifier = panic_notifier;
 
         handle.block_on(async move {
-          let rt = Rc::new(f(&task_tx2).unwrap());
+          let rt = Rc::new(f().unwrap());
           let mut tasks = FuturesUnordered::<TaskFuture<R, E>>::new();
           let (waker_tx, mut waker_rx) = mpsc::unbounded_channel();
           let mut waker = MyWaker::from_tx(waker_tx.clone());
@@ -131,11 +126,15 @@ where
               // TODO: better cleaning trigger
               Right((Left(_), _)) => rt.cleanup(),
               Right((Right((Some(msg), _)), _)) => {
-                if let Some(OwnedTask { task_fn, tx }) = msg.take() {
+                if let Some(LocalTask {
+                  task_fn,
+                  tx,
+                  context,
+                }) = msg.take(rt.lua()).unwrap()
+                {
                   let task_count = task_count2.clone();
                   task_count.fetch_add(1, Ordering::AcqRel);
-                  let ctx = TaskContext::new_with_close_table(rt.lua()).unwrap();
-                  let task = TaskFuture::new(rt.clone(), task_fn, tx, ctx);
+                  let task = TaskFuture::new(rt.clone(), task_fn, tx, context);
                   tasks.push(task);
                   waker.wake_by_ref();
                 }

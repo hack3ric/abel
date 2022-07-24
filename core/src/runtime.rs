@@ -6,7 +6,7 @@ use abel_rt::lua::error::{resolve_callback_error, rt_error_fmt};
 use abel_rt::lua::http::{LuaRequest, LuaResponse};
 use abel_rt::lua::LuaTableExt;
 use abel_rt::mlua::{self, ExternalError, FromLuaMulti, Function, Table, TableExt, ToLuaMulti};
-use abel_rt::{Cleanup, CustomError, Isolate, Sandbox, Source, Task};
+use abel_rt::{Cleanup, CustomError, Isolate, Sandbox, Source};
 use clru::CLruCache;
 use hyper::{Body, Request};
 use log::{debug, info};
@@ -16,7 +16,6 @@ use regex::Regex;
 use std::cell::{Ref, RefCell};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use tokio::sync::mpsc;
 
 pub struct Runtime(Sandbox<Extra>);
 
@@ -32,12 +31,9 @@ struct LoadedService {
 }
 
 impl Runtime {
-  pub fn new(state: Arc<AbelState>, task_tx: mpsc::Sender<Task<Self>>) -> mlua::Result<Self> {
+  pub fn new(state: Arc<AbelState>) -> mlua::Result<Self> {
     let loaded = RefCell::new(CLruCache::new(nonzero!(16usize)));
-    Ok(Self(Sandbox::new_with_executor_features(
-      Extra { loaded, state },
-      task_tx,
-    )?))
+    Ok(Self(Sandbox::new(Extra { loaded, state })?))
   }
 
   async fn call_extract_error<'a, T, R>(&'a self, f: mlua::Value<'a>, v: T) -> Result<R>
