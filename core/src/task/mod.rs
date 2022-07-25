@@ -1,10 +1,13 @@
 mod executor;
+mod pool;
 mod task_future;
 
 pub use executor::Executor;
+pub use pool::Pool;
 pub use task_future::TimeoutError;
 
 use crate::lua::context::TaskContext;
+use crate::runtime::Runtime;
 use futures::future::LocalBoxFuture;
 use futures::{Future, FutureExt, TryFutureExt};
 use mlua::Lua;
@@ -13,15 +16,15 @@ use std::any::Any;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::oneshot;
 use tokio::sync::oneshot::error::RecvError;
-use tokio::sync::oneshot::{self};
 
 type AnyBox = Box<dyn Any + Send>;
-type TaskFn<T> = Box<(dyn FnOnce(Rc<T>) -> LocalBoxFuture<'static, AnyBox> + Send + 'static)>;
+type TaskFn = Box<(dyn FnOnce(Rc<Runtime>) -> LocalBoxFuture<'static, AnyBox> + Send + 'static)>;
 
-pub struct SharedTask<T: 'static>(Arc<Mutex<Option<OwnedTask<T>>>>);
+pub struct SharedTask(Arc<Mutex<Option<OwnedTask>>>);
 
-impl<T> SharedTask<T> {
+impl SharedTask {
   pub fn new<'a, F, Fut>(
     init_cpu_time: Arc<Mutex<Duration>>,
     task_fn: F,
@@ -30,7 +33,7 @@ impl<T> SharedTask<T> {
     impl Future<Output = Result<Box<Fut::Output>, RecvError>> + Send + 'a,
   )
   where
-    F: FnOnce(Rc<T>) -> Fut + Send + 'static,
+    F: FnOnce(Rc<Runtime>) -> Fut + Send + 'static,
     Fut: Future + 'a,
     Fut::Output: Send + 'static,
   {
@@ -39,7 +42,7 @@ impl<T> SharedTask<T> {
     (task, rx)
   }
 
-  pub(crate) fn take(&self, lua: &Lua) -> mlua::Result<Option<LocalTask<T>>> {
+  pub(crate) fn take(&self, lua: &Lua) -> mlua::Result<Option<LocalTask>> {
     (self.0)
       .try_lock()
       .and_then(|mut x| x.take())
@@ -48,19 +51,19 @@ impl<T> SharedTask<T> {
   }
 }
 
-impl<T> Clone for SharedTask<T> {
+impl Clone for SharedTask {
   fn clone(&self) -> Self {
     Self(self.0.clone())
   }
 }
 
-pub struct OwnedTask<T: 'static> {
-  task_fn: TaskFn<T>,
+pub struct OwnedTask {
+  task_fn: TaskFn,
   tx: oneshot::Sender<AnyBox>,
   init_cpu_time: Arc<Mutex<Duration>>,
 }
 
-impl<T> OwnedTask<T> {
+impl OwnedTask {
   pub fn new<'a, F, Fut>(
     cpu_time: Arc<Mutex<Duration>>,
     task_fn: F,
@@ -69,7 +72,7 @@ impl<T> OwnedTask<T> {
     impl Future<Output = Result<Box<Fut::Output>, RecvError>> + Send + 'a,
   )
   where
-    F: FnOnce(Rc<T>) -> Fut + Send + 'static,
+    F: FnOnce(Rc<Runtime>) -> Fut + Send + 'static,
     Fut: Future + 'a,
     Fut::Output: Send + 'static,
   {
@@ -84,7 +87,7 @@ impl<T> OwnedTask<T> {
     (task, rx)
   }
 
-  pub fn into_local(self, lua: &Lua) -> mlua::Result<LocalTask<T>> {
+  pub fn into_local(self, lua: &Lua) -> mlua::Result<LocalTask> {
     let OwnedTask {
       task_fn,
       tx,
@@ -101,13 +104,13 @@ impl<T> OwnedTask<T> {
   }
 }
 
-pub struct LocalTask<T: 'static> {
-  task_fn: TaskFn<T>,
+pub struct LocalTask {
+  task_fn: TaskFn,
   tx: oneshot::Sender<AnyBox>,
   context: TaskContext,
 }
 
-impl<T> LocalTask<T> {
+impl LocalTask {
   pub fn new<'a, F, Fut>(
     context: TaskContext,
     task_fn: F,
@@ -116,7 +119,7 @@ impl<T> LocalTask<T> {
     impl Future<Output = Result<Box<Fut::Output>, RecvError>> + Send + 'a,
   )
   where
-    F: FnOnce(Rc<T>) -> Fut + Send + 'static,
+    F: FnOnce(Rc<Runtime>) -> Fut + Send + 'static,
     Fut: Future + 'a,
     Fut::Output: Send + 'static,
   {
@@ -132,13 +135,13 @@ impl<T> LocalTask<T> {
   }
 }
 
-pub enum Task<T: 'static> {
-  Shared(SharedTask<T>),
-  Owned(OwnedTask<T>),
+pub enum Task {
+  Shared(SharedTask),
+  Owned(OwnedTask),
 }
 
-impl<T> Task<T> {
-  pub(crate) fn take(self, lua: &Lua) -> mlua::Result<Option<LocalTask<T>>> {
+impl Task {
+  pub(crate) fn take(self, lua: &Lua) -> mlua::Result<Option<LocalTask>> {
     match self {
       Self::Shared(x) => x.take(lua),
       Self::Owned(x) => x.into_local(lua).map(Some),
@@ -146,14 +149,14 @@ impl<T> Task<T> {
   }
 }
 
-impl<T> From<SharedTask<T>> for Task<T> {
-  fn from(x: SharedTask<T>) -> Self {
+impl From<SharedTask> for Task {
+  fn from(x: SharedTask) -> Self {
     Self::Shared(x)
   }
 }
 
-impl<T> From<OwnedTask<T>> for Task<T> {
-  fn from(x: OwnedTask<T>) -> Self {
+impl From<OwnedTask> for Task {
+  fn from(x: OwnedTask) -> Self {
     Self::Owned(x)
   }
 }

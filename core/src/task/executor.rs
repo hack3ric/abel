@@ -1,13 +1,12 @@
 use super::task_future::TaskFuture;
 use super::Task;
-use crate::lua::sandbox::{Cleanup, Sandbox};
+use crate::runtime::Runtime;
 use crate::task::LocalTask;
 use futures::future::select;
 use futures::future::Either::*;
 use futures::stream::FuturesUnordered;
 use futures::{pin_mut, Stream};
 use log::{debug, error};
-use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Relaxed;
@@ -56,25 +55,17 @@ impl Drop for PanicNotifier {
   }
 }
 
-pub struct Executor<R, E>
-where
-  R: Deref<Target = Sandbox<E>> + 'static,
-  E: Cleanup,
-{
+pub struct Executor {
   panicked: Arc<AtomicBool>,
-  task_tx: mpsc::Sender<Task<R>>,
+  task_tx: mpsc::Sender<Task>,
   _stop_tx: oneshot::Sender<()>,
 }
 
-impl<R, E> Executor<R, E>
-where
-  R: Deref<Target = Sandbox<E>> + 'static,
-  E: Cleanup,
-{
-  pub fn new(f: impl FnOnce() -> mlua::Result<R> + Send + 'static, name: String) -> Self {
+impl Executor {
+  pub fn new(f: impl FnOnce() -> mlua::Result<Runtime> + Send + 'static, name: String) -> Self {
     let panicked = Arc::new(AtomicBool::new(false));
     let panic_notifier = PanicNotifier(panicked.clone());
-    let (task_tx, mut task_rx) = mpsc::channel::<Task<_>>(16);
+    let (task_tx, mut task_rx) = mpsc::channel::<Task>(16);
     let (_stop_tx, mut stop_rx) = oneshot::channel();
 
     let handle = Handle::current();
@@ -85,7 +76,7 @@ where
 
         handle.block_on(async move {
           let rt = Rc::new(f().unwrap());
-          let mut tasks = FuturesUnordered::<TaskFuture<R, E>>::new();
+          let mut tasks = FuturesUnordered::<TaskFuture<Runtime>>::new();
           let (waker_tx, mut waker_rx) = mpsc::unbounded_channel();
           let mut waker = MyWaker::from_tx(waker_tx.clone());
 
@@ -150,15 +141,8 @@ where
     }
   }
 
-  pub async fn send(
-    &self,
-    task: impl Into<Task<R>>,
-  ) -> Result<(), mpsc::error::SendError<Task<R>>> {
+  pub async fn send(&self, task: impl Into<Task>) -> Result<(), mpsc::error::SendError<Task>> {
     self.task_tx.send(task.into()).await
-  }
-
-  pub fn task_tx(&self) -> &mpsc::Sender<Task<R>> {
-    &self.task_tx
   }
 
   pub fn is_panicked(&self) -> bool {

@@ -4,8 +4,8 @@ mod impls;
 pub use create::ErrorPayload;
 pub use impls::*;
 
-use crate::pool::RuntimePool;
 use crate::runtime::Runtime;
+use crate::task::Pool;
 use crate::ErrorKind::*;
 use crate::{AbelState, Result};
 use dashmap::DashMap;
@@ -54,7 +54,7 @@ impl ServicePool {
     })
   }
 
-  pub async fn stop(&self, rt_pool: &RuntimePool, name: &str) -> Result<StoppedService<'_>> {
+  pub async fn stop(&self, rt_pool: &Pool, name: &str) -> Result<StoppedService<'_>> {
     if let Some(mut service) = self.services.get_mut(name) {
       let state = service.value_mut();
       if let ServiceState::Running(service2) = state {
@@ -91,7 +91,7 @@ impl ServicePool {
     }
   }
 
-  pub async fn stop_all(&self, rt_pool: &RuntimePool) {
+  pub async fn stop_all(&self, rt_pool: &Pool) {
     for mut service in self.services.iter_mut() {
       let state = service.value_mut();
       if let ServiceState::Running(service2) = state {
@@ -113,7 +113,7 @@ impl ServicePool {
     }
   }
 
-  pub async fn start(&self, rt_pool: &RuntimePool, name: &str) -> Result<RunningService> {
+  pub async fn start(&self, rt_pool: &Pool, name: &str) -> Result<RunningService> {
     if let Some(mut service) = self.services.get_mut(name) {
       if let state @ ServiceState::Stopped(_) = service.value_mut() {
         let running = replace_with_or_abort_and_return(state, |x| {

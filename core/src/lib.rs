@@ -5,7 +5,6 @@ mod config;
 mod error;
 mod lua;
 mod path;
-mod pool;
 mod runtime;
 mod task;
 mod util;
@@ -18,15 +17,15 @@ pub use runtime::check_name;
 pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 
 use hyper::{Body, Request, Response};
-use pool::RuntimePool;
 use service::{ErrorPayload, Service, ServiceName, ServicePool, StoppedService};
 use source::Source;
 use std::path::PathBuf;
 use std::sync::Arc;
+use task::Pool;
 use uuid::Uuid;
 
 pub struct Abel {
-  runtime_pool: RuntimePool,
+  runtime_pool: Pool,
   service_pool: ServicePool,
   state: Arc<AbelState>,
 }
@@ -47,7 +46,7 @@ impl Abel {
       local_storage_path: options.local_storage_path,
     });
     Ok(Self {
-      runtime_pool: RuntimePool::new(
+      runtime_pool: Pool::new(
         "abel-worker".to_string(),
         options.runtime_pool_size,
         state.clone(),

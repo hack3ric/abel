@@ -38,7 +38,7 @@ macro_rules! run_lua_test {
         std::env::set_var("RUST_LOG", "INFO");
       }
       let _ = pretty_env_logger::try_init();
-      let sandbox = Sandbox::new(())?;
+      let sandbox = Sandbox::new()?;
       let local_storage = TempDir::new()?;
       let isolate = sandbox
         .create_isolate($test_name, Source::new(EmptySource), local_storage.path())

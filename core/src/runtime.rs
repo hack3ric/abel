@@ -1,7 +1,7 @@
 use crate::lua::error::{resolve_callback_error, rt_error_fmt, CustomError};
 use crate::lua::http::{LuaRequest, LuaResponse};
 use crate::lua::isolate::Isolate;
-use crate::lua::sandbox::{Cleanup, Sandbox};
+use crate::lua::sandbox::Sandbox;
 use crate::lua::LuaTableExt;
 use crate::path::PathMatcher;
 use crate::service::{get_local_storage_path, RunningService};
@@ -19,9 +19,8 @@ use std::cell::{Ref, RefCell};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-pub struct Runtime(Sandbox<Extra>);
-
-pub struct Extra {
+pub struct Runtime {
+  sandbox: Sandbox,
   loaded: RefCell<CLruCache<Box<str>, LoadedService>>,
   state: Arc<AbelState>,
 }
@@ -35,7 +34,12 @@ struct LoadedService {
 impl Runtime {
   pub fn new(state: Arc<AbelState>) -> mlua::Result<Self> {
     let loaded = RefCell::new(CLruCache::new(nonzero!(16usize)));
-    Ok(Self(Sandbox::new(Extra { loaded, state })?))
+    let sandbox = Sandbox::new()?;
+    Ok(Self {
+      sandbox,
+      loaded,
+      state,
+    })
   }
 
   async fn call_extract_error<'a, T, R>(&'a self, f: mlua::Value<'a>, v: T) -> Result<R>
@@ -152,7 +156,7 @@ impl Runtime {
       service: service.clone(),
       isolate,
     };
-    self.extra().loaded.borrow_mut().put(name.into(), loaded);
+    self.loaded.borrow_mut().put(name.into(), loaded);
     if !hot_update {
       self.run_start(service).await?;
     }
@@ -188,7 +192,7 @@ impl Runtime {
   }
 
   async fn run_source<'a>(&'a self, name: &str, source: Source) -> Result<(Isolate, Table<'a>)> {
-    let local_storage_path = get_local_storage_path(&self.extra().state, name);
+    let local_storage_path = get_local_storage_path(&self.state, name);
     let isolate = self
       .create_isolate(name, source.clone(), local_storage_path)
       .await?;
@@ -201,11 +205,10 @@ impl Runtime {
   }
 
   async fn load_service(&self, service: RunningService) -> Result<Ref<'_, LoadedService>> {
-    let extra = self.extra();
     let service_guard = service.try_upgrade()?;
     let name = service_guard.name();
     {
-      let mut self_loaded = extra.loaded.borrow_mut();
+      let mut self_loaded = self.loaded.borrow_mut();
       if let Some(loaded) = self_loaded.pop(name) {
         if !loaded.service.is_dropped() && loaded.service.ptr_eq(&service) {
           debug!(
@@ -214,8 +217,8 @@ impl Runtime {
           );
           self_loaded.put(name.into(), loaded);
           drop(self_loaded);
-          extra.loaded.borrow_mut().get(name);
-          return Ok(Ref::map(extra.loaded.borrow(), |x| x.peek(name).unwrap()));
+          self.loaded.borrow_mut().get(name);
+          return Ok(Ref::map(self.loaded.borrow(), |x| x.peek(name).unwrap()));
         } else {
           self.remove_isolate(loaded.isolate)?;
         }
@@ -232,16 +235,14 @@ impl Runtime {
       service: service.clone(),
       isolate,
     };
-    let mut self_loaded = extra.loaded.borrow_mut();
+    let mut self_loaded = self.loaded.borrow_mut();
     self_loaded.put(name.into(), loaded);
     drop(self_loaded);
-    extra.loaded.borrow_mut().get(name);
-    Ok(Ref::map(extra.loaded.borrow(), |x| x.peek(name).unwrap()))
+    self.loaded.borrow_mut().get(name);
+    Ok(Ref::map(self.loaded.borrow(), |x| x.peek(name).unwrap()))
   }
-}
 
-impl Cleanup for Extra {
-  fn cleanup(&self) {
+  pub fn cleanup(&self) {
     let mut count = 0;
     self.loaded.borrow_mut().retain(|_, v| {
       let r = !v.service.is_dropped();
@@ -257,16 +258,16 @@ impl Cleanup for Extra {
 }
 
 impl Deref for Runtime {
-  type Target = Sandbox<Extra>;
+  type Target = Sandbox;
 
   fn deref(&self) -> &Self::Target {
-    &self.0
+    &self.sandbox
   }
 }
 
 impl DerefMut for Runtime {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.0
+    &mut self.sandbox
   }
 }
 

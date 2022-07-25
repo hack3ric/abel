@@ -3,9 +3,9 @@ use super::{
   ServiceState, StoppedService,
 };
 use crate::lua::isolate::Isolate;
-use crate::pool::RuntimePool;
 use crate::runtime::Runtime;
 use crate::source::Source;
+use crate::task::Pool;
 use crate::ErrorKind::{self, ServiceNotFound, ServiceStopped};
 use crate::{Config, Error, Result};
 use std::sync::Arc;
@@ -55,7 +55,7 @@ async fn prepare_service(
 impl ServicePool {
   pub async fn load(
     &self,
-    rt_pool: &RuntimePool,
+    rt_pool: &Pool,
     name: ServiceName,
     uuid: Option<Uuid>,
     source: Source,
@@ -94,7 +94,7 @@ impl ServicePool {
 
   pub async fn cold_update_or_create(
     &self,
-    rt_pool: &RuntimePool,
+    rt_pool: &Pool,
     name: ServiceName,
     uuid: Option<Uuid>,
     source: Source,
@@ -173,7 +173,7 @@ impl ServicePool {
 
   pub async fn hot_update(
     &self,
-    rt_pool: &RuntimePool,
+    rt_pool: &Pool,
     name: ServiceName,
     uuid: Option<Uuid>,
     source: Source,

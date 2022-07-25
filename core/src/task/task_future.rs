@@ -16,7 +16,7 @@ use thiserror::Error;
 use tokio::sync::oneshot;
 
 #[pin_project]
-pub struct TaskFuture<R: Deref<Target = Sandbox<E>>, E> {
+pub struct TaskFuture<R: Deref<Target = Sandbox>> {
   rt: Rc<R>,
   context: TaskContext,
   #[pin]
@@ -24,7 +24,7 @@ pub struct TaskFuture<R: Deref<Target = Sandbox<E>>, E> {
   tx: Option<oneshot::Sender<AnyBox>>,
 }
 
-impl<R: Deref<Target = Sandbox<E>>, E> TaskFuture<R, E> {
+impl<R: Deref<Target = Sandbox>> TaskFuture<R> {
   pub fn new(
     rt: Rc<R>,
     task_fn: impl FnOnce(Rc<R>) -> LocalBoxFuture<'static, AnyBox>,
@@ -40,7 +40,7 @@ impl<R: Deref<Target = Sandbox<E>>, E> TaskFuture<R, E> {
   }
 }
 
-impl<R: Deref<Target = Sandbox<E>>, E> Future for TaskFuture<R, E> {
+impl<R: Deref<Target = Sandbox>> Future for TaskFuture<R> {
   type Output = mlua::Result<()>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

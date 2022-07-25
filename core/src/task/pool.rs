@@ -1,4 +1,4 @@
-use crate::runtime::{Extra, Runtime};
+use crate::runtime::Runtime;
 use crate::task::{Executor, SharedTask};
 use crate::{AbelState, Result};
 use futures::Future;
@@ -7,13 +7,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-pub struct RuntimePool {
+pub struct Pool {
   name: String,
-  executors: Vec<RwLock<Executor<Runtime, Extra>>>,
+  executors: Vec<RwLock<Executor>>,
   state: Arc<AbelState>,
 }
 
-impl RuntimePool {
+impl Pool {
   pub fn new(name: String, size: usize, state: Arc<AbelState>) -> Result<Self> {
     let executors = (0..size)
       .map(|i| {
