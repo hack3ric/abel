@@ -4,14 +4,15 @@ use crate::runtime::Runtime;
 use futures::future::select;
 use futures::future::Either::*;
 use futures::stream::FuturesUnordered;
+use futures::task::{waker, ArcWake};
 use futures::{pin_mut, Stream};
 use log::{debug, error};
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::atomic::Ordering::Relaxed;
+use std::sync::atomic::Ordering::{Relaxed, Release};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::task::{Context, Poll, Wake, Waker};
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 use tokio::runtime::Handle;
 use tokio::sync::{mpsc, oneshot};
@@ -22,24 +23,11 @@ struct MyWaker {
   sent: AtomicBool,
 }
 
-impl MyWaker {
-  fn from_tx(tx: mpsc::UnboundedSender<()>) -> Waker {
-    Waker::from(Arc::new(Self {
-      tx,
-      sent: AtomicBool::new(false),
-    }))
-  }
-}
-
-impl Wake for MyWaker {
-  fn wake(self: Arc<Self>) {
-    self.wake_by_ref();
-  }
-
-  fn wake_by_ref(self: &Arc<Self>) {
-    if !self.sent.load(Relaxed) {
-      let _ = self.tx.send(());
-      self.sent.store(true, Relaxed);
+impl ArcWake for MyWaker {
+  fn wake_by_ref(arc_self: &Arc<Self>) {
+    if !arc_self.sent.load(Relaxed) {
+      let _ = arc_self.tx.send(());
+      arc_self.sent.store(true, Relaxed);
     }
   }
 }
@@ -49,7 +37,7 @@ struct PanicNotifier(Arc<AtomicBool>);
 impl Drop for PanicNotifier {
   fn drop(&mut self) {
     if std::thread::panicking() {
-      self.0.store(true, Ordering::Release)
+      self.0.store(true, Release)
     }
   }
 }
@@ -77,7 +65,11 @@ impl Executor {
           let rt = Rc::new(f().unwrap());
           let mut tasks = FuturesUnordered::<TaskFuture>::new();
           let (waker_tx, mut waker_rx) = mpsc::unbounded_channel();
-          let mut waker = MyWaker::from_tx(waker_tx.clone());
+          let arc_waker = Arc::new(MyWaker {
+            tx: waker_tx.clone(),
+            sent: AtomicBool::new(false),
+          });
+          let waker = waker(arc_waker.clone());
 
           rt.lua().set_app_data(Vec::<LocalTask>::new());
 
@@ -93,7 +85,7 @@ impl Executor {
                   .map(|task| TaskFuture::from_local_task(rt.clone(), task));
                 tasks.extend(iter);
                 drop(local_tasks);
-                waker_poll(&mut waker, &waker_tx, &mut tasks);
+                waker_poll(&arc_waker, &waker, &mut tasks);
               }
             }
 
@@ -115,7 +107,7 @@ impl Executor {
                 debug!("{} stopping", std::thread::current().name().unwrap());
                 break;
               }
-              Left((Right(_), _)) => waker_poll(&mut waker, &waker_tx, &mut tasks),
+              Left((Right(_), _)) => waker_poll(&arc_waker, &waker, &mut tasks),
               Right((Left(_), _)) => rt.cleanup(),
               Right((Right((Some(msg), _)), _)) => {
                 drop(new_task_recv_);
@@ -126,7 +118,7 @@ impl Executor {
                       tasks.push(TaskFuture::from_local_task(rt.clone(), task));
                     }
                   }
-                  waker_poll(&mut waker, &waker_tx, &mut tasks);
+                  waker_poll(&arc_waker, &waker, &mut tasks);
                 }
               }
               // The new task channel is dropped, stopping the executor.
@@ -153,19 +145,15 @@ impl Executor {
   }
 }
 
-fn waker_poll(
-  waker: &mut Waker,
-  waker_tx: &mpsc::UnboundedSender<()>,
-  tasks: &mut FuturesUnordered<TaskFuture>,
-) {
-  *waker = MyWaker::from_tx(waker_tx.clone());
+fn waker_poll(my_waker: &MyWaker, waker: &Waker, tasks: &mut FuturesUnordered<TaskFuture>) {
+  my_waker.sent.store(false, Relaxed);
   let mut context = Context::from_waker(waker);
   if let Poll::Ready(Some(result)) = Pin::new(&mut *tasks).poll_next(&mut context) {
     if let Err(error) = result {
       error!("polling task failed: {error}");
     }
     if !tasks.is_empty() {
-      waker_poll(waker, waker_tx, tasks);
+      waker_poll(my_waker, waker, tasks);
     }
   }
 }
