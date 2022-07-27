@@ -11,6 +11,7 @@ pub mod sandbox;
 
 pub(crate) mod context;
 
+mod spawn;
 #[cfg(test)]
 mod tests;
 

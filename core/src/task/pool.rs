@@ -1,6 +1,6 @@
 use crate::runtime::Runtime;
 use crate::task::{Executor, SharedTask};
-use crate::{AbelState, Result};
+use crate::Result;
 use futures::Future;
 use log::error;
 use std::rc::Rc;
@@ -8,28 +8,27 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 pub struct Pool {
-  name: String,
   executors: Vec<RwLock<Executor>>,
-  state: Arc<AbelState>,
+  f: Arc<dyn Fn() -> mlua::Result<Runtime> + Send + Sync>,
 }
 
 impl Pool {
-  pub fn new(name: String, size: usize, state: Arc<AbelState>) -> Result<Self> {
+  pub fn new(
+    size: usize,
+    f: impl Fn() -> mlua::Result<Runtime> + Send + Sync + 'static,
+  ) -> Result<Self> {
+    let f = Arc::new(f);
     let executors = (0..size)
       .map(|i| {
-        let state = state.clone();
+        let f = f.clone();
         Ok(RwLock::new(Executor::new(
-          || Runtime::new(state),
-          format!("{}-{i}", name),
+          move || f(),
+          format!("abel-worker-{i}"),
         )))
       })
       .collect::<Result<_>>()?;
 
-    Ok(Self {
-      name,
-      executors,
-      state,
-    })
+    Ok(Self { executors, f })
   }
 
   pub async fn scope<'a, F, Fut, R>(&self, task_fn: F) -> R
@@ -45,8 +44,9 @@ impl Pool {
       let result = if rl.is_panicked() {
         drop(rl);
         let mut wl = e.write().await;
-        let state = self.state.clone();
-        *wl = Executor::new(|| Runtime::new(state), format!("{}-{i}", self.name));
+        // let state = self.state.clone();
+        let f = self.f.clone();
+        *wl = Executor::new(move || f(), format!("abel-worker-{i}"));
         wl.send(task.clone()).await
       } else {
         rl.send(task.clone()).await

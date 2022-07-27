@@ -1,13 +1,12 @@
-use super::AnyBox;
+use super::{AnyBox, LocalTask};
 use crate::lua::context::TaskContext;
-use crate::lua::sandbox::Sandbox;
+use crate::runtime::Runtime;
 use futures::future::LocalBoxFuture;
 use futures::Future;
 use log::error;
 use mlua::{self, ExternalError, HookTriggers};
 use pin_project::pin_project;
 use std::cell::RefCell;
-use std::ops::Deref;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
@@ -16,18 +15,18 @@ use thiserror::Error;
 use tokio::sync::oneshot;
 
 #[pin_project]
-pub struct TaskFuture<R: Deref<Target = Sandbox>> {
-  rt: Rc<R>,
+pub struct TaskFuture {
+  rt: Rc<Runtime>,
   context: TaskContext,
   #[pin]
   task: LocalBoxFuture<'static, AnyBox>,
   tx: Option<oneshot::Sender<AnyBox>>,
 }
 
-impl<R: Deref<Target = Sandbox>> TaskFuture<R> {
+impl TaskFuture {
   pub fn new(
-    rt: Rc<R>,
-    task_fn: impl FnOnce(Rc<R>) -> LocalBoxFuture<'static, AnyBox>,
+    rt: Rc<Runtime>,
+    task_fn: impl FnOnce(Rc<Runtime>) -> LocalBoxFuture<'static, AnyBox>,
     tx: oneshot::Sender<AnyBox>,
     context: TaskContext,
   ) -> Self {
@@ -38,9 +37,15 @@ impl<R: Deref<Target = Sandbox>> TaskFuture<R> {
       tx: Some(tx),
     }
   }
+
+  pub fn from_local_task(rt: Rc<Runtime>, task: LocalTask) -> Self {
+    #[rustfmt::skip]
+    let LocalTask { task_fn, tx, context } = task;
+    Self::new(rt, task_fn, tx, context)
+  }
 }
 
-impl<R: Deref<Target = Sandbox>> Future for TaskFuture<R> {
+impl Future for TaskFuture {
   type Output = mlua::Result<()>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

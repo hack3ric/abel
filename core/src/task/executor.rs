@@ -1,7 +1,6 @@
 use super::task_future::TaskFuture;
-use super::Task;
+use super::{LocalTask, Task};
 use crate::runtime::Runtime;
-use crate::task::LocalTask;
 use futures::future::select;
 use futures::future::Either::*;
 use futures::stream::FuturesUnordered;
@@ -76,57 +75,61 @@ impl Executor {
 
         handle.block_on(async move {
           let rt = Rc::new(f().unwrap());
-          let mut tasks = FuturesUnordered::<TaskFuture<Runtime>>::new();
+          let mut tasks = FuturesUnordered::<TaskFuture>::new();
           let (waker_tx, mut waker_rx) = mpsc::unbounded_channel();
           let mut waker = MyWaker::from_tx(waker_tx.clone());
+
+          rt.lua().set_app_data(Vec::<LocalTask>::new());
 
           let dur = Duration::from_secs(600);
           let mut clean_interval = tokio::time::interval_at(Instant::now() + dur, dur);
 
           loop {
-            let waker_recv = waker_rx.recv();
-            let new_task_recv = task_rx.recv();
-            let clean = clean_interval.tick();
-            let stop_rx_mut = Pin::new(&mut stop_rx);
-            pin_mut!(waker_recv, new_task_recv, clean);
+            {
+              let mut local_tasks = rt.lua().app_data_mut::<Vec<LocalTask>>().unwrap();
+              if !local_tasks.is_empty() {
+                let iter = local_tasks
+                  .drain(..)
+                  .map(|task| TaskFuture::from_local_task(rt.clone(), task));
+                tasks.extend(iter);
+                drop(local_tasks);
+                waker_poll(&mut waker, &waker_tx, &mut tasks);
+              }
+            }
 
-            match select(
+            let stop_rx_mut = Pin::new(&mut stop_rx);
+            let waker_recv = waker_rx.recv();
+            let clean = clean_interval.tick();
+            pin_mut!(waker_recv, clean);
+
+            // SAFETY: `new_task_recv` is never moved
+            let mut new_task_recv_ = task_rx.recv();
+            let new_task_recv = unsafe { Pin::new_unchecked(&mut new_task_recv_) };
+
+            let select = select(
               select(stop_rx_mut, waker_recv),
               select(clean, new_task_recv),
-            )
-            .await
-            {
+            );
+            match select.await {
               Left((Left(_), _)) => {
                 debug!("{} stopping", std::thread::current().name().unwrap());
                 break;
               }
-              Left((Right(_), _)) => {
-                waker = MyWaker::from_tx(waker_tx.clone());
-                let tasks = Pin::new(&mut tasks);
-                let mut context = Context::from_waker(&waker);
-                if let Poll::Ready(Some(result)) = tasks.poll_next(&mut context) {
-                  if let Err(error) = result {
-                    error!("polling task failed: {error}");
-                  }
-                  waker.wake_by_ref();
-                }
-              }
-              // TODO: better cleaning trigger
+              Left((Right(_), _)) => waker_poll(&mut waker, &waker_tx, &mut tasks),
               Right((Left(_), _)) => rt.cleanup(),
               Right((Right((Some(msg), _)), _)) => {
-                if let Some(LocalTask {
-                  task_fn,
-                  tx,
-                  context,
-                }) = msg.take(rt.lua()).unwrap()
-                {
-                  let task = TaskFuture::new(rt.clone(), task_fn, tx, context);
-                  tasks.push(task);
-                  waker.wake_by_ref();
+                drop(new_task_recv_);
+                if let Some(task) = msg.take(rt.lua()).unwrap() {
+                  tasks.push(TaskFuture::from_local_task(rt.clone(), task));
+                  while let Ok(task) = task_rx.try_recv() {
+                    if let Some(task) = task.take(rt.lua()).unwrap() {
+                      tasks.push(TaskFuture::from_local_task(rt.clone(), task));
+                    }
+                  }
+                  waker_poll(&mut waker, &waker_tx, &mut tasks);
                 }
               }
               // The new task channel is dropped, stopping the executor.
-              // TODO: graceful shutdown?
               Right((Right((None, _)), _)) => break,
             }
           }
@@ -147,5 +150,22 @@ impl Executor {
 
   pub fn is_panicked(&self) -> bool {
     self.panicked.load(Ordering::Acquire)
+  }
+}
+
+fn waker_poll(
+  waker: &mut Waker,
+  waker_tx: &mpsc::UnboundedSender<()>,
+  tasks: &mut FuturesUnordered<TaskFuture>,
+) {
+  *waker = MyWaker::from_tx(waker_tx.clone());
+  let mut context = Context::from_waker(waker);
+  if let Poll::Ready(Some(result)) = Pin::new(&mut *tasks).poll_next(&mut context) {
+    if let Err(error) = result {
+      error!("polling task failed: {error}");
+    }
+    if !tasks.is_empty() {
+      waker_poll(waker, waker_tx, tasks);
+    }
   }
 }

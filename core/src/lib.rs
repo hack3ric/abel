@@ -17,6 +17,7 @@ pub use runtime::check_name;
 pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 
 use hyper::{Body, Request, Response};
+use runtime::Runtime;
 use service::{ErrorPayload, Service, ServiceName, ServicePool, StoppedService};
 use source::Source;
 use std::path::PathBuf;
@@ -46,11 +47,10 @@ impl Abel {
       local_storage_path: options.local_storage_path,
     });
     Ok(Self {
-      runtime_pool: Pool::new(
-        "abel-worker".to_string(),
-        options.runtime_pool_size,
-        state.clone(),
-      )?,
+      runtime_pool: Pool::new(options.runtime_pool_size, {
+        let state = state.clone();
+        move || Runtime::new(state.clone())
+      })?,
       service_pool: ServicePool::new(state.clone()),
       state,
     })
