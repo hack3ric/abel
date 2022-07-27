@@ -1,6 +1,6 @@
 local bstr_debug_fmt = ...
 
-function abel_Error(obj)
+function HttpError(obj)
   local status, error, detail = obj.status, obj.error, obj.detail
 
   local result = {
@@ -32,6 +32,7 @@ function getmetatable(t)
   return lua_getmetatable(t)
 end
 
+-- Manually removed, since this function can be accessed through a string's metatable
 string.dump = nil
 
 function debug_fmt(v)

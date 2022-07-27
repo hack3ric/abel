@@ -17,7 +17,7 @@ local abel = {
   current_worker = current_worker,
   spawn = spawn,
   sleep = sleep,
-  Error = abel_Error,
+  HttpError = HttpError,
 }
 
 local local_env = {

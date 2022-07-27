@@ -1,10 +1,10 @@
-use super::create_fn_print_to_log;
 use super::crypto::create_preload_crypto;
 use super::fs::create_preload_fs;
 use super::global_env::modify_global_env;
 use super::http::create_preload_http;
 use super::isolate::{Isolate, IsolateBuilder};
 use super::json::create_preload_json;
+use super::logging::side_effect_log;
 use super::lua_std::{
   create_preload_coroutine, create_preload_io, create_preload_math, create_preload_os,
   create_preload_string, create_preload_table, create_preload_utf8, global_whitelist,
@@ -39,7 +39,7 @@ impl Sandbox {
     self
       .create_isolate_builder(source.clone())?
       .add_side_effect(global_whitelist)?
-      .add_side_effect(|lua, env, _| env.raw_set("print", create_fn_print_to_log(lua, name)?))?
+      .add_side_effect(side_effect_log(name))?
       // Lua std, modified
       .add_lib("math", create_preload_math)?
       .add_lib("string", create_preload_string)?
