@@ -16,6 +16,7 @@ local internal = {
 local abel = {
   current_worker = current_worker,
   spawn = spawn,
+  sleep = sleep,
   Error = abel_Error,
 }
 

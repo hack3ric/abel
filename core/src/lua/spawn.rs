@@ -1,9 +1,12 @@
-use super::error::{check_userdata_mut, check_value, rt_error, tag_handler};
+use super::error::{
+  arg_error, check_integer, check_userdata_mut, check_value, rt_error, tag_handler,
+};
 use super::LuaCacheExt;
 use crate::task::{LocalTask, TaskContext};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use mlua::{Function, Lua, MultiValue, RegistryKey, Table, UserData};
+use std::time::Duration;
 use tokio::sync::oneshot::error::RecvError;
 
 pub fn create_fn_spawn(lua: &Lua) -> mlua::Result<Function> {
@@ -49,4 +52,14 @@ impl UserData for LuaPromise {
         .collect::<mlua::Result<MultiValue>>()
     })
   }
+}
+
+pub fn create_fn_sleep(lua: &Lua) -> mlua::Result<Function> {
+  lua.create_cached_async_function("abel:sleep", |lua, mut args: MultiValue| async move {
+    let ms = check_integer(args.pop_front()).map_err(tag_handler(lua, 1, 1))?;
+    let ms =
+      u64::try_from(ms).map_err(|_| arg_error(lua, 1, "sleep time cannot be negative", 1))?;
+    tokio::time::sleep(Duration::from_millis(ms)).await;
+    Ok(())
+  })
 }
