@@ -1,13 +1,13 @@
 use super::error::{arg_error, check_truthiness, check_userdata_mut, rt_error, tag_error};
 use super::LuaCacheExt;
 use crate::lua::byte_stream::ByteStream;
-use crate::lua::context::TaskContext;
 use crate::lua::error::{
   check_integer, check_string, check_userdata, check_value, rt_error_fmt, tag_handler, UserDataRef,
   UserDataRefMut,
 };
 use crate::path::normalize_path_str;
 use crate::source::{Metadata, ReadOnlyFile, Source};
+use crate::task::TaskContext;
 use bstr::ByteSlice;
 use mlua::Value::Nil;
 use mlua::{AnyUserData, ExternalResult, Function, Lua, MultiValue, UserData, UserDataMethods};

@@ -1,6 +1,4 @@
-// TODO: Move context into Sandbox?
-
-use super::LuaCacheExt;
+use mlua::Function;
 use mlua::{Lua, RegistryKey, Table, ToLua};
 use parking_lot::Mutex;
 use std::cell::Ref;
@@ -39,22 +37,17 @@ impl TaskContext {
     if let Some(context) = self.close_table.take().and_then(|x| Rc::try_unwrap(x).ok()) {
       let context_table: Table = lua.registry_value(&context)?;
       lua.remove_registry_value(context)?;
-      lua
-        .create_cached_value("abel:context_try_close", |lua| {
-          let code = r#"
-          local context_table = ...
-          for _, v in ipairs(context_table) do
-            pcall(function()
-              local _ <close> = v
-            end)
-          end
-          "#;
-          lua
-            .load(code)
-            .set_name("abel_destroy_context")?
-            .into_function()
-        })?
-        .call(context_table)?;
+      for v in context_table.sequence_values() {
+        let v = v?;
+        let close: Option<mlua::Result<Function>> = match &v {
+          mlua::Value::Table(x) => x.get_metatable().map(|x| x.raw_get("__close")),
+          mlua::Value::UserData(x) => x.get_metatable().ok().map(|x| x.get("__close")),
+          _ => continue,
+        };
+        if let Some(close) = close.transpose()? {
+          close.call(v)?;
+        }
+      }
     }
     Ok(())
   }

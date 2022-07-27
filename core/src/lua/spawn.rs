@@ -1,7 +1,6 @@
-use super::context::TaskContext;
 use super::error::{check_userdata_mut, check_value, rt_error, tag_handler};
 use super::LuaCacheExt;
-use crate::task::LocalTask;
+use crate::task::{LocalTask, TaskContext};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use mlua::{Function, Lua, MultiValue, RegistryKey, Table, UserData};

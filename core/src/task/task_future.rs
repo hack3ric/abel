@@ -1,5 +1,4 @@
-use super::{AnyBox, LocalTask};
-use crate::lua::context::TaskContext;
+use super::{AnyBox, LocalTask, TaskContext};
 use crate::runtime::Runtime;
 use futures::future::LocalBoxFuture;
 use futures::Future;

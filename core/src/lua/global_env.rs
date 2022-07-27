@@ -1,4 +1,5 @@
-use super::{error::{create_fn_assert, create_fn_error, create_fn_pcall}, spawn::create_fn_spawn};
+use super::error::{create_fn_assert, create_fn_error, create_fn_pcall};
+use super::spawn::create_fn_spawn;
 use bstr::ByteSlice;
 use mlua::{Function, Lua};
 

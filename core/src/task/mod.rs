@@ -1,12 +1,13 @@
+mod context;
 mod executor;
 mod pool;
 mod task_future;
 
+pub use context::TaskContext;
 pub use executor::Executor;
 pub use pool::Pool;
 pub use task_future::TimeoutError;
 
-use crate::lua::context::TaskContext;
 use crate::runtime::Runtime;
 use futures::future::LocalBoxFuture;
 use futures::{Future, FutureExt, TryFutureExt};
