@@ -1,3 +1,4 @@
+use super::abel::side_effect_abel;
 use super::crypto::create_preload_crypto;
 use super::fs::create_preload_fs;
 use super::global_env::modify_global_env;
@@ -7,7 +8,7 @@ use super::json::create_preload_json;
 use super::logging::side_effect_log;
 use super::lua_std::{
   create_preload_coroutine, create_preload_io, create_preload_math, create_preload_os,
-  create_preload_string, create_preload_table, create_preload_utf8, global_whitelist,
+  create_preload_string, create_preload_table, create_preload_utf8, side_effect_global_whitelist,
 };
 use crate::source::Source;
 use mlua::{FromLuaMulti, Lua, Table, ToLuaMulti};
@@ -33,26 +34,24 @@ impl Sandbox {
     &self,
     name: &str,
     source: Source,
-    local_storage_path: impl Into<PathBuf>,
+    lsp: impl Into<PathBuf>,
   ) -> mlua::Result<Isolate> {
-    let local_storage_path: Arc<Path> = local_storage_path.into().into();
+    let lsp: Arc<Path> = lsp.into().into();
     self
       .create_isolate_builder(source.clone())?
-      .add_side_effect(global_whitelist)?
+      .add_side_effect(side_effect_global_whitelist)?
+      .add_side_effect(side_effect_abel)?
       .add_side_effect(side_effect_log(name))?
       // Lua std, modified
       .add_lib("math", create_preload_math)?
       .add_lib("string", create_preload_string)?
       .add_lib("table", create_preload_table)?
       .add_lib("coroutine", create_preload_coroutine)?
-      .add_lib("os", create_preload_os(local_storage_path.clone()))?
+      .add_lib("os", create_preload_os(lsp.clone()))?
       .add_lib("utf8", create_preload_utf8)?
-      .add_lib(
-        "io",
-        create_preload_io(source.clone(), local_storage_path.clone()),
-      )?
+      .add_lib("io", create_preload_io(source.clone(), lsp.clone()))?
       // Abel std (?)
-      .add_lib("fs", create_preload_fs(source, local_storage_path))?
+      .add_lib("fs", create_preload_fs(source, lsp))?
       .add_lib("http", create_preload_http)?
       .add_lib("json", create_preload_json)?
       .add_lib("crypto", create_preload_crypto)?

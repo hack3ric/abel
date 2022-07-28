@@ -10,7 +10,7 @@ pub mod lua_std;
 pub mod sandbox;
 
 mod logging;
-mod schedule;
+mod abel;
 
 #[cfg(test)]
 mod tests;

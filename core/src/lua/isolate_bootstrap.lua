@@ -1,7 +1,5 @@
----@diagnostic disable: undefined-global
-
 local source, request, Uri = ...
-local paths, loaded, preload = {}, {}, {}
+local local_env, paths, loaded, preload = {}, {}, {}, {}
 
 local package = {
   loaded = loaded,
@@ -14,37 +12,6 @@ local internal = {
   source = source,
   package = package,
 }
-
-local abel = {
-  current_worker = current_worker,
-  spawn = spawn,
-  sleep = sleep,
-  await_all = await_all,
-}
-
-local local_env = {
-  abel = abel
-}
-
-function abel.listen(path, handler)
-  assert(
-    not internal.sealed,
-    "cannot call `listen` from places other than the top level of `main.lua`"
-  )
-  local type_handler = type(handler)
-  if type_handler ~= "function" then
-    if type_handler == "table" then
-      local mt = getmetatable(handler)
-      if type(mt) == "table" and type(mt.__call) == "function" then
-        goto ok
-      end
-    end
-    error "handler must either be a function or a callable table"
-  end
-
-  ::ok::
-  table.insert(paths, { path, handler })
-end
 
 -- require --
 
