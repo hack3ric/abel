@@ -42,7 +42,7 @@ pub fn global_whitelist(lua: &Lua, local_env: Table, _internal: Table) -> mlua::
   ])?;
 
   // Custom functions
-  apply_whitelist(globals, local_env, ["debug_fmt", "HttpError"])
+  apply_whitelist(globals, local_env, ["debug_fmt", "HttpError", "bind"])
 }
 
 create_whitelist_preloads! {

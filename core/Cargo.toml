@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies.mlua]
-version = "0.8.1"
+version = "0.8.2"
 features = ["lua54", "async", "macros", "serialize"]
 
 [dependencies]

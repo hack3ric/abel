@@ -1,3 +1,5 @@
+---@diagnostic disable: undefined-global
+
 local source, request, Uri = ...
 local paths, loaded, preload = {}, {}, {}
 
@@ -17,6 +19,7 @@ local abel = {
   current_worker = current_worker,
   spawn = spawn,
   sleep = sleep,
+  await_all = await_all,
 }
 
 local local_env = {
