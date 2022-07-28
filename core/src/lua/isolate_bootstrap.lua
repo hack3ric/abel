@@ -17,17 +17,16 @@ local abel = {
   current_worker = current_worker,
   spawn = spawn,
   sleep = sleep,
-  HttpError = HttpError,
 }
 
 local local_env = {
   abel = abel
 }
 
-function abel.register(path, handler)
+function abel.listen(path, handler)
   assert(
     not internal.sealed,
-    "cannot call `abel.register` from places other than the top level of `main.lua`"
+    "cannot call `listen` from places other than the top level of `main.lua`"
   )
   local type_handler = type(handler)
   if type_handler ~= "function" then

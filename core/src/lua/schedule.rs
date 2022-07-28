@@ -9,6 +9,27 @@ use mlua::{Function, Lua, MultiValue, RegistryKey, Table, UserData};
 use std::time::Duration;
 use tokio::sync::oneshot::error::RecvError;
 
+pub struct LuaPromise {
+  inner: BoxFuture<'static, Result<Box<mlua::Result<RegistryKey>>, RecvError>>,
+}
+
+impl UserData for LuaPromise {
+  fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
+    methods.add_async_function("await", |lua, mut args: MultiValue| async move {
+      let mut this =
+        check_userdata_mut::<Self>(args.pop_front(), "Promise").map_err(tag_handler(lua, 1, 1))?;
+      let result = this
+        .with_borrowed_mut(|x| &mut x.inner)
+        .await
+        .map_err(rt_error)?;
+      lua
+        .registry_value::<Table>(&(*result)?)?
+        .raw_sequence_values()
+        .collect::<mlua::Result<MultiValue>>()
+    })
+  }
+}
+
 pub fn create_fn_spawn(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_function("abel:spawn", |lua, mut args: MultiValue| {
     let f: Function =
@@ -31,27 +52,6 @@ pub fn create_fn_spawn(lua: &Lua) -> mlua::Result<Function> {
     }
     Ok(LuaPromise { inner: rx.boxed() })
   })
-}
-
-pub struct LuaPromise {
-  inner: BoxFuture<'static, Result<Box<mlua::Result<RegistryKey>>, RecvError>>,
-}
-
-impl UserData for LuaPromise {
-  fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-    methods.add_async_function("await", |lua, mut args: MultiValue| async move {
-      let mut this =
-        check_userdata_mut::<Self>(args.pop_front(), "Promise").map_err(tag_handler(lua, 1, 1))?;
-      let result = this
-        .with_borrowed_mut(|x| &mut x.inner)
-        .await
-        .map_err(rt_error)?;
-      lua
-        .registry_value::<Table>(&(*result)?)?
-        .raw_sequence_values()
-        .collect::<mlua::Result<MultiValue>>()
-    })
-  }
 }
 
 pub fn create_fn_sleep(lua: &Lua) -> mlua::Result<Function> {

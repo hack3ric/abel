@@ -10,7 +10,7 @@ Abel's name comes from *abelo*, which means bee in Esperanto. It further comes f
 
 Write a hello world service and save it to `hello.lua`:
 ```lua
-abel.register("/:name", function(req)
+abel.listen("/:name", function(req)
   return { greeting = "Hello, " .. req.params.name .. "!" }
 end)
 ```

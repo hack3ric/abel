@@ -1,6 +1,6 @@
 local http = require "http"
 
-abel.register("/", function(req)
+abel.listen("/", function(req)
   local resp = http.request "https://httpbin.org/get"
 
   return {

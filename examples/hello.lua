@@ -3,5 +3,5 @@ local function hello(req)
   return { greeting = "Hello, " .. name .. "!" }
 end
 
-abel.register("/", hello)
-abel.register("/:name", hello)
+abel.listen("/", hello)
+abel.listen("/:name", hello)
