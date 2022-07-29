@@ -1,5 +1,9 @@
 # Abel 🐝
 
+[![GitHub release](https://img.shields.io/github/v/release/hack3ric/abel)](https://github.com/hack3ric/abel/releases)
+[![License](https://img.shields.io/github/license/hack3ric/abel)](https://github.com/hack3ric/abel/blob/master/LICENSE)
+[![Rust CI](https://github.com/hack3ric/abel/actions/workflows/rust.yml/badge.svg)](https://github.com/hack3ric/abel/actions/workflows/rust.yml)
+
 Abel is a lightweight microservices framework for Lua. It focuses on simple, fun experience of writing modular web services.
 
 See [Documentation](https://hack3ric.github.io/abel-doc) for more information.
