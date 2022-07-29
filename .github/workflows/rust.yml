@@ -25,7 +25,7 @@ jobs:
       run: cargo build --release --verbose --features mlua/vendored
     - name: Run tests
       run: cargo test --release --verbose --features mlua/vendored
-    - uses: actions/upload-artifact
+    - uses: actions/upload-artifact@v3
       with:
         name: target
         path: target/
