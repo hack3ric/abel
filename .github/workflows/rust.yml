@@ -27,5 +27,7 @@ jobs:
       run: cargo test --release --verbose --features mlua/vendored
     - uses: actions/upload-artifact@v3
       with:
-        name: target
-        path: target/
+        name: abel-build-${{ matrix.os }}
+        path: |
+          target/release/abel*
+          !target/release/abel.d
