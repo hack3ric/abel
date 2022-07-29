@@ -1,5 +1,2 @@
 [workspace]
 members = ["core", "cli"]
-
-# [profile.release]
-# lto = true

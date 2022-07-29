@@ -8,6 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  triples:
+    ubuntu-latest: x86
 
 jobs:
   build:
@@ -21,13 +23,15 @@ jobs:
     - uses: actions/checkout@v2
     - name: Install Rust
       run: rustup update stable
+    - name: Get Triple
+      run: 'export RUST_TRIPLE$(rustc -Vv | grep host | sed "s/host\: //")'
     - name: Build
       run: cargo build --release --verbose --features mlua/vendored
     - name: Run tests
       run: cargo test --release --verbose --features mlua/vendored
     - uses: actions/upload-artifact@v3
       with:
-        name: abel-build-${{ matrix.os }}
+        name: abel-build-${{ env.RUST_TRIPLE }}
         path: |
-          target/release/abel*
-          !target/release/abel.d
+          target/release/abel
+          target/release/abel.exe
