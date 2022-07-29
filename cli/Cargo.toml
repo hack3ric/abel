@@ -1,11 +1,13 @@
 [package]
 name = "abel"
 version = "0.1.0"
+description = "Lua microservices framework."
+repository = "https://github.com/hack3ric/abel"
+license = "MIT"
 edition = "2021"
 
 [dependencies]
-abel-core = { path = "../core" }
-# abel-rt = { path = "../rt" }
+abel-core = { path = "../core", version = "0.1.0" }
 anyhow = { version = "1.0.52", features = ["backtrace"] }
 async-trait = "0.1.56"
 backtrace = "0.3.63"
