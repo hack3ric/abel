@@ -8,8 +8,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  triples:
-    ubuntu-latest: x86
 
 jobs:
   build:
