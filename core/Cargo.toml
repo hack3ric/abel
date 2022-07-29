@@ -6,6 +6,10 @@ repository = "https://github.com/hack3ric/abel"
 license = "MIT"
 edition = "2021"
 
+[features]
+mlua-vendored = ["mlua/vendored"]
+tls-vendored = ["hyper-tls/vendored"]
+
 [dependencies.mlua]
 version = "0.8.2"
 features = ["lua54", "async", "macros", "serialize"]

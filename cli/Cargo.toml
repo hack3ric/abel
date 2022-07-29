@@ -6,6 +6,9 @@ repository = "https://github.com/hack3ric/abel"
 license = "MIT"
 edition = "2021"
 
+[features]
+default = ["abel-core/mlua-vendored"]
+
 [dependencies]
 abel-core = { path = "../core", version = "0.1.0" }
 anyhow = { version = "1.0.52", features = ["backtrace"] }
