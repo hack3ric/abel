@@ -22,7 +22,7 @@ jobs:
     - name: Install Rust
       run: rustup update stable
     - name: Get Triple
-      run: 'export RUST_TRIPLE$(rustc -Vv | grep host | sed "s/host\: //")'
+      run: 'export RUST_TRIPLE=$(rustc -Vv | grep host | sed "s/host\: //")'
     - name: Build
       run: cargo build --release --verbose --features mlua/vendored
     - name: Run tests
