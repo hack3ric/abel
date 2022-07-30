@@ -250,13 +250,13 @@ impl UserData for LuaFile {
 
     methods.add_async_function("write", |lua, mut args: MultiValue| async move {
       let mut this = check_self_mut_async(lua, args.pop_front())?;
-      for (i, x) in args.iter().cloned().enumerate().skip(1) {
+      for (i, x) in args.iter().cloned().enumerate() {
         let type_name = x.type_name();
         let x = lua
           .coerce_string(x)
           .ok()
           .flatten()
-          .ok_or_else(|| tag_error(lua, i, "string", type_name, 1))?;
+          .ok_or_else(|| tag_error(lua, i + 1, "string", type_name, 1))?;
         if let Err(error) = this
           .with_borrowed_mut(|t| t.0.write_all(x.as_bytes()))
           .await

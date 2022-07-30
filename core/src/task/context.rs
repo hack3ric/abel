@@ -44,7 +44,7 @@ impl TaskContext {
           _ => continue,
         };
         if let Some(close) = close.transpose()? {
-          close.call(v)?;
+          let _ = close.call::<_, ()>(v);
         }
       }
     }

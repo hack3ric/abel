@@ -67,6 +67,7 @@ fn main() -> anyhow::Result<()> {
       info!("Starting abel-server v{ver} (dev mode)");
 
       let abel_path = tempdir()?;
+      info!("Abel working path: {}", abel_path.path().display().underline());
       let server_args = ServerArgs {
         config,
         abel_path: abel_path.path().into(),

@@ -9,7 +9,7 @@ function HttpError(obj)
     detail = detail,
   }
   local result_mt = {
-    __call = function(detail)
+    __call = function(self, detail)
       return {
         status = status,
         error = error,
