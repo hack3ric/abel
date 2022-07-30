@@ -1,24 +1,52 @@
 local bstr_debug_fmt = ...
 
+local function table_merge(a, b)
+  local result = {}
+  for k, v in pairs(a) do
+    result[k] = v
+  end
+  for k, v in pairs(b) do
+    result[k] = v
+  end
+  return result
+end
+
 function HttpError(obj)
   local status, error, detail = obj.status, obj.error, obj.detail
 
-  local result = {
+  local type_detail = type(detail)
+  local default_detail, detail_fn
+  if type_detail == "function" then
+    detail_fn = detail
+  elseif type_detail == "table" then
+    default_detail = detail
+    detail_fn = function(new_detail)
+      return table_merge(detail, new_detail)
+    end
+  elseif type_detail == "nil" then
+    detail_fn = function(detail)
+      return detail
+    end
+  else
+    default_detail = { msg = tostring(detail) }
+    detail_fn = function(new_detail)
+      return table_merge(default_detail, new_detail)
+    end
+  end
+
+  return setmetatable({
     status = status,
     error = error,
-    detail = detail,
-  }
-  local result_mt = {
-    __call = function(self, detail)
+    detail = default_detail,
+  }, {
+    __call = function(self, ...)
       return {
         status = status,
         error = error,
-        detail = detail,
+        detail = detail_fn(...),
       }
     end
-  }
-
-  return setmetatable(result, result_mt)
+  })
 end
 
 local lua_getmetatable = getmetatable
