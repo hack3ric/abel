@@ -4,18 +4,23 @@
 
 local crypto = require "crypto"
 local fs = require "fs"
+local http = require "http"
 
 local method_not_allowed = HttpError {
   status = 405,
   error = "method not allowed",
+  detail = function(got, allowed)
+    return { got = got, allowed = allowed }
+  end,
 }
 
 local function gen_uid()
-  local template = "xxxxxxxx"
-  return (string.gsub(template, "x", function(c)
+  local result = ""
+  for _ = 1, 8 do
     local v = crypto.thread_rng:gen_range(0, 0xf)
-    return string.format('%x', v)
-  end))
+    result = result .. string.format("%x", v)
+  end
+  return result
 end
 
 function abel.start()
@@ -24,10 +29,7 @@ end
 
 abel.listen("/", function(req)
   if req.method ~= "POST" then
-    error(method_not_allowed {
-      allowed = { "POST" },
-      got = req.method,
-    })
+    error(method_not_allowed(req.method, { "POST" }))
   end
 
   local content = req.body:to_string()
@@ -41,10 +43,7 @@ end)
 
 abel.listen("/:uid", function(req)
   if req.method ~= "GET" then
-    error(method_not_allowed {
-      allowed = { "GET" },
-      got = req.method,
-    })
+    error(method_not_allowed(req.method, { "GET" }))
   end
 
   local uid = req.params.uid
@@ -60,5 +59,11 @@ abel.listen("/:uid", function(req)
 
   -- This works on POSIX systems, but not Windows
   assert(os.remove(path))
-  return file:into_stream()
+
+  return http.Response {
+    headers = {
+      ["content-type"] = "text/plain",
+    },
+    body = file:into_stream(),
+  }
 end)
