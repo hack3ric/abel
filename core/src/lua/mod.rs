@@ -1,4 +1,3 @@
-pub mod byte_stream;
 pub mod crypto;
 pub mod error;
 pub mod fs;
@@ -8,9 +7,10 @@ pub mod isolate;
 pub mod json;
 pub mod lua_std;
 pub mod sandbox;
+pub mod stream;
 
-mod logging;
 mod abel;
+mod logging;
 
 #[cfg(test)]
 mod tests;
@@ -55,6 +55,7 @@ impl<'a> LuaTableExt<'a> for Table<'a> {
   }
 }
 
+#[derive(Debug)]
 enum LuaEither<T, U> {
   Left(T),
   Right(U),

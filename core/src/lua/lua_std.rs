@@ -33,7 +33,11 @@ macro_rules! create_whitelist_preloads {
   };
 }
 
-pub fn side_effect_global_whitelist(lua: &Lua, local_env: Table, _internal: Table) -> mlua::Result<()> {
+pub fn side_effect_global_whitelist(
+  lua: &Lua,
+  local_env: Table,
+  _internal: Table,
+) -> mlua::Result<()> {
   let globals = lua.globals();
 
   apply_whitelist(globals.clone(), local_env.clone(), [

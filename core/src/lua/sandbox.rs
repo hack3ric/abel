@@ -10,6 +10,7 @@ use super::lua_std::{
   create_preload_coroutine, create_preload_io, create_preload_math, create_preload_os,
   create_preload_string, create_preload_table, create_preload_utf8, side_effect_global_whitelist,
 };
+use super::stream::create_preload_stream;
 use crate::source::Source;
 use mlua::{FromLuaMulti, Lua, Table, ToLuaMulti};
 use std::path::{Path, PathBuf};
@@ -55,6 +56,7 @@ impl Sandbox {
       .add_lib("http", create_preload_http)?
       .add_lib("json", create_preload_json)?
       .add_lib("crypto", create_preload_crypto)?
+      .add_lib("stream", create_preload_stream)?
       .add_lua_lib("testing", include_str!("lib/testing.lua"))?
       // ...and load some of then into local env
       .load_libs(["math", "string", "table", "coroutine", "os", "utf8", "io"])?

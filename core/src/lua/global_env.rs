@@ -13,7 +13,7 @@ pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
 
   lua
     .load(include_str!("bootstrap.lua"))
-    .set_name("@<bootstrap>")?
+    .set_name("@[bootstrap]")?
     .call(bstr_debug_fmt)?;
 
   globals.raw_set("bind", create_fn_bind(lua)?)?;

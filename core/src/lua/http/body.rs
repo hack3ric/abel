@@ -1,5 +1,5 @@
 use super::LuaResponse;
-use crate::lua::byte_stream::ByteStream;
+use crate::lua::stream::ByteStream;
 use hyper::header::HeaderValue;
 use hyper::{Body, HeaderMap, StatusCode};
 use mlua::{Lua, LuaSerdeExt, ToLua};
@@ -10,7 +10,7 @@ pub enum LuaBody {
   Empty,
   Json(serde_json::Value),
   Bytes(Vec<u8>),
-  ByteStream(ByteStream),
+  Stream(ByteStream),
 }
 
 impl LuaBody {
@@ -38,7 +38,7 @@ impl LuaBody {
       mlua::Value::String(s) => Self::Bytes(s.as_bytes().into()),
       mlua::Value::UserData(u) => u
         .take::<ByteStream>()
-        .map(Self::ByteStream)
+        .map(Self::Stream)
         .map_err(|_| "byte stream expected, got other userdata")?,
       _ => {
         return Err(format!(
@@ -53,7 +53,7 @@ impl LuaBody {
 
 impl From<Body> for LuaBody {
   fn from(body: Body) -> Self {
-    Self::ByteStream(body.into())
+    Self::Stream(body.into())
   }
 }
 
@@ -63,7 +63,7 @@ impl From<LuaBody> for Body {
       LuaBody::Empty => Body::empty(),
       LuaBody::Json(x) => x.to_string().into(),
       LuaBody::Bytes(x) => x.into(),
-      LuaBody::ByteStream(x) => Body::wrap_stream(x.0),
+      LuaBody::Stream(x) => Body::wrap_stream(x.0),
     }
   }
 }
@@ -74,7 +74,7 @@ impl<'lua> ToLua<'lua> for LuaBody {
       Self::Empty => Ok(mlua::Value::Nil),
       Self::Json(x) => lua.to_value(&x),
       Self::Bytes(x) => Ok(mlua::Value::String(lua.create_string(&x)?)),
-      Self::ByteStream(x) => lua.pack(x),
+      Self::Stream(x) => lua.pack(x),
     }
   }
 }

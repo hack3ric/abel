@@ -86,7 +86,7 @@ fn isolate_bootstrap(lua: &Lua, source: Source) -> mlua::Result<(Table, Table)> 
   let bootstrap = lua.create_cached_value("abel:isolate_bootstrap", |lua| {
     lua
       .load(include_str!("isolate_bootstrap.lua"))
-      .set_name("@<isolate_bootstrap>")?
+      .set_name("@[isolate_bootstrap]")?
       .into_function()
   })?;
   bootstrap.call((
