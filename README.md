@@ -6,7 +6,22 @@
 
 Abel is a lightweight microservices framework for Lua. It focuses on simple, fun experience of writing modular web services.
 
-See [Documentation](https://hack3ric.github.io/abel-doc) for more information.
+See [Documentation](https://hack3ric.github.io/abel-doc) and [Roadmap](https://hack3ric.github.io/abel-doc/roadmap) for more information.
+
+*Abel is currently under heavy development, and many functionalities are yet to be implemented. Nevertheless, feel free to try it out, and any feedback would be appreciated!*
+
+## Why Abel?
+
+You want Abel when:
+
+- you are tired of compiling, packaging, logging in, and deploying even the simpliest service you write on your server;
+- you want to Cloudflare Workers, but self-hosted;
+- you want an out-of-the-box experience of writing and deploying web services.
+
+You don't want Abel when:
+
+- you build complex web services; (maybe one day it can do so too?)
+- you want to access the entire filesystem, spawn child processes or use FFI libraries;
 
 ## Quick Start
 
@@ -30,6 +45,26 @@ In another shell, run the service:
 $ curl localhost:3000/hello/world | jq
 {
   "greeting": "Hello, world!"
+}
+```
+
+Deploy the service in one request:
+
+```console
+$ curl https://abel.example.com/services/hello \
+  -H "Authorization: Abel <your-auth-token>" \
+  -X PUT \
+  -F single=@hello.lua | jq
+{
+  "new_service": {
+    "name": "hello",
+    // ...
+  }
+}
+
+$ curl https://abel.example.com/hello/server | jq
+{
+  "greeting": "Hello, server!"
 }
 ```
 

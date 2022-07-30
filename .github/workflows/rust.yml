@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install Rust
         run: rustup update stable
-      - name: Get Triple
+      - name: Get triple
         run: 'echo RUST_TRIPLE=$(rustc -Vv | grep host | sed "s/host\: //") >> $GITHUB_ENV'
       - name: Build
         run: cargo build --release --verbose
