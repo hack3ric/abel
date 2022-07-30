@@ -57,12 +57,15 @@ abel.listen("/:uid", function(req)
     error { status = 404, error = "file not found" }
   end
 
+  local metadata = assert(fs.metadata(path))
+
   -- This works on POSIX systems, but not Windows
   assert(os.remove(path))
 
   return http.Response {
     headers = {
       ["content-type"] = "text/plain",
+      ["content-length"] = tostring(metadata.size)
     },
     body = file:into_stream(),
   }
