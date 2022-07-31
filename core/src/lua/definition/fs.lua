@@ -69,7 +69,7 @@ function File:lines(mode) end
 --- @async
 function File:flush() end
 
---- @return ByteStream
-function File:into_stream() end
+--- @async
+function File:close() end
 
 return fs

@@ -227,12 +227,15 @@ impl UserData for LuaFile {
       check_userdata_mut(value, "file").map_err(tag_handler(lua, 1, 1))
     }
 
-    methods.add_async_meta_function("__close", |_lua, this: AnyUserData| async move {
-      if let Ok(mut this) = this.take::<Self>() {
+    async fn close(_lua: &Lua, this: AnyUserData<'_>) -> mlua::Result<()> {
+      if let Ok(mut this) = this.take::<LuaFile>() {
         this.0.flush().await.map_err(rt_error)?;
       }
       Ok(())
-    });
+    }
+
+    methods.add_async_meta_function("__close", close);
+    methods.add_async_function("close", close);
 
     methods.add_async_function("read", |lua, mut args: MultiValue| async move {
       let mut this = check_self_mut_async(lua, args.pop_front())?;
