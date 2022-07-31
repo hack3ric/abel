@@ -17,6 +17,22 @@ pub fn create_preload_stream(lua: &Lua) -> mlua::Result<mlua::Function> {
   lua.create_cached_function("abel:preload_stream", |lua, ()| create_table_stream(lua))
 }
 
+pub(crate) fn is_stream(lua: &Lua, value: mlua::Value) -> mlua::Result<bool> {
+  const SRC: &str = r#"
+    local value = ...
+    local type_value = type(value)
+    local type_ok = type_value == "table" or type_value == "userdata"
+    if type_ok then
+      local success, has_read_fn = pcall(function() return type(value.read) == "function" end)
+      return success and has_read_fn
+    else
+      return false
+    end
+  "#;
+  let f = lua.create_cached_value("abel:check_stream", || lua.load(SRC).into_function())?;
+  f.call(value)
+}
+
 pub(crate) fn create_table_stream(lua: &Lua) -> mlua::Result<mlua::Table> {
   lua.create_cached_value("abel:stream_module", || {
     let stream = lua

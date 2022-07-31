@@ -76,7 +76,7 @@ impl UserData for LuaPromise {
   }
 }
 
-fn _spawn(
+pub(crate) fn abel_spawn(
   lua: &Lua,
   f: Function,
 ) -> mlua::Result<impl Future<Output = Result<Box<mlua::Result<RegistryKey>>, RecvError>> + Send> {
@@ -103,7 +103,7 @@ fn create_fn_spawn(lua: &Lua) -> mlua::Result<Function> {
     let f: Function =
       check_value(lua, args.pop_front(), "function").map_err(tag_handler(lua, 1, 1))?;
     let f = if args.is_empty() { f } else { f.bind(args)? };
-    let rx = _spawn(lua, f)?;
+    let rx = abel_spawn(lua, f)?;
     Ok(LuaPromise { inner: rx.boxed() })
   })
 }
@@ -121,7 +121,7 @@ fn create_fn_await_all(lua: &Lua) -> mlua::Result<Function> {
             Err(tag_error(lua, i + 1, "Promise", "other userdata", 1))
           }
         }
-        mlua::Value::Function(f) => _spawn(lua, f).map(FutureExt::boxed),
+        mlua::Value::Function(f) => abel_spawn(lua, f).map(FutureExt::boxed),
         #[rustfmt::skip]
         _ => Err(tag_error(lua, i + 1, "Promise or function", x.type_name(), 1)),
       })

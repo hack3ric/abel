@@ -53,7 +53,7 @@ impl LuaRequest {
       .transpose()?
       .unwrap_or_else(HeaderMap::new);
 
-    let body = LuaBody::from_value(table.raw_get::<_, mlua::Value>("body")?)
+    let body = LuaBody::from_value(lua, table.raw_get::<_, mlua::Value>("body")?)?
       .map_err(|error| bad_field("body", error))?;
 
     Ok(LuaRequest {
@@ -65,11 +65,11 @@ impl LuaRequest {
     })
   }
 
-  pub fn from_userdata(userdata: AnyUserData) -> mlua::Result<LuaRequest> {
+  pub fn from_userdata(lua: &Lua, userdata: AnyUserData) -> mlua::Result<LuaRequest> {
     let mut u: LuaRequest = userdata.take()?;
     if u.body.is_none() {
       let t = userdata.get_named_user_value::<_, mlua::Value>("body")?;
-      let body = LuaBody::from_value(t)
+      let body = LuaBody::from_value(lua, t)?
         .map_err(|error| rt_error_fmt!("failed to get body from request ({error})"))?;
       u.body = Some(body);
     }

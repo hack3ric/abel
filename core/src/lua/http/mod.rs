@@ -44,7 +44,7 @@ pub fn create_fn_http_request(lua: &Lua) -> mlua::Result<Function> {
         ..Default::default()
       }),
       Left(Right(table)) => LuaRequest::from_table(lua, table),
-      Right(u) if u.is::<LuaRequest>() => LuaRequest::from_userdata(u),
+      Right(u) if u.is::<LuaRequest>() => LuaRequest::from_userdata(lua, u),
       Right(u) if u.is::<LuaUri>() => Ok(LuaRequest {
         uri: u.borrow::<LuaUri>()?.0.clone(),
         ..Default::default()

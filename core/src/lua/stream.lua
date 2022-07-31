@@ -26,7 +26,7 @@ end
 function stream.read_all(st)
   check_stream(st)
   local buf = st:read()
-  for item in bind(st.read, st) do
+  for item in stream.iter(st) do
     buf = buf .. item
   end
   return buf
@@ -40,7 +40,7 @@ end
 
 function stream.iter(st)
   check_stream(st)
-  return bind(st.read, st)
+  return function() return st:read() end
 end
 
 function stream.from_iter(iter, state, ...)
@@ -56,7 +56,7 @@ end
 function stream.pipe_to(st, sink)
   check_stream(st)
   check_sink(sink)
-  for item in bind(st.read, st) do
+  for item in stream.iter(st) do
     sink:write(item)
   end
 end

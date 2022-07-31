@@ -227,8 +227,10 @@ impl UserData for LuaFile {
       check_userdata_mut(value, "file").map_err(tag_handler(lua, 1, 1))
     }
 
-    methods.add_meta_function("__close", |_lua, this: AnyUserData| {
-      drop(this.take::<Self>());
+    methods.add_async_meta_function("__close", |_lua, this: AnyUserData| async move {
+      if let Ok(mut this) = this.take::<Self>() {
+        this.0.flush().await.map_err(rt_error)?;
+      }
       Ok(())
     });
 

@@ -1,8 +1,12 @@
 use super::LuaResponse;
-use crate::lua::stream::ByteStream;
+use crate::lua::abel::abel_spawn;
+use crate::lua::error::rt_error;
+use crate::lua::stream::{is_stream, ByteStream};
+use crate::lua::LuaCacheExt;
+use hyper::body::Bytes;
 use hyper::header::HeaderValue;
 use hyper::{Body, HeaderMap, StatusCode};
-use mlua::{Lua, LuaSerdeExt, ToLua};
+use mlua::{AnyUserData, Lua, LuaSerdeExt, ToLua, UserData};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -10,7 +14,7 @@ pub enum LuaBody {
   Empty,
   Json(serde_json::Value),
   Bytes(Vec<u8>),
-  Stream(ByteStream),
+  Stream(Body),
 }
 
 impl LuaBody {
@@ -31,29 +35,79 @@ impl LuaBody {
     }
   }
 
-  pub(crate) fn from_value(value: mlua::Value) -> Result<Self, String> {
+  pub(crate) fn from_value<'a>(
+    lua: &'a Lua,
+    value: mlua::Value<'a>,
+  ) -> mlua::Result<Result<Self, String>> {
     let result = match value {
-      mlua::Value::Nil => Self::Empty,
-      x @ mlua::Value::Table(_) => Self::Json(serde_json::to_value(&x).map_err(|x| x.to_string())?),
-      mlua::Value::String(s) => Self::Bytes(s.as_bytes().into()),
-      mlua::Value::UserData(u) => u
+      mlua::Value::Nil => Ok(Self::Empty),
+      mlua::Value::String(s) => Ok(Self::Bytes(s.as_bytes().into())),
+
+      // Optimization for native stream
+      mlua::Value::UserData(u) if u.is::<ByteStream>() => u
         .take::<ByteStream>()
-        .map(Self::Stream)
-        .map_err(|_| "byte stream expected, got other userdata")?,
-      _ => {
-        return Err(format!(
-          "string, JSON table or byte stream expected, got {}",
-          value.type_name()
-        ))
-      }
+        .map(|x| Ok(Self::Stream(Body::wrap_stream(x.0))))?,
+      mlua::Value::UserData(_) => Err("byte stream expected, got other userdata".into()),
+      _ if is_stream(lua, value.clone())? => body_from_lua_stream(lua, value).map(Ok)?,
+
+      x @ mlua::Value::Table(_) => serde_json::to_value(&x)
+        .map(Self::Json)
+        .map_err(|x| x.to_string()),
+      _ => Err(format!(
+        "string, JSON table or byte stream expected, got {}",
+        value.type_name()
+      )),
     };
     Ok(result)
   }
 }
 
+fn body_from_lua_stream(lua: &Lua, stream: mlua::Value) -> mlua::Result<LuaBody> {
+  struct LuaBodySender(hyper::body::Sender);
+
+  impl UserData for LuaBodySender {
+    fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
+      methods.add_meta_function("__close", |_lua, this: AnyUserData| {
+        let _ = this.take::<Self>();
+        Ok(())
+      });
+
+      #[allow(clippy::await_holding_refcell_ref)]
+      methods.add_async_function(
+        "send",
+        |_lua, (this, data): (AnyUserData, mlua::String)| async move {
+          let mut tx = this.borrow_mut::<Self>()?;
+          tx.0
+            .send_data(Bytes::copy_from_slice(data.as_bytes()))
+            .await
+            .map_err(rt_error)
+        },
+      );
+    }
+  }
+
+  let (tx, body) = Body::channel();
+  let f = lua
+    .create_cached_value("abel:body_spawn_send", || {
+      const SRC: &str = r#"
+        local st, tx <close> = ...
+        while true do
+          local bytes = st:read()
+          if not bytes then break end
+          tx:send(bytes)
+        end
+      "#;
+      lua.load(SRC).into_function()
+    })?
+    .bind((stream, LuaBodySender(tx)))?;
+  let _ = abel_spawn(lua, f)?;
+
+  Ok(LuaBody::Stream(body))
+}
+
 impl From<Body> for LuaBody {
   fn from(body: Body) -> Self {
-    Self::Stream(body.into())
+    Self::Stream(body)
   }
 }
 
@@ -63,7 +117,7 @@ impl From<LuaBody> for Body {
       LuaBody::Empty => Body::empty(),
       LuaBody::Json(x) => x.to_string().into(),
       LuaBody::Bytes(x) => x.into(),
-      LuaBody::Stream(x) => Body::wrap_stream(x.0),
+      LuaBody::Stream(x) => x,
     }
   }
 }
@@ -74,7 +128,7 @@ impl<'lua> ToLua<'lua> for LuaBody {
       Self::Empty => Ok(mlua::Value::Nil),
       Self::Json(x) => lua.to_value(&x),
       Self::Bytes(x) => Ok(mlua::Value::String(lua.create_string(&x)?)),
-      Self::Stream(x) => lua.pack(x),
+      Self::Stream(x) => lua.pack(ByteStream::from(x)),
     }
   }
 }
