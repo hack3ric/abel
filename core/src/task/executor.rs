@@ -9,7 +9,7 @@ use futures::{pin_mut, Stream};
 use log::{debug, error};
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::atomic::Ordering::{Relaxed, Release};
+use std::sync::atomic::Ordering::Release;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
@@ -18,17 +18,11 @@ use tokio::runtime::Handle;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
-struct MyWaker {
-  tx: mpsc::UnboundedSender<()>,
-  sent: AtomicBool,
-}
+struct MyWaker(mpsc::UnboundedSender<()>);
 
 impl ArcWake for MyWaker {
   fn wake_by_ref(arc_self: &Arc<Self>) {
-    if !arc_self.sent.load(Relaxed) {
-      let _ = arc_self.tx.send(());
-      arc_self.sent.store(true, Relaxed);
-    }
+    let _ = arc_self.0.send(());
   }
 }
 
@@ -65,11 +59,7 @@ impl Executor {
           let rt = Rc::new(f().unwrap());
           let mut tasks = FuturesUnordered::<TaskFuture>::new();
           let (waker_tx, mut waker_rx) = mpsc::unbounded_channel();
-          let arc_waker = Arc::new(MyWaker {
-            tx: waker_tx.clone(),
-            sent: AtomicBool::new(false),
-          });
-          let waker = waker(arc_waker.clone());
+          let waker = waker(Arc::new(MyWaker(waker_tx)));
 
           rt.lua().set_app_data(Vec::<LocalTask>::new());
 
@@ -85,7 +75,7 @@ impl Executor {
                   .map(|task| TaskFuture::from_local_task(rt.clone(), task));
                 tasks.extend(iter);
                 drop(local_tasks);
-                waker_poll(&arc_waker, &waker, &mut tasks);
+                waker_poll(&waker, &mut tasks);
               }
             }
 
@@ -107,7 +97,7 @@ impl Executor {
                 debug!("{} stopping", std::thread::current().name().unwrap());
                 break;
               }
-              Left((Right(_), _)) => waker_poll(&arc_waker, &waker, &mut tasks),
+              Left((Right(_), _)) => waker_poll(&waker, &mut tasks),
               Right((Left(_), _)) => rt.cleanup(),
               Right((Right((Some(msg), _)), _)) => {
                 drop(new_task_recv_);
@@ -118,7 +108,7 @@ impl Executor {
                       tasks.push(TaskFuture::from_local_task(rt.clone(), task));
                     }
                   }
-                  waker_poll(&arc_waker, &waker, &mut tasks);
+                  waker_poll(&waker, &mut tasks);
                 }
               }
               // The new task channel is dropped, stopping the executor.
@@ -145,15 +135,14 @@ impl Executor {
   }
 }
 
-fn waker_poll(my_waker: &MyWaker, waker: &Waker, tasks: &mut FuturesUnordered<TaskFuture>) {
-  my_waker.sent.store(false, Relaxed);
+fn waker_poll(waker: &Waker, tasks: &mut FuturesUnordered<TaskFuture>) {
   let mut context = Context::from_waker(waker);
   if let Poll::Ready(Some(result)) = Pin::new(&mut *tasks).poll_next(&mut context) {
     if let Err(error) = result {
       error!("polling task failed: {error}");
     }
     if !tasks.is_empty() {
-      waker_poll(my_waker, waker, tasks);
+      waker_poll(waker, tasks);
     }
   }
 }
