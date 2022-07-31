@@ -7,8 +7,8 @@ use super::isolate::{Isolate, IsolateBuilder};
 use super::json::create_preload_json;
 use super::logging::side_effect_log;
 use super::lua_std::{
-  create_preload_coroutine, create_preload_io, create_preload_math, create_preload_os,
-  create_preload_string, create_preload_table, create_preload_utf8, side_effect_global_whitelist,
+  create_preload_coroutine, create_preload_math, create_preload_os, create_preload_string,
+  create_preload_table, create_preload_utf8, side_effect_global_whitelist,
 };
 use super::stream::create_preload_stream;
 use crate::source::Source;
@@ -48,9 +48,8 @@ impl Sandbox {
       .add_lib("string", create_preload_string)?
       .add_lib("table", create_preload_table)?
       .add_lib("coroutine", create_preload_coroutine)?
-      .add_lib("os", create_preload_os(lsp.clone()))?
+      .add_lib("os", create_preload_os)?
       .add_lib("utf8", create_preload_utf8)?
-      .add_lib("io", create_preload_io(source.clone(), lsp.clone()))?
       // Abel std (?)
       .add_lib("fs", create_preload_fs(source, lsp))?
       .add_lib("http", create_preload_http)?
@@ -59,7 +58,7 @@ impl Sandbox {
       .add_lib("stream", create_preload_stream)?
       .add_lua_lib("testing", include_str!("lib/testing.lua"))?
       // ...and load some of then into local env
-      .load_libs(["math", "string", "table", "coroutine", "os", "utf8", "io"])?
+      .load_libs(["math", "string", "table", "coroutine", "os", "utf8"])?
       .build()
   }
 

@@ -43,6 +43,10 @@ pub fn create_preload_fs(
         "metadata",
         create_fn_fs_metadata(lua, source.clone(), lsp.clone())?,
       )?;
+      fs.raw_set(
+        "exists",
+        create_fn_fs_exists(lua, source.clone(), lsp.clone())?,
+      )?;
       Ok(fs)
     })
   }
@@ -230,18 +234,14 @@ impl UserData for LuaFile {
       if modes.len() == 0 {
         let result = this
           .with_borrowed_mut(|x| read_once(x, lua, ReadMode::Line))
-          .await;
-        match result {
-          Ok(result) => results.push(result),
-          Err(error) => return lua.pack_multi((Nil, error.to_string())),
-        }
+          .await?;
+        results.push(result);
       } else {
         for (i, mode) in modes.enumerate() {
           let mode = ReadMode::from_lua(mode).map_err(|error| arg_error(lua, i + 2, &error, 1))?;
-          match this.with_borrowed_mut(|x| read_once(x, lua, mode)).await {
-            Ok(Nil) => break,
-            Ok(result) => results.push(result),
-            Err(error) => return lua.pack_multi((Nil, error.to_string())),
+          match this.with_borrowed_mut(|x| read_once(x, lua, mode)).await? {
+            Nil => break,
+            result => results.push(result),
           }
         }
       }
@@ -257,14 +257,12 @@ impl UserData for LuaFile {
           .ok()
           .flatten()
           .ok_or_else(|| tag_error(lua, i + 1, "string", type_name, 1))?;
-        if let Err(error) = this
+        this
           .with_borrowed_mut(|t| t.0.write_all(x.as_bytes()))
           .await
-        {
-          return lua.pack_multi((Nil, error.to_string()));
-        }
+          .map_err(rt_error)?;
       }
-      lua.pack_multi(this.into_any())
+      Ok(this.into_any())
     });
 
     methods.add_async_function("seek", |lua, mut args: MultiValue| async move {
@@ -298,12 +296,11 @@ impl UserData for LuaFile {
       } else {
         SeekFrom::Current(0)
       };
-      lua.pack_multi(
-        this
-          .with_borrowed_mut(|x| x.0.seek(seekfrom))
-          .await
-          .to_lua_err(),
-      )
+
+      this
+        .with_borrowed_mut(|x| x.0.seek(seekfrom))
+        .await
+        .map_err(rt_error)
     });
 
     methods.add_function("lines", |lua, mut args: MultiValue| {
@@ -315,8 +312,6 @@ impl UserData for LuaFile {
         .map_err(|error| arg_error(lua, 2, &error, 1))?;
       let iter = lua.create_async_function(move |lua, this: AnyUserData| async move {
         let mut this = this.borrow_mut::<Self>()?;
-        // This, unlike other function in `fs`, returns hard error.
-        // This corresponds with Lua's behaviour.
         read_once(&mut this, lua, mode).await
       })?;
       iter.bind(this.into_any())
@@ -324,13 +319,10 @@ impl UserData for LuaFile {
 
     methods.add_async_function("flush", |lua, mut args: MultiValue| async move {
       let mut this = check_self_mut_async(lua, args.pop_front())?;
-      lua.pack_multi(
-        this
-          .with_borrowed_mut(|x| x.0.flush())
-          .await
-          .to_lua_err()
-          .map(|_| true),
-      )
+      this
+        .with_borrowed_mut(|x| x.0.flush())
+        .await
+        .map_err(rt_error)
     });
 
     methods.add_function("into_stream", |lua, mut args: MultiValue| {
@@ -421,11 +413,7 @@ impl AsyncSeek for GenericFile {
 }
 
 // Also used in `io.open`
-pub(crate) fn create_fn_fs_open(
-  lua: &Lua,
-  source: Source,
-  lsp: Arc<Path>,
-) -> mlua::Result<Function<'_>> {
+fn create_fn_fs_open(lua: &Lua, source: Source, lsp: Arc<Path>) -> mlua::Result<Function<'_>> {
   lua.create_async_function(move |lua, mut args: MultiValue| {
     let source = source.clone();
     let lsp = lsp.clone();
@@ -443,30 +431,30 @@ pub(crate) fn create_fn_fs_open(
       let file = match scheme {
         Scheme::Local => {
           let path = normalize_path_str(path);
-          let file = mode.to_open_options().open(lsp.join(path)).await;
-          match file {
-            Ok(file) => GenericFile::File(file),
-            Err(error) => return lua.pack_multi((Nil, error.to_string())),
-          }
+          mode
+            .to_open_options()
+            .open(lsp.join(path))
+            .await
+            .map(GenericFile::File)
+            .map_err(rt_error)?
         }
         Scheme::Source => {
           // For `source:`, the only open mode is "read"
-          match source.get(path).await {
-            Ok(file) => GenericFile::ReadOnly(file),
-            Err(error) => return lua.pack_multi((Nil, error.to_string())),
-          }
+          source
+            .get(path)
+            .await
+            .map(GenericFile::ReadOnly)
+            .map_err(rt_error)?
         }
       };
-      let file = LuaFile(BufReader::new(file));
-      let file = lua.create_userdata(file)?;
+      let file = lua.create_userdata(LuaFile(BufReader::new(file)))?;
       TaskContext::register(lua, file.clone())?;
-      lua.pack_multi(file)
+      Ok(file)
     }
   })
 }
 
-// Also used in `io.type`
-pub(crate) fn create_fn_fs_type(lua: &Lua) -> mlua::Result<Function> {
+fn create_fn_fs_type(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_function("abel:fs.type", |lua, mut args: MultiValue| {
     use mlua::Value::*;
     let maybe_file = args
@@ -480,15 +468,13 @@ pub(crate) fn create_fn_fs_type(lua: &Lua) -> mlua::Result<Function> {
   })
 }
 
-// Also used in `io.tmpfile`
-pub(crate) fn create_fn_fs_tmpfile(lua: &Lua) -> mlua::Result<Function> {
+fn create_fn_fs_tmpfile(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_async_function("abel:fs.tmpfile", |_lua, ()| async move {
-    let result = spawn_blocking(tempfile)
+    spawn_blocking(tempfile)
       .await
-      .map_err(|_| io::Error::new(io::ErrorKind::Other, "background task failed"))?
+      .map_err(|x| rt_error_fmt!("background task failed: {x}"))?
       .map(|file| LuaFile(BufReader::new(GenericFile::File(File::from_std(file)))))
-      .to_lua_err();
-    Ok(result)
+      .map_err(rt_error)
   })
 }
 
@@ -549,35 +535,7 @@ fn create_fn_fs_remove(lua: &Lua, lsp: Arc<Path>) -> mlua::Result<Function> {
   })
 }
 
-// Simplified version of `fs.remove`
-pub(crate) fn create_fn_os_remove(lua: &Lua, lsp: Arc<Path>) -> mlua::Result<Function> {
-  lua.create_async_function(move |lua, mut args: MultiValue| {
-    let lsp = lsp.clone();
-    async move {
-      let path = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 1))?;
-
-      let (scheme, path) = parse_path(&path)?;
-      let path = match scheme {
-        Scheme::Local => lsp.join(normalize_path_str(path)),
-        Scheme::Source => return Err(rt_error("cannot modify service source")),
-      };
-
-      let result = async move {
-        let metadata = fs::metadata(&path).await?;
-        if metadata.is_dir() {
-          fs::remove_dir(path).await?
-        } else {
-          fs::remove_file(path).await?
-        }
-        mlua::Result::Ok(true)
-      };
-      Ok(result.await)
-    }
-  })
-}
-
-// Also used in `os.rename`
-pub(crate) fn create_fn_fs_rename(lua: &Lua, lsp: Arc<Path>) -> mlua::Result<Function> {
+fn create_fn_fs_rename(lua: &Lua, lsp: Arc<Path>) -> mlua::Result<Function> {
   lua.create_async_function(move |lua, mut args: MultiValue| {
     let lsp = lsp.clone();
     async move {
@@ -637,6 +595,22 @@ fn create_fn_fs_metadata(lua: &Lua, source: Source, lsp: Arc<Path>) -> mlua::Res
         Err(e) => Err(e),
       };
       Ok(result)
+    }
+  })
+}
+
+fn create_fn_fs_exists(lua: &Lua, source: Source, lsp: Arc<Path>) -> mlua::Result<Function> {
+  lua.create_async_function(move |lua, mut args: MultiValue| {
+    let source = source.clone();
+    let lsp = lsp.clone();
+    async move {
+      let path = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 1))?;
+      let (scheme, path) = parse_path(&path)?;
+
+      match scheme {
+        Scheme::Local => Ok(lsp.join(normalize_path_str(path)).exists()),
+        Scheme::Source => source.exists(path).await.map_err(rt_error),
+      }
     }
   })
 }

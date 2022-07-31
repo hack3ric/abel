@@ -1,12 +1,5 @@
-use super::fs::{
-  create_fn_fs_open, create_fn_fs_rename, create_fn_fs_tmpfile, create_fn_fs_type,
-  create_fn_os_remove,
-};
-use crate::source::Source;
 use mlua::Value::Nil;
 use mlua::{Function, Lua, MultiValue, Table};
-use std::path::Path;
-use std::sync::Arc;
 
 fn apply_whitelist<'lua>(
   from: Table<'lua>,
@@ -76,19 +69,15 @@ create_whitelist_preloads! {
   ];
 }
 
-pub fn create_preload_os(lsp: Arc<Path>) -> impl FnOnce(&Lua) -> mlua::Result<Function> {
-  |lua| {
-    lua.create_function(move |lua, ()| {
-      let os = lua.create_table()?;
-      apply_whitelist(lua.globals().raw_get("os")?, os.clone(), [
-        "clock", "difftime", "time",
-      ])?;
-      os.raw_set("remove", create_fn_os_remove(lua, lsp.clone())?)?;
-      os.raw_set("rename", create_fn_fs_rename(lua, lsp.clone())?)?;
-      os.raw_set("getenv", create_fn_os_getenv(lua)?)?;
-      Ok(os)
-    })
-  }
+pub fn create_preload_os(lua: &Lua) -> mlua::Result<Function> {
+  lua.create_function(move |lua, ()| {
+    let os = lua.create_table()?;
+    apply_whitelist(lua.globals().raw_get("os")?, os.clone(), [
+      "clock", "difftime", "time",
+    ])?;
+    os.raw_set("getenv", create_fn_os_getenv(lua)?)?;
+    Ok(os)
+  })
 }
 
 fn create_fn_os_getenv(lua: &Lua) -> mlua::Result<Function> {
@@ -96,19 +85,4 @@ fn create_fn_os_getenv(lua: &Lua) -> mlua::Result<Function> {
     // TODO: read env from config file
     Ok(Nil)
   })
-}
-
-pub fn create_preload_io(
-  source: Source,
-  lsp: Arc<Path>,
-) -> impl FnOnce(&Lua) -> mlua::Result<Function> {
-  |lua| {
-    lua.create_function(move |lua, ()| {
-      let io = lua.create_table()?;
-      io.raw_set("open", create_fn_fs_open(lua, source.clone(), lsp.clone())?)?;
-      io.raw_set("type", create_fn_fs_type(lua)?)?;
-      io.raw_set("tmpfile", create_fn_fs_tmpfile(lua)?)?;
-      Ok(io)
-    })
-  }
 }
