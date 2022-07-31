@@ -6,12 +6,22 @@ local crypto = require "crypto"
 local fs = require "fs"
 local http = require "http"
 
+local size_threshold = 1048576
+
 local method_not_allowed = HttpError {
   status = 405,
   error = "method not allowed",
   detail = function(got, allowed)
     return { got = got, allowed = allowed }
-  end,
+  end
+}
+
+local file_too_large = HttpError {
+  status = 413,
+  error = "file too large",
+  detail = {
+    max = size_threshold
+  }
 }
 
 local function gen_uid()
@@ -27,18 +37,40 @@ function abel.start()
   fs.mkdir "files"
 end
 
+-- Upload file
 abel.listen("/", function(req)
   if req.method ~= "POST" then
     error(method_not_allowed(req.method, { "POST" }))
   end
 
+  local len = tonumber(req.headers["content-length"])
+  if len and len > size_threshold then
+    error(file_too_large { got = len })
+  end
+
   local uid = gen_uid()
   local file <close> = fs.open("files/" .. uid, "w")
-  req.body:pipe_to(file)
+
+  local limiter = {
+    len = 0,
+    transform = function(self, bytes)
+      self.len = self.len + #bytes
+      if self.len > size_threshold then
+        file:close()
+        error(file_too_large)
+      end
+      return bytes
+    end
+  }
+
+  req.body
+    :pipe_through(limiter)
+    :pipe_to(file)
 
   return { uid = uid }
 end)
 
+-- Download file
 abel.listen("/:uid", function(req)
   if req.method ~= "GET" then
     error(method_not_allowed(req.method, { "GET" }))
@@ -64,6 +96,6 @@ abel.listen("/:uid", function(req)
       ["content-type"] = "text/plain",
       ["content-length"] = metadata.size,
     },
-    body = file,
+    body = file
   }
 end)
