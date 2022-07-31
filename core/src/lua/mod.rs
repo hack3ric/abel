@@ -80,7 +80,7 @@ trait LuaCacheExt {
   fn create_cached_value<'lua, R, F>(&'lua self, key: &str, gen: F) -> mlua::Result<R>
   where
     R: FromLua<'lua> + ToLua<'lua> + Clone,
-    F: FnOnce(&'lua Lua) -> mlua::Result<R>;
+    F: FnOnce() -> mlua::Result<R>;
 
   fn create_cached_function<'lua, A, R, F>(
     &'lua self,
@@ -108,10 +108,10 @@ impl LuaCacheExt for Lua {
   fn create_cached_value<'lua, R, F>(&'lua self, key: &str, gen: F) -> mlua::Result<R>
   where
     R: FromLua<'lua> + ToLua<'lua> + Clone,
-    F: FnOnce(&'lua Lua) -> mlua::Result<R>,
+    F: FnOnce() -> mlua::Result<R>,
   {
     self.named_registry_value(key).or_else(|_| {
-      let value = gen(self)?;
+      let value = gen()?;
       self.set_named_registry_value(key, value.clone())?;
       Ok(value)
     })
@@ -127,7 +127,7 @@ impl LuaCacheExt for Lua {
     R: ToLuaMulti<'lua>,
     F: Fn(&'lua Lua, A) -> mlua::Result<R> + 'static,
   {
-    self.create_cached_value(key, |lua| lua.create_function(f))
+    self.create_cached_value(key, || self.create_function(f))
   }
 
   fn create_cached_async_function<'lua, A, R, F, Fut>(
@@ -141,6 +141,6 @@ impl LuaCacheExt for Lua {
     F: Fn(&'lua Lua, A) -> Fut + 'static,
     Fut: Future<Output = mlua::Result<R>> + 'lua,
   {
-    self.create_cached_value(key, |lua| lua.create_async_function(f))
+    self.create_cached_value(key, || self.create_async_function(f))
   }
 }

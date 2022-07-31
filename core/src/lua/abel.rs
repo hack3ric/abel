@@ -23,28 +23,28 @@ pub fn side_effect_abel(lua: &Lua, local_env: Table, internal: Table) -> mlua::R
 }
 
 fn create_fn_listen<'a>(lua: &'a Lua, internal: Table<'a>) -> mlua::Result<Function<'a>> {
-  let f = lua.create_cached_value("abel:abel.listen::meta", |lua| {
-    const SRC: &str = r#"
-      local internal, path, handler = ...
-      assert(
-        not internal.sealed,
-        "cannot call `listen` from places other than the top level of `main.lua`"
-      )
-      local type_handler = type(handler)
-      if type_handler ~= "function" then
-        if type_handler == "table" then
-          local mt = getmetatable(handler)
-          if type(mt) == "table" and type(mt.__call) == "function" then
-            goto ok
-          end
+  const SRC: &str = r#"
+    local internal, path, handler = ...
+    assert(
+      not internal.sealed,
+      "cannot call `listen` from places other than the top level of `main.lua`"
+    )
+    local type_handler = type(handler)
+    if type_handler ~= "function" then
+      if type_handler == "table" then
+        local mt = getmetatable(handler)
+        if type(mt) == "table" and type(mt.__call) == "function" then
+          goto ok
         end
-        error "handler must either be a function or a callable table"
       end
+      error "handler must either be a function or a callable table"
+    end
 
-      ::ok::
-      table.insert(internal.paths, { path, handler })
-    "#;
-    lua.load(SRC).set_name("name")?.into_function()
+    ::ok::
+    table.insert(internal.paths, { path, handler })
+  "#;
+  let f = lua.create_cached_value("abel:abel.listen::meta", || {
+    lua.load(SRC).set_name("@[abel.listen]")?.into_function()
   })?;
   f.bind(internal)
 }

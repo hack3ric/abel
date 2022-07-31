@@ -1,4 +1,5 @@
 use super::error::{arg_error, check_truthiness, check_userdata_mut, rt_error, tag_error};
+use super::stream::create_table_stream;
 use super::LuaCacheExt;
 use crate::lua::error::{
   check_integer, check_string, check_userdata, check_value, rt_error_fmt, tag_handler, UserDataRef,
@@ -24,7 +25,6 @@ use tokio::io::{
   AsyncWriteExt, BufStream,
 };
 use tokio::task::spawn_blocking;
-use super::stream::create_table_stream;
 
 // Note that "lsp" stands for "local storage path".
 pub fn create_preload_fs(

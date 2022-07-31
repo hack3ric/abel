@@ -1,17 +1,14 @@
 use super::error::{check_userdata_mut, rt_error, tag_handler};
+use super::json::create_fn_json_parse;
 use super::LuaCacheExt;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
 use hyper::body::Bytes;
 use hyper::Body;
 use mlua::Value::Nil;
-use mlua::{
-  AnyUserData, Lua, MultiValue, UserData, UserDataFields,
-  UserDataMethods,
-};
+use mlua::{AnyUserData, Lua, MultiValue, UserData, UserDataFields, UserDataMethods};
 use tokio::io::AsyncRead;
 use tokio_util::io::ReaderStream;
-use super::json::create_fn_json_parse;
 
 /// - Stream: `stream<T>:read() -> T?`
 /// - Sink: `sink<T>:write(item: T)`
@@ -21,7 +18,7 @@ pub fn create_preload_stream(lua: &Lua) -> mlua::Result<mlua::Function> {
 }
 
 pub(crate) fn create_table_stream(lua: &Lua) -> mlua::Result<mlua::Table> {
-  lua.create_cached_value("abel:stream_module", |lua| {
+  lua.create_cached_value("abel:stream_module", || {
     let stream = lua
       .load(include_str!("stream.lua"))
       .set_name("@[stream]")?

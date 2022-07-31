@@ -52,8 +52,8 @@ impl<'lua> IsolateBuilder<'lua> {
 
   pub fn add_lua_lib(self, name: &str, code: &str) -> mlua::Result<Self> {
     let key = format!("abel:lua_preload_{name}");
-    let preload = self.lua.create_cached_value(&key, |lua| {
-      lua
+    let preload = self.lua.create_cached_value(&key, || {
+      (self.lua)
         .load(code)
         .set_name(&key)?
         .set_environment(self.local_env.clone())?
@@ -83,7 +83,7 @@ impl<'lua> IsolateBuilder<'lua> {
 }
 
 fn isolate_bootstrap(lua: &Lua, source: Source) -> mlua::Result<(Table, Table)> {
-  let bootstrap = lua.create_cached_value("abel:isolate_bootstrap", |lua| {
+  let bootstrap = lua.create_cached_value("abel:isolate_bootstrap", || {
     lua
       .load(include_str!("isolate_bootstrap.lua"))
       .set_name("@[isolate_bootstrap]")?

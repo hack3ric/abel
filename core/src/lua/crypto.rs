@@ -33,7 +33,7 @@ pub fn create_preload_crypto(lua: &Lua) -> mlua::Result<Function> {
     let crypto_table = lua.create_table()?;
     crypto_table.raw_set(
       "thread_rng",
-      lua.create_cached_value("abel:crypto.thread_rng", |lua| {
+      lua.create_cached_value("abel:crypto.thread_rng", || {
         lua.create_userdata(LuaRng(Box::new(thread_rng())))
       })?,
     )?;

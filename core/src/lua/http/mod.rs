@@ -10,7 +10,7 @@ pub(crate) use uri::create_fn_http_create_uri;
 
 use super::error::rt_error_fmt;
 use super::LuaCacheExt;
-use crate::lua::error::{arg_error, check_value, tag_error, tag_handler, rt_error};
+use crate::lua::error::{arg_error, check_value, rt_error, tag_error, tag_handler};
 use crate::lua::{LuaEither, LUA_HTTP_CLIENT};
 use bstr::ByteSlice;
 use hyper::header::{HeaderName, HeaderValue};
