@@ -42,7 +42,7 @@ function Uri:query() end
 --- @field body Body
 --- @field headers HeaderMap 
 
---- @alias ResponseBuilder { status?: integer, headers?: table<string, string | string[]>, body?: Body }
+--- @alias ResponseBuilder { status?: integer, headers?: table<string, string | number | (string | number)[]>, body?: Body }
 
 --- @param builder ResponseBuilder
 --- @return Response

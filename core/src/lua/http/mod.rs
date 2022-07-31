@@ -69,31 +69,33 @@ pub fn create_fn_http_request(lua: &Lua) -> mlua::Result<Function> {
 fn check_headers(lua: &Lua, headers_table: Table) -> mlua::Result<HeaderMap> {
   let mut headers = HeaderMap::new();
   for entry in headers_table.pairs::<mlua::Value, mlua::Value>() {
-    let (k, v) = entry?;
-    let type_name = k.type_name();
-    let k: mlua::String = lua
-      .unpack(k)
+    let (key, value) = entry?;
+    let type_name = key.type_name();
+    let key: mlua::String = lua
+      .unpack(key)
       .map_err(|_| rt_error_fmt!("expected string as header name, found {type_name}"))?;
-    let k = header_name(k)?;
-    match v {
-      mlua::Value::String(v) => {
-        headers.append(k, header_value(v)?);
-      }
-      mlua::Value::Table(vs) => {
-        for v in vs.sequence_values::<mlua::Value>() {
-          let v = v?;
-          let type_name = v.type_name();
-          let v: mlua::String = lua
-            .unpack(v)
-            .map_err(|_| rt_error_fmt!("expected string as header value, got {type_name}"))?;
-          headers.append(&k, header_value(v)?);
+    let key = header_name(key)?;
+    match value {
+      mlua::Value::Table(values) => {
+        for value in values.sequence_values::<mlua::Value>() {
+          let value = value?;
+          let type_name = value.type_name();
+          let string = lua
+            .coerce_string(value)?
+            .ok_or_else(|| rt_error_fmt!("expected string as header value, got {type_name}"))?;
+          headers.append(&key, header_value(string)?);
         }
       }
       _ => {
-        return Err(rt_error_fmt!(
-          "expected string or an array of strings as header value(s), got {}",
-          v.type_name()
-        ))
+        let type_name = value.type_name();
+        if let Some(string) = lua.coerce_string(value)? {
+          headers.append(key, header_value(string)?);
+        } else {
+          return Err(rt_error_fmt!(
+            "expected string or an array of strings \
+            as header value(s), got {type_name}",
+          ));
+        }
       }
     }
   }

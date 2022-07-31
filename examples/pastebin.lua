@@ -62,7 +62,7 @@ abel.listen("/:uid", function(req)
   return http.Response {
     headers = {
       ["content-type"] = "text/plain",
-      ["content-length"] = tostring(metadata.size)
+      ["content-length"] = metadata.size,
     },
     body = file,
   }
