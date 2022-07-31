@@ -1,6 +1,7 @@
 use super::LuaResponse;
 use crate::lua::abel::{abel_spawn, create_fn_spawn};
 use crate::lua::error::rt_error;
+use crate::lua::fs::LuaFile;
 use crate::lua::stream::{is_stream, ByteStream};
 use crate::lua::LuaCacheExt;
 use hyper::body::Bytes;
@@ -47,6 +48,12 @@ impl LuaBody {
       mlua::Value::UserData(u) if u.is::<ByteStream>() => u
         .take::<ByteStream>()
         .map(|x| Ok(Self::Stream(Body::wrap_stream(x.0))))?,
+      // Optimization for file
+      mlua::Value::UserData(u) if u.is::<LuaFile>() => u.take::<LuaFile>().map(|x| {
+        Ok(Self::Stream(Body::wrap_stream(
+          ByteStream::from_async_read(x.0).0,
+        )))
+      })?,
       _ if is_stream(lua, value.clone())? => body_from_lua_stream(lua, value).map(Ok)?,
       mlua::Value::UserData(_) => Err("stream expected, got other userdata".into()),
 

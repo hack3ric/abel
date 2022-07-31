@@ -151,7 +151,7 @@ fn parse_path<'a>(path: &'a mlua::String<'a>) -> mlua::Result<(Scheme, &'a str)>
     .unwrap_or(Ok((Scheme::Local, path)))
 }
 
-pub struct LuaFile(BufStream<GenericFile>);
+pub struct LuaFile(pub(crate) BufStream<GenericFile>);
 
 async fn read_once<'lua>(
   this: &mut LuaFile,
