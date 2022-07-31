@@ -1,5 +1,5 @@
 use super::LuaResponse;
-use crate::lua::abel::abel_spawn;
+use crate::lua::abel::{abel_spawn, create_fn_spawn};
 use crate::lua::error::rt_error;
 use crate::lua::stream::{is_stream, ByteStream};
 use crate::lua::LuaCacheExt;
@@ -47,14 +47,14 @@ impl LuaBody {
       mlua::Value::UserData(u) if u.is::<ByteStream>() => u
         .take::<ByteStream>()
         .map(|x| Ok(Self::Stream(Body::wrap_stream(x.0))))?,
-      mlua::Value::UserData(_) => Err("byte stream expected, got other userdata".into()),
       _ if is_stream(lua, value.clone())? => body_from_lua_stream(lua, value).map(Ok)?,
+      mlua::Value::UserData(_) => Err("stream expected, got other userdata".into()),
 
       x @ mlua::Value::Table(_) => serde_json::to_value(&x)
         .map(Self::Json)
         .map_err(|x| x.to_string()),
       _ => Err(format!(
-        "string, JSON table or byte stream expected, got {}",
+        "string, JSON table or stream expected, got {}",
         value.type_name()
       )),
     };
@@ -90,16 +90,18 @@ fn body_from_lua_stream(lua: &Lua, stream: mlua::Value) -> mlua::Result<LuaBody>
   let f = lua
     .create_cached_value("abel:body_spawn_send", || {
       const SRC: &str = r#"
-        local st, tx <close> = ...
+        local st, tx <close>, spawn = ...
+        local p
         while true do
           local bytes = st:read()
+          if p then p:await() end
           if not bytes then break end
-          tx:send(bytes)
+          p = spawn(tx.send, tx, bytes)
         end
       "#;
       lua.load(SRC).into_function()
     })?
-    .bind((stream, LuaBodySender(tx)))?;
+    .bind((stream, LuaBodySender(tx), create_fn_spawn(lua)?))?;
   let _ = abel_spawn(lua, f)?;
 
   Ok(LuaBody::Stream(body))

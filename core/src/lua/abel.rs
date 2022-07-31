@@ -98,7 +98,7 @@ pub(crate) fn abel_spawn(
   Ok(rx)
 }
 
-fn create_fn_spawn(lua: &Lua) -> mlua::Result<Function> {
+pub(crate) fn create_fn_spawn(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_function("abel:abel.spawn", |lua, mut args: MultiValue| {
     let f: Function =
       check_value(lua, args.pop_front(), "function").map_err(tag_handler(lua, 1, 1))?;
