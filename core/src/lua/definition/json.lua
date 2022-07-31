@@ -8,14 +8,12 @@ local json = {}
 --- @alias Value nil | boolean | number | string | table<string | integer, Value>
 
 --- @param str string
---- @return Value?
---- @return string? error
+--- @return Value
 function json.parse(str) end
 
 --- @param value Value
 --- @param pretty? boolean
---- @return string?
---- @return string? error
+--- @return string
 function json.stringify(value, pretty) end
 
 --- @param table table

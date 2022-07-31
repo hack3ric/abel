@@ -1,4 +1,5 @@
 local stream = {}
+local json_parse = ...
 
 local function check_stream(st)
   local type_st = type(st)
@@ -29,6 +30,12 @@ function stream.read_all(st)
     buf = buf .. item
   end
   return buf
+end
+
+function stream.parse_json(st)
+  check_stream(st)
+  local str = stream.read_all(st)
+  return json_parse(str)
 end
 
 function stream.iter(st)

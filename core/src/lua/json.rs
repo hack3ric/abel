@@ -1,6 +1,5 @@
-use super::error::{arg_error, check_string, check_truthiness, check_value, tag_handler};
+use super::error::{arg_error, check_string, check_truthiness, check_value, rt_error, tag_handler};
 use super::LuaCacheExt;
-use mlua::Value::Nil;
 use mlua::{Function, Lua, LuaSerdeExt, MultiValue, Table};
 
 pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
@@ -15,14 +14,12 @@ pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {
   })
 }
 
-fn create_fn_json_parse(lua: &Lua) -> mlua::Result<Function> {
+pub(crate) fn create_fn_json_parse(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_function("abel:json.parse", |lua, mut args: MultiValue| {
     let string = check_string(lua, args.pop_front()).map_err(tag_handler(lua, 1, 0))?;
-    let result = serde_json::from_slice::<serde_json::Value>(string.as_bytes());
-    match result {
-      Ok(result) => lua.pack_multi(lua.to_value(&result)?),
-      Err(error) => lua.pack_multi((Nil, error.to_string())),
-    }
+    serde_json::from_slice::<serde_json::Value>(string.as_bytes())
+      .map_err(rt_error)
+      .and_then(|x| lua.to_value(&x))
   })
 }
 
@@ -37,10 +34,7 @@ fn create_fn_json_stringify(lua: &Lua) -> mlua::Result<Function> {
     } else {
       serde_json::to_string(&value)
     };
-    match result {
-      Ok(s) => lua.pack_multi(s),
-      Err(error) => lua.pack_multi((Nil, error.to_string())),
-    }
+    result.map_err(rt_error)
   })
 }
 

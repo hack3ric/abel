@@ -5,8 +5,7 @@ use crate::lua::{LuaCacheExt, LuaEither};
 use bstr::ByteSlice;
 use hyper::http::uri::{Authority, Parts, PathAndQuery, Scheme};
 use hyper::Uri;
-use mlua::Value::Nil;
-use mlua::{ExternalResult, FromLua, Function, Lua, MultiValue, Table, ToLua, UserData};
+use mlua::{FromLua, Function, Lua, MultiValue, Table, ToLua, UserData};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -117,14 +116,11 @@ impl UserData for LuaUri {
       }
 
       let this = check_userdata::<Self>(args.pop_front(), "URI").map_err(tag_handler(lua, 1, 0))?;
-      let result = (this.borrow_borrowed().0.query())
+      (this.borrow_borrowed().0.query())
         .map(serde_qs::from_str::<QueryMap>)
         .transpose()
-        .map(Option::unwrap_or_default);
-      match result {
-        Ok(query_map) => lua.pack_multi(query_map),
-        Err(error) => lua.pack_multi((Nil, error.to_string())),
-      }
+        .map(Option::unwrap_or_default)
+        .map_err(rt_error)
     });
   }
 }
@@ -154,7 +150,7 @@ pub fn create_fn_http_create_uri(lua: &Lua) -> mlua::Result<Function> {
     let s = check_value::<LuaEither<mlua::String, Table>>(lua, args.pop_front(), "string or table")
       .map_err(tag_handler(lua, 1, 0))?;
     match s {
-      LuaEither::Left(s) => Ok(LuaUri(Uri::try_from(s.as_bytes()).to_lua_err()?)),
+      LuaEither::Left(s) => Ok(LuaUri(Uri::try_from(s.as_bytes()).map_err(rt_error)?)),
       LuaEither::Right(t) => LuaUri::from_lua_parts(lua, t),
     }
   })

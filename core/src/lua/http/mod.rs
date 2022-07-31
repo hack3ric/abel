@@ -10,12 +10,11 @@ pub(crate) use uri::create_fn_http_create_uri;
 
 use super::error::rt_error_fmt;
 use super::LuaCacheExt;
-use crate::lua::error::{arg_error, check_value, tag_error, tag_handler};
+use crate::lua::error::{arg_error, check_value, tag_error, tag_handler, rt_error};
 use crate::lua::{LuaEither, LUA_HTTP_CLIENT};
 use bstr::ByteSlice;
 use hyper::header::{HeaderName, HeaderValue};
 use hyper::HeaderMap;
-use mlua::Value::Nil;
 use mlua::{AnyUserData, Function, Lua, MultiValue, Table};
 use response::create_fn_http_create_response;
 use uri::LuaUri;
@@ -23,11 +22,9 @@ use uri::LuaUri;
 pub fn create_preload_http(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_function("abel:preload_http", move |lua, ()| {
     let http = lua.create_table()?;
-
     http.raw_set("request", create_fn_http_request(lua)?)?;
     http.raw_set("Response", create_fn_http_create_response(lua)?)?;
     http.raw_set("Uri", create_fn_http_create_uri(lua)?)?;
-
     Ok(http)
   })
 }
@@ -60,11 +57,11 @@ pub fn create_fn_http_request(lua: &Lua) -> mlua::Result<Function> {
     "abel:http.request",
     move |lua, mut args: MultiValue| async move {
       let req = check_request_first_arg(lua, args.pop_front())?;
-      let resp = LUA_HTTP_CLIENT.request(req.into()).await;
-      match resp {
-        Ok(resp) => lua.pack_multi(LuaResponse::from_hyper(resp)),
-        Err(error) => lua.pack_multi((Nil, error.to_string())),
-      }
+      LUA_HTTP_CLIENT
+        .request(req.into())
+        .await
+        .map(LuaResponse::from_hyper)
+        .map_err(rt_error)
     },
   )
 }

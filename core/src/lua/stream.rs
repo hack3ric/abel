@@ -6,11 +6,12 @@ use hyper::body::Bytes;
 use hyper::Body;
 use mlua::Value::Nil;
 use mlua::{
-  AnyUserData, ExternalResult, Lua, LuaSerdeExt, MultiValue, UserData, UserDataFields,
+  AnyUserData, Lua, MultiValue, UserData, UserDataFields,
   UserDataMethods,
 };
 use tokio::io::AsyncRead;
 use tokio_util::io::ReaderStream;
+use super::json::create_fn_json_parse;
 
 /// - Stream: `stream<T>:read() -> T?`
 /// - Sink: `sink<T>:write(item: T)`
@@ -19,12 +20,12 @@ pub fn create_preload_stream(lua: &Lua) -> mlua::Result<mlua::Function> {
   lua.create_cached_function("abel:preload_stream", |lua, ()| create_table_stream(lua))
 }
 
-fn create_table_stream(lua: &Lua) -> mlua::Result<mlua::Table> {
+pub(crate) fn create_table_stream(lua: &Lua) -> mlua::Result<mlua::Table> {
   lua.create_cached_value("abel:stream_module", |lua| {
     let stream = lua
       .load(include_str!("stream.lua"))
       .set_name("@[stream]")?
-      .call(())?;
+      .call(create_fn_json_parse(lua)?)?;
     Ok(stream)
   })
 }
@@ -34,15 +35,6 @@ pub struct ByteStream(pub(crate) BoxStream<'static, mlua::Result<Bytes>>);
 impl ByteStream {
   pub fn from_async_read(r: impl AsyncRead + Send + 'static) -> Self {
     Self(ReaderStream::new(r).map_err(rt_error).boxed())
-  }
-
-  // soft-deprecated
-  async fn aggregate(&mut self) -> mlua::Result<Vec<u8>> {
-    let mut buf = Vec::new();
-    while let Some(x) = self.0.try_next().await? {
-      buf.extend_from_slice(&x);
-    }
-    Ok(buf)
   }
 }
 
@@ -72,29 +64,6 @@ impl UserData for ByteStream {
         None => Nil,
       };
       Ok(value)
-    });
-
-    methods.add_async_function("to_string", |lua, mut args: MultiValue| async move {
-      let mut this = check_userdata_mut::<Self>(args.pop_front(), "byte stream")
-        .map_err(tag_handler(lua, 1, 1))?;
-      this
-        .with_borrowed_mut(|x| x.aggregate())
-        .await
-        .map(|x| lua.pack_multi(lua.create_string(&x)?))
-        .unwrap_or_else(|x| lua.pack_multi((Nil, x.to_string())))
-    });
-
-    methods.add_async_function("parse_json", |lua, mut args: MultiValue| async move {
-      let mut this = check_userdata_mut::<Self>(args.pop_front(), "byte stream")
-        .map_err(tag_handler(lua, 1, 1))?;
-      lua.pack_multi(
-        async {
-          let bytes = this.with_borrowed_mut(|x| x.aggregate()).await?;
-          let v: serde_json::Value = serde_json::from_slice(&bytes).to_lua_err()?;
-          lua.to_value(&v)
-        }
-        .await,
-      )
     });
   }
 }

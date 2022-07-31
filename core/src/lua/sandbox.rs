@@ -56,7 +56,7 @@ impl Sandbox {
       .add_lib("json", create_preload_json)?
       .add_lib("crypto", create_preload_crypto)?
       .add_lib("stream", create_preload_stream)?
-      .add_lua_lib("testing", include_str!("lib/testing.lua"))?
+      .add_lua_lib("testing", include_str!("testing.lua"))?
       // ...and load some of then into local env
       .load_libs(["math", "string", "table", "coroutine", "os", "utf8"])?
       .build()
