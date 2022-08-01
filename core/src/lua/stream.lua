@@ -66,7 +66,10 @@ function stream.pipe_through(st, tr)
   check_transform(tr)
   return setmetatable({
     read = function(self)
-      return tr:transform(st:read())
+      local item = st:read()
+      if item then
+        return tr:transform(item)
+      end
     end
   }, { __index = st })
 end
@@ -76,7 +79,10 @@ function stream.recv_through(sink, tr)
   check_transform(tr)
   return setmetatable({
     write = function(self, item)
-      sink:write(tr:transform(item))
+      local new_item = tr:transform(item)
+      if new_item then
+        sink:write(new_item)
+      end
     end
   }, { __index = sink })
 end
