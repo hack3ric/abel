@@ -5,19 +5,38 @@ use mlua::Error::*;
 use mlua::Value::Nil;
 use mlua::{
   AnyUserData, DebugNames, DebugSource, ExternalError, FromLua, Function, Lua, LuaSerdeExt,
-  MultiValue, Table, TableExt, UserData,
+  MultiValue, RegistryKey, Table, UserData,
 };
 use ouroboros::self_referencing;
 use std::borrow::Cow;
 use std::cell::{Ref, RefMut};
 use std::fmt::Display;
 
-#[derive(Debug, thiserror::Error, Clone)]
-#[error("{error} {detail:?}")]
+#[derive(Debug)]
 pub struct CustomError {
   pub status: StatusCode,
   pub error: String,
   pub detail: serde_json::Value,
+  source: Option<RegistryKey>,
+}
+
+impl Display for CustomError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{} {:?}", self.error, self.detail)
+  }
+}
+
+impl std::error::Error for CustomError {}
+
+impl Clone for CustomError {
+  fn clone(&self) -> Self {
+    Self {
+      status: self.status,
+      error: self.error.clone(),
+      detail: self.detail.clone(),
+      source: None,
+    }
+  }
 }
 
 pub fn resolve_callback_error(error: &mlua::Error) -> &mlua::Error {
@@ -30,99 +49,77 @@ pub fn resolve_callback_error(error: &mlua::Error) -> &mlua::Error {
   }
 }
 
-fn error_fn(lua: &Lua, error: mlua::Value) -> mlua::Result<()> {
-  use mlua::Value::*;
-  match error {
-    Table(custom_error) => {
-      let result = CustomError {
-        status: custom_error
-          .check_raw_get::<Option<u16>>(lua, "status", "u16")?
-          .unwrap_or(500)
-          .try_into()
-          .map_err(|_| bad_field("status", "invalid status code"))?,
-        error: custom_error
-          .check_raw_get::<Option<mlua::String>>(lua, "error", "string")?
-          .map(|x| mlua::Result::Ok(x.to_str()?.into()).map_err(|error| bad_field("error", error)))
-          .transpose()?
-          .unwrap_or_else(|| "".into()),
-        detail: custom_error
-          .raw_get::<_, mlua::Value>("detail")
-          .and_then(|x| lua.from_value(x))
-          .map_err(|error| bad_field("detail", error))?,
-      };
-      Err(result.to_lua_err())
-    }
-    Error(error) => Err(resolve_callback_error(&error).clone()),
-    _ => {
-      let type_name = error.type_name();
-      let msg = if let Some(x) = lua.coerce_string(error)? {
-        x.to_string_lossy().into_owned()
-      } else {
-        format!("(error object is a {type_name} value)")
-      };
-      Err(rt_error(msg))
-    }
-  }
+pub fn modify_global_error_handling(lua: &Lua) -> mlua::Result<()> {
+  let handle_http_error = create_fn_handle_http_error(lua)?;
+  let pcall = create_fn_pcall(lua)?;
+  lua
+    .load(include_str!("error.lua"))
+    .set_name("@[error]")?
+    .call((handle_http_error, pcall))
 }
 
-pub fn create_fn_error(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(error_fn)
+fn create_fn_handle_http_error(lua: &Lua) -> mlua::Result<Function> {
+  lua.create_function(|lua, custom_error: Table| -> mlua::Result<()> {
+    let result = CustomError {
+      status: custom_error
+        .check_raw_get::<Option<u16>>(lua, "status", "u16")?
+        .unwrap_or(500)
+        .try_into()
+        .map_err(|_| bad_field("status", "invalid status code"))?,
+      error: custom_error
+        .check_raw_get::<Option<mlua::String>>(lua, "error", "string")?
+        .map(|x| mlua::Result::Ok(x.to_str()?.into()).map_err(|error| bad_field("error", error)))
+        .transpose()?
+        .unwrap_or_else(|| "".into()),
+      detail: custom_error
+        .raw_get::<_, mlua::Value>("detail")
+        .and_then(|x| lua.from_value(x))
+        .map_err(|error| bad_field("detail", error))?,
+      source: Some(lua.create_registry_value(custom_error)?),
+    };
+    Err(result.to_lua_err())
+  })
 }
 
-pub fn create_fn_assert(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_function(|lua, mut args: MultiValue| {
-    let pred = args
-      .pop_front()
-      .ok_or_else(|| arg_error(lua, 1, "value expected", 0))?;
-    if check_truthiness(Some(pred.clone())) {
-      Ok(pred)
+fn create_fn_pcall(lua: &Lua) -> mlua::Result<Function> {
+  lua.create_async_function(|lua, args: MultiValue| async move {
+    let (success, value): (bool, mlua::Value) = lua
+      .named_registry_value::<_, Function>("lua_pcall")?
+      .call_async(args)
+      .await?;
+    if success {
+      Ok((true, value))
     } else {
-      let error = args
-        .pop_front()
-        .map(Ok)
-        .unwrap_or_else(|| lua.pack("assertion failed!"))?;
-      error_fn(lua, error).map(|_| unreachable!())
+      let value = if let mlua::Value::Error(error) = value {
+        if let mlua::Error::ExternalError(ext) = resolve_callback_error(&error) {
+          if ext.is::<TimeoutError>() {
+            return Err(error);
+          }
+          ext
+            .downcast_ref::<CustomError>()
+            .and_then(|x| x.source.as_ref())
+            .map(|x| lua.registry_value(x))
+            .transpose()?
+            .map(Ok)
+            .unwrap_or_else(|| lua.pack(get_error_msg(error)))?
+        } else {
+          lua.pack(get_error_msg(error))?
+        }
+      } else {
+        value
+      };
+      Ok((false, value))
     }
   })
 }
 
-pub fn get_error_msg(error: mlua::Error) -> String {
+fn get_error_msg(error: mlua::Error) -> String {
   match error {
     SyntaxError { message, .. } => message,
     RuntimeError(e) | MemoryError(e) => e,
     CallbackError { cause, .. } => get_error_msg(resolve_callback_error(&cause).clone()),
     _ => error.to_string(),
   }
-}
-
-pub fn create_fn_pcall(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_async_function(|lua, mut args: MultiValue| async move {
-    let f = args
-      .pop_front()
-      .ok_or_else(|| arg_error(lua, 1, "value expected", 1))?;
-    let result = match f {
-      mlua::Value::Function(f) => f.call_async::<_, MultiValue>(args).await,
-      mlua::Value::Table(f) => f.call_async(args).await,
-      _ => {
-        return Ok((
-          false,
-          lua.pack_multi(rt_error_fmt!("attempt to call a {} value", f.type_name()))?,
-        ))
-      }
-    };
-
-    match result {
-      Ok(result) => Ok((true, result)),
-      Err(error) => {
-        if let ExternalError(x) = resolve_callback_error(&error) {
-          if x.is::<TimeoutError>() {
-            return Err(error);
-          }
-        }
-        Ok((false, lua.pack_multi(get_error_msg(error))?))
-      }
-    }
-  })
 }
 
 // TODO: pub fn create_fn_xpcall
@@ -160,7 +157,11 @@ fn arg_error_msg(lua: &Lua, mut pos: usize, msg: &str, level: usize) -> String {
       .and_then(|d| {
         let DebugSource { short_src, .. } = d.source();
         let line = d.curr_line();
-        short_src.map(|x| Cow::Owned(format!("{}:{line} ", x.as_bstr())))
+        if line > 0 {
+          short_src.map(|x| Cow::Owned(format!("{}:{line}: ", x.as_bstr())))
+        } else {
+          None
+        }
       })
       .unwrap_or(Cow::Borrowed(""));
 

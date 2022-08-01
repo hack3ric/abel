@@ -1,4 +1,4 @@
-use super::error::{check_value, create_fn_assert, create_fn_error, create_fn_pcall, tag_handler};
+use super::error::{check_value, modify_global_error_handling, tag_handler};
 use bstr::ByteSlice;
 use mlua::{Function, Lua, MultiValue};
 
@@ -17,10 +17,7 @@ pub(super) fn modify_global_env(lua: &Lua) -> mlua::Result<()> {
     .call(bstr_debug_fmt)?;
 
   globals.raw_set("bind", create_fn_bind(lua)?)?;
-
-  globals.raw_set("error", create_fn_error(lua)?)?;
-  globals.raw_set("assert", create_fn_assert(lua)?)?;
-  globals.raw_set("pcall", create_fn_pcall(lua)?)?;
+  modify_global_error_handling(lua)?;
 
   Ok(())
 }
