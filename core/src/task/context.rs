@@ -43,7 +43,7 @@ impl TaskContext {
           mlua::Value::UserData(x) => x.get_metatable().ok().map(|x| x.get("__close")),
           _ => continue,
         };
-        if let Some(close) = close.transpose()? {
+        if let Ok(Some(close)) = close.transpose() {
           let _ = close.call::<_, ()>(v);
         }
       }

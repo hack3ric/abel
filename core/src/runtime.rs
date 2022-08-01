@@ -6,6 +6,7 @@ use crate::lua::LuaTableExt;
 use crate::path::PathMatcher;
 use crate::service::{get_local_storage_path, RunningService};
 use crate::source::Source;
+use crate::task::TaskContext;
 use crate::ErrorKind::{self, *};
 use crate::{AbelState, Error, Result};
 use clru::CLruCache;
@@ -112,12 +113,17 @@ impl Runtime {
       let path = f.raw_get::<u8, String>(1)?;
       if path == matcher.as_str() {
         let handler = f.raw_get::<u8, mlua::Value>(2)?;
-        let req = LuaRequest::new(req, params);
+
+        // Request object in handler should be ephemeral, otherwise graceful shutdown
+        // would be blocked.
+        let req = self.lua().create_userdata(LuaRequest::new(req, params))?;
+        TaskContext::register(self.lua(), req.clone())?;
+
         let resp = self.call_extract_error(handler, req).await?;
         return Ok(resp);
       }
     }
-    panic!("path matched but no handler found; this is a bug")
+    unreachable!("path matched but no handler found")
   }
 
   /// Extracts information from the code, but does not create the service yet

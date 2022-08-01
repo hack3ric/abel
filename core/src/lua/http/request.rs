@@ -130,6 +130,13 @@ impl UserData for LuaRequest {
       Ok(LuaHeaderMap(this.headers.clone()))
     });
   }
+
+  fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
+    methods.add_meta_function("__close", |_lua, this: AnyUserData| {
+      drop(this.take::<Self>());
+      Ok(())
+    });
+  }
 }
 
 impl From<LuaRequest> for Request<Body> {
