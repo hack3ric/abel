@@ -119,7 +119,7 @@ lua_tests! {
 
   test_crypto_random r#"
     local crypto = require "crypto"
-    local rng = crypto.thread_rng
+    local rng = crypto.ThreadRng
     local t = require "testing"
 
     t.assert_eq(type(rng:random()), "number")

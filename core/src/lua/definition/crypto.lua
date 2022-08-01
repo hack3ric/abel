@@ -1,8 +1,8 @@
 --- @class crypto
 local crypto = {}
 
---- @type Rng
-crypto.thread_rng = {}
+--- @class ThreadRng: Rng
+crypto.ThreadRng = {}
 
 --- @class Rng
 local Rng = {}
