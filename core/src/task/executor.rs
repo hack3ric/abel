@@ -93,7 +93,7 @@ impl Executor {
               select(clean, new_task_recv),
             );
             match select.await {
-              Left((Left(_), _)) => {
+              Left((Left(_), _)) | Right((Right((None, _)), _)) => {
                 debug!("{} stopping", std::thread::current().name().unwrap());
                 break;
               }
@@ -111,8 +111,6 @@ impl Executor {
                   waker_poll(&waker, &mut tasks);
                 }
               }
-              // The new task channel is dropped, stopping the executor.
-              Right((Right((None, _)), _)) => break,
             }
           }
         })
