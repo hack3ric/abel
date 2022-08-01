@@ -2,10 +2,9 @@ use super::error::{arg_error, check_truthiness, check_userdata_mut, rt_error, ta
 use super::stream::create_table_stream;
 use super::LuaCacheExt;
 use crate::lua::error::{
-  check_integer, check_string, check_userdata, check_value, rt_error_fmt, tag_handler, UserDataRef,
+  check_integer, check_string, check_userdata, rt_error_fmt, tag_handler, UserDataRef,
   UserDataRefMut,
 };
-use crate::lua::stream::ByteStream;
 use crate::path::normalize_path_str;
 use crate::source::{Metadata, ReadOnlyFile, Source};
 use crate::task::TaskContext;
@@ -340,17 +339,6 @@ impl UserData for LuaFile {
         .await
         .map_err(rt_error)
     });
-
-    // TODO: soft-deprecated
-    methods.add_function("into_stream", |lua, mut args: MultiValue| {
-      let this = check_value::<AnyUserData>(lua, args.pop_front(), "file")
-        .map_err(tag_handler(lua, 1, 0))?
-        .take::<Self>()
-        .map_err(|_| tag_error(lua, 1, "file", "other userdata", 1))?;
-      let bs = lua.create_userdata(ByteStream::from_async_read(this.0))?;
-      TaskContext::register(lua, bs.clone())?;
-      Ok(bs)
-    });
   }
 }
 
@@ -429,7 +417,6 @@ impl AsyncSeek for GenericFile {
   }
 }
 
-// Also used in `io.open`
 fn create_fn_fs_open(lua: &Lua, source: Source, lsp: Arc<Path>) -> mlua::Result<Function<'_>> {
   use OpenMode::*;
   lua.create_async_function(move |lua, mut args: MultiValue| {

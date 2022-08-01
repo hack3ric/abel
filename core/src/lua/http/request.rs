@@ -4,6 +4,7 @@ use super::uri::LuaUri;
 use crate::lua::error::{bad_field, rt_error_fmt, TableCheckExt};
 use crate::lua::http::check_headers;
 use crate::path::Params;
+use crate::task::close_value;
 use hyper::http::request::Parts;
 use hyper::{Body, HeaderMap, Method, Request};
 use mlua::{AnyUserData, Lua, Table, UserData};
@@ -133,7 +134,8 @@ impl UserData for LuaRequest {
 
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_meta_function("__close", |_lua, this: AnyUserData| {
-      drop(this.take::<Self>());
+      let _ = this.get_named_user_value("body").and_then(close_value);
+      let _ = this.take::<Self>();
       Ok(())
     });
   }

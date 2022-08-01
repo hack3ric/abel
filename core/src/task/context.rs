@@ -37,15 +37,7 @@ impl TaskContext {
       let context_table: Table = lua.registry_value(&context)?;
       lua.remove_registry_value(context)?;
       for v in context_table.sequence_values() {
-        let v = v?;
-        let close: Option<mlua::Result<Function>> = match &v {
-          mlua::Value::Table(x) => x.get_metatable().map(|x| x.raw_get("__close")),
-          mlua::Value::UserData(x) => x.get_metatable().ok().map(|x| x.get("__close")),
-          _ => continue,
-        };
-        if let Ok(Some(close)) = close.transpose() {
-          let _ = close.call::<_, ()>(v);
-        }
+        close_value(v?)?;
       }
     }
     Ok(())
@@ -66,4 +58,16 @@ impl PartialEq for TaskContext {
   fn eq(&self, other: &Self) -> bool {
     self.close_table == other.close_table && Arc::ptr_eq(&self.cpu_time, &other.cpu_time)
   }
+}
+
+pub fn close_value(v: mlua::Value) -> mlua::Result<()> {
+  let close: Option<mlua::Result<Function>> = match &v {
+    mlua::Value::Table(x) => x.get_metatable().map(|x| x.raw_get("__close")),
+    mlua::Value::UserData(x) => x.get_metatable().ok().map(|x| x.get("__close")),
+    _ => return Ok(()),
+  };
+  if let Ok(Some(close)) = close.transpose() {
+    let _ = close.call::<_, ()>(v);
+  }
+  Ok(())
 }

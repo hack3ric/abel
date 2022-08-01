@@ -3,7 +3,7 @@ mod executor;
 mod pool;
 mod task_future;
 
-pub use context::TaskContext;
+pub use context::{close_value, TaskContext};
 pub use executor::Executor;
 pub use pool::Pool;
 pub use task_future::TimeoutError;

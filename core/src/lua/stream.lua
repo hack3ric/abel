@@ -4,21 +4,21 @@ local json_parse = ...
 local function check_stream(st)
   local type_st = type(st)
   if type_st ~= "table" and type_st ~= "userdata" or not st.read then
-    error("stream expected, got " .. type_st)
+    error("stream expected, got " .. type_st, 3)
   end
 end
 
 local function check_sink(sink)
   local type_sink = type(sink)
   if type_sink ~= "table" and type_sink ~= "userdata" or not sink.write then
-    error("sink expected, got " .. type_sink)
+    error("sink expected, got " .. type_sink, 3)
   end
 end
 
 local function check_transform(tr)
   local type_tr = type(tr)
   if type_tr ~= "table" and type_tr ~= "userdata" or not tr.transform then
-    error("transform expected, got " .. type_tr)
+    error("transform expected, got " .. type_tr, 3)
   end
 end
 
@@ -39,7 +39,7 @@ function stream.parse_json(st)
 end
 
 function stream.iter(st)
-  check_stream(st)
+  -- check_stream(st)
   return function() return st:read() end
 end
 
@@ -72,6 +72,12 @@ function stream.pipe_through(st, tr)
       end
     end
   }, { __index = st })
+end
+
+function stream.recv_from(sink, st)
+  check_sink(sink)
+  check_stream(st)
+  stream.pipe_to(st, sink)
 end
 
 function stream.recv_through(sink, tr)
