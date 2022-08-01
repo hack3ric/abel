@@ -1,4 +1,4 @@
-use super::header_name;
+use super::{header_name, header_name_convenient};
 use crate::lua::error::{arg_error, check_string, check_userdata, rt_error_fmt, tag_handler};
 use crate::lua::LuaCacheExt;
 use hyper::header::HeaderValue;
@@ -30,7 +30,7 @@ impl UserData for LuaHeaderMap {
         .map_err(|(_, got)| rt_error_fmt!("cannot index header map with {got}"))?;
       (this.0)
         .borrow()
-        .get(header_name(name)?)
+        .get(header_name_convenient(name)?)
         .map(|x| lua.create_string(x.as_bytes()))
         .transpose()
     });

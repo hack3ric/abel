@@ -74,7 +74,7 @@ fn check_headers(lua: &Lua, headers_table: Table) -> mlua::Result<HeaderMap> {
     let key: mlua::String = lua
       .unpack(key)
       .map_err(|_| rt_error_fmt!("expected string as header name, found {type_name}"))?;
-    let key = header_name(key)?;
+    let key = header_name_convenient(key)?;
     match value {
       mlua::Value::Table(values) => {
         for value in values.sequence_values::<mlua::Value>() {
@@ -106,6 +106,17 @@ fn header_name(name: mlua::String) -> mlua::Result<HeaderName> {
   let name = name.as_bytes();
   HeaderName::from_bytes(name)
     .map_err(|_| rt_error_fmt!("invalid header name: {:?}", name.as_bstr()))
+}
+
+fn header_name_convenient(name: mlua::String) -> mlua::Result<HeaderName> {
+  let bytes = name.as_bytes();
+  if bytes.starts_with(b"@") {
+    header_name(name)
+  } else {
+    let name = bytes.replace("_", "-");
+    HeaderName::from_bytes(&name)
+      .map_err(|_| rt_error_fmt!("invalid header name: {:?}", name.as_bstr()))
+  }
 }
 
 fn header_value(value: mlua::String) -> mlua::Result<HeaderValue> {
