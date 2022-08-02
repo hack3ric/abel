@@ -21,6 +21,7 @@ You want Abel when:
 You don't want Abel when:
 
 - you build complex web services; (maybe one day it can do so too?)
+- performance is your main goal; (still decent performance though)
 - you want to access the entire filesystem, spawn child processes or use FFI libraries.
 
 ## Quick Start
