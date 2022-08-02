@@ -41,7 +41,7 @@ function fs.metadata(path) end
 --- @return boolean
 function fs.exists(path) end
 
---- @class File
+--- @class File: BufStream, Sink__string
 local File = {}
 
 --- @alias ReadMode "a" | "l" | "L" | integer
@@ -53,7 +53,6 @@ function File:read(...) end
 
 --- @async
 --- @param ... string
---- @return File
 function File:write(...) end
 
 --- @async
