@@ -1,6 +1,6 @@
 use super::{
-  get_local_storage_path, RunningService, Service, ServiceImpl, ServiceName, ServicePool,
-  ServiceState, StoppedService,
+  get_local_storage_path, RunningService, Service, ServiceImpl, ServiceInfo, ServiceName,
+  ServicePool, ServiceState, StoppedService,
 };
 use crate::lua::isolate::Isolate;
 use crate::runtime::Runtime;
@@ -42,12 +42,14 @@ async fn prepare_service(
   } = config;
   let (paths, isolate) = rt.prepare_service(&name, source.clone()).await?;
   let service_impl = ServiceImpl {
-    name,
-    pkg_name,
-    description,
-    paths,
+    info: ServiceInfo {
+      name,
+      pkg_name,
+      description,
+      paths,
+      uuid: uuid.unwrap_or_else(Uuid::new_v4),
+    },
     source,
-    uuid: uuid.unwrap_or_else(Uuid::new_v4),
   };
   Ok((service_impl, isolate))
 }
@@ -122,12 +124,7 @@ impl ServicePool {
 
         let service_impl = Arc::new(service_impl);
         let result = rt
-          .create_service(
-            service_impl.name(),
-            service_impl.downgrade(),
-            isolate,
-            false,
-          )
+          .create_service(&service_impl.name, service_impl.downgrade(), isolate, false)
           .await;
         let state = ServiceState::Running(service_impl);
         let state = match result {
@@ -190,7 +187,7 @@ impl ServicePool {
       .scope(move |rt| async move {
         let (service_impl, isolate) = prepare_service(&rt, name2, uuid, source, config).await?;
         let service_impl = Arc::new(service_impl);
-        rt.create_service(service_impl.name(), service_impl.downgrade(), isolate, true)
+        rt.create_service(&service_impl.name, service_impl.downgrade(), isolate, true)
           .await?;
         Ok::<_, crate::Error>(service_impl)
       })

@@ -1,23 +1,23 @@
 use crate::Result;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use serde::ser::SerializeStruct;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-static PATH_PARAMS_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r":([^/]+)|\*").unwrap());
 
 pub type Params = HashMap<Box<str>, Box<str>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PathMatcher {
   path: Box<str>,
+  #[serde(with = "serde_regex")]
   regex: Regex,
   param_names: Vec<Box<str>>,
 }
 
 impl PathMatcher {
   pub fn new(matcher: &str) -> Result<Self> {
+    static PATH_PARAMS_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r":([^/]+)|\*").unwrap());
+
     let mut regex = "^".to_owned();
     let mut param_names = Vec::new();
 
@@ -65,15 +65,6 @@ impl PathMatcher {
 
   pub fn as_regex_str(&self) -> &str {
     self.regex.as_str()
-  }
-}
-
-impl Serialize for PathMatcher {
-  fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-    let mut x = serializer.serialize_struct("PathMatcher", 2)?;
-    x.serialize_field("pattern", self.as_str())?;
-    x.serialize_field("regex", self.as_regex_str())?;
-    x.end()
   }
 }
 

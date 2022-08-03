@@ -89,11 +89,11 @@ impl Runtime {
   ) -> Result<LuaResponse> {
     let guard = service.try_upgrade()?;
     let (params, matcher) = guard
-      .paths()
+      .paths
       .iter()
       .find_map(|m| m.gen_params(path).map(|p| (p, m)))
       .ok_or_else(|| ServicePathNotFound {
-        service: guard.name().into(),
+        service: guard.name.clone(),
         path: path.into(),
       })?;
 
@@ -212,7 +212,7 @@ impl Runtime {
 
   async fn load_service(&self, service: RunningService) -> Result<Ref<'_, LoadedService>> {
     let service_guard = service.try_upgrade()?;
-    let name = service_guard.name();
+    let name = &*service_guard.name;
     {
       let mut self_loaded = self.loaded.borrow_mut();
       if let Some(loaded) = self_loaded.pop(name) {

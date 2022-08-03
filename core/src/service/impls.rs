@@ -6,7 +6,7 @@ use crate::ErrorKind::ServiceDropped;
 use crate::Result;
 use dashmap::mapref::multiple::RefMulti;
 use dashmap::mapref::one::Ref;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
@@ -30,13 +30,10 @@ impl ServiceState {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ServiceImpl {
-  pub(crate) name: ServiceName,
-  pub(crate) pkg_name: Option<String>,
-  pub(crate) description: Option<String>,
-  pub(crate) paths: Vec<PathMatcher>,
+  #[serde(flatten)]
+  pub(crate) info: ServiceInfo,
   #[serde(skip)]
   pub(crate) source: Source,
-  pub(crate) uuid: Uuid,
 }
 
 impl ServiceImpl {
@@ -45,15 +42,39 @@ impl ServiceImpl {
       inner: Arc::downgrade(self),
     }
   }
+
+  pub fn info(&self) -> &ServiceInfo {
+    &self.info
+  }
+
+  pub fn source(&self) -> &Source {
+    &self.source
+  }
+}
+
+impl Deref for ServiceImpl {
+  type Target = ServiceInfo;
+
+  fn deref(&self) -> &Self::Target {
+    &self.info
+  }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceInfo {
+  pub(crate) name: ServiceName,
+  pub(crate) pkg_name: Option<String>,
+  pub(crate) description: Option<String>,
+  pub(crate) paths: Vec<PathMatcher>,
+  pub(crate) uuid: Uuid,
 }
 
 #[rustfmt::skip]
-impl ServiceImpl {
+impl ServiceInfo {
   pub fn name(&self) -> &str { &self.name }
   pub fn pkg_name(&self) -> Option<&str> { self.pkg_name.as_deref() }
   pub fn description(&self) -> Option<&str> { self.description.as_deref() }
   pub fn paths(&self) -> &[PathMatcher] { &self.paths }
-  pub fn source(&self) -> &Source { &self.source }
   pub fn uuid(&self) -> Uuid { self.uuid }
 }
 
