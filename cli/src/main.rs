@@ -1,8 +1,10 @@
+mod deploy;
 mod dev;
 mod server;
 
 use crate::dev::save_services_from_paths;
 use clap::{Parser, Subcommand};
+use deploy::deploy;
 use dev::init_watcher;
 use futures::Future;
 use log::{info, warn};
@@ -31,6 +33,9 @@ enum Command {
     #[clap(flatten)]
     config: ConfigArgs,
     services: Vec<PathBuf>,
+  },
+  Deploy {
+    path: PathBuf,
   },
 }
 
@@ -92,6 +97,13 @@ fn main() -> anyhow::Result<()> {
         let _watcher = init_watcher(state, kinds_and_names, services)?;
         server_handle.await?
       })
+    }
+    Command::Deploy { path } => {
+      if let Err(error) = block_on(deploy(path)) {
+        println!("{} {error:?}", "error:".red().bold());
+        std::process::exit(1);
+      }
+      Ok(())
     }
   }
 }
