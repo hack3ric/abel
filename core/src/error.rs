@@ -86,6 +86,10 @@ pub enum ErrorKind {
   #[strum(props(status = "500", error = "service is dropped"))]
   ServiceDropped,
 
+  #[error("entry '{entry}' not found")]
+  #[strum(props(status = "404", error = "entry not found"))]
+  EntryNotFound { entry: Box<str> },
+
   // -- Vendor --
   #[error(transparent)]
   #[strum(props(status = "500", error = "Lua error"))]

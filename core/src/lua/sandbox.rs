@@ -12,6 +12,7 @@ use super::lua_std::{
 };
 use super::stream::create_preload_stream;
 use crate::source::Source;
+use crate::Result;
 use mlua::{FromLuaMulti, Lua, Table, ToLuaMulti};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -71,14 +72,15 @@ impl Sandbox {
     isolate: &Isolate,
     path: &str,
     args: A,
-  ) -> mlua::Result<R> {
+  ) -> Result<R> {
     let env: Table = self.get_local_env(isolate)?;
-    isolate
+    let result = isolate
       .source
       .load(&self.lua, path, env)
       .await?
       .call_async(args)
-      .await
+      .await?;
+    Ok(result)
   }
 
   #[cfg(test)]

@@ -1,3 +1,5 @@
+use crate::ErrorKind::EntryNotFound;
+use crate::Result;
 use async_trait::async_trait;
 use mlua::{ExternalResult, Function, Lua, Table, UserData};
 use std::fmt::Debug;
@@ -5,6 +7,7 @@ use std::io::SeekFrom;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
+use tokio::io::ErrorKind::NotFound;
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
 
 #[async_trait]
@@ -79,8 +82,14 @@ impl Source {
     lua: &'a Lua,
     path: &'b str,
     env: Table<'a>,
-  ) -> mlua::Result<Function<'a>> {
-    let code = self.get_bytes(path).await?;
+  ) -> Result<Function<'a>> {
+    let code = match self.get_bytes(path).await {
+      Ok(code) => code,
+      Err(error) if error.kind() == NotFound => {
+        return Err(EntryNotFound { entry: path.into() }.into())
+      }
+      Err(error) => return Err(error.into()),
+    };
     let result = lua
       .load(&code)
       .set_name(&format!("@{path}"))? // This prevents `[string 'chunk_name']`
