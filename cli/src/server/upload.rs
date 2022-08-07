@@ -1,4 +1,4 @@
-use crate::server::error::{Error, ErrorKind};
+use super::types::{HttpUploadResponse, ServiceWithStatus};
 use crate::server::metadata::Metadata;
 use crate::server::source::{AsarSource, SingleSource};
 use crate::server::{json_response, Result, ServerState};
@@ -15,7 +15,7 @@ use log::{info, warn};
 use multer::{Constraints, Multipart, SizeLimit};
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncReadExt};
@@ -45,9 +45,9 @@ struct UploadQuery {
 }
 
 pub struct UploadResponse<'a> {
-  pub service: Service<'a>,
-  pub replaced: Option<ServiceImpl>,
-  pub error_payload: ErrorPayload,
+  pub new_service: Service<'a>,
+  pub replaced_service: Option<ServiceImpl>,
+  pub errors: ErrorPayload,
 }
 
 pub async fn upload(
@@ -163,7 +163,7 @@ async fn create_service<'a>(
   source_kind: SourceKind,
   temp_path: &Path,
 ) -> Result<UploadResponse<'a>> {
-  let (service, replaced, error_payload) = match mode {
+  let (new_service, replaced_service, errors) = match mode {
     UploadMode::Create if state.abel.get_service(&name).is_ok() => {
       return Err(ServiceExists { name: name.into() }.into())
     }
@@ -189,7 +189,7 @@ async fn create_service<'a>(
       (Service::Stopped(service), replaced, error_payload)
     }
   };
-  let guard = service.upgrade();
+  let guard = new_service.upgrade();
 
   let service_path = state.abel_path.join("services").join(guard.name());
   if service_path.exists() {
@@ -209,21 +209,21 @@ async fn create_service<'a>(
   }
 
   Ok(UploadResponse {
-    service,
-    replaced,
-    error_payload,
+    new_service,
+    replaced_service,
+    errors,
   })
 }
 
 pub fn log_result(
   UploadResponse {
-    service,
-    replaced,
-    error_payload,
+    new_service,
+    replaced_service,
+    errors,
   }: &UploadResponse,
 ) {
-  let service = service.upgrade();
-  if let Some(replaced) = replaced {
+  let service = new_service.upgrade();
+  if let Some(replaced) = replaced_service {
     info!(
       "Updated service '{}' {}",
       service.name(),
@@ -236,43 +236,24 @@ pub fn log_result(
       format!("({})", service.uuid()).dimmed(),
     );
   }
-  if !error_payload.is_empty() {
-    warn!("error payload: {error_payload:?}");
+  if !errors.is_empty() {
+    warn!("errors: {errors:?}");
   }
 }
 
 async fn response(resp: UploadResponse<'_>) -> Result<Response<Body>> {
   log_result(&resp);
   let UploadResponse {
-    service,
-    replaced,
-    error_payload,
+    new_service,
+    replaced_service,
+    errors,
   } = resp;
 
-  let service = service.upgrade();
-  let mut body = serde_json::Map::<String, serde_json::Value>::new();
-  body.insert("new_service".into(), json!(service));
-
-  if let Some(replaced) = replaced {
-    body.insert("replaced_service".into(), json!(replaced));
-  }
-
-  if !error_payload.is_empty() {
-    let mut map = serde_json::Map::<String, serde_json::Value>::new();
-    if let Some(stop) = error_payload.stop {
-      map.insert(
-        "stop".into(),
-        json!(Error::from(ErrorKind::Abel(stop)).into_status_and_body().1),
-      );
-    }
-    if let Some(start) = error_payload.start {
-      map.insert(
-        "start".into(),
-        json!(Error::from(ErrorKind::Abel(start)).into_status_and_body().1),
-      );
-    }
-    body.insert("errors".into(), serde_json::Value::Object(map));
-  }
-
+  let guard = new_service.upgrade();
+  let body = HttpUploadResponse {
+    new_service: ServiceWithStatus::from_guard(&guard),
+    replaced_service: replaced_service.as_ref().map(|x| Cow::Borrowed(x.info())),
+    errors: errors.into(),
+  };
   json_response(StatusCode::OK, body)
 }

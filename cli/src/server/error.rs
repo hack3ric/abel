@@ -1,8 +1,9 @@
 use super::json_response_raw;
 use backtrace::Backtrace;
 use hyper::{Body, Method, Response, StatusCode};
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::json;
+use serde_with::skip_serializing_none;
 use std::borrow::Cow;
 use std::fmt::{self, Display, Formatter};
 use strum::EnumProperty;
@@ -31,9 +32,9 @@ impl Error {
     &self.kind
   }
 
-  pub fn into_status_and_body(self) -> (StatusCode, serde_json::Map<String, serde_json::Value>) {
+  pub fn into_status_and_body(self) -> (StatusCode, JsonError<'static>) {
     use ErrorKind::*;
-    let (status, error, detail, backtrace) = match self.kind {
+    let (status, error, detail, _backtrace) = match self.kind {
       Abel(x) => {
         let (kind, backtrace) = x.into_parts();
         (
@@ -75,16 +76,7 @@ impl Error {
       _ => panic!("expected null, string or object as error detail"),
     };
 
-    let mut body = serde_json::Map::<String, serde_json::Value>::new();
-    body.insert("error".to_string(), error.into_owned().into());
-    if let Some(detail) = detail {
-      body.insert("detail".to_string(), detail.into());
-    }
-    if let Some(bt) = backtrace {
-      body.insert("backtrace".to_string(), format!("{bt:?}").into());
-    }
-
-    (status, body)
+    (status, JsonError { error, detail })
   }
 }
 
@@ -167,9 +159,15 @@ impl From<&'static str> for Error {
 impl From<Error> for Response<Body> {
   fn from(x: Error) -> Self {
     let (status, body) = x.into_status_and_body();
-
     json_response_raw(status, body)
   }
+}
+
+#[derive(Serialize, Deserialize)]
+#[skip_serializing_none]
+pub struct JsonError<'a> {
+  pub error: Cow<'a, str>,
+  pub detail: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 #[derive(Debug, thiserror::Error, EnumProperty, Serialize)]

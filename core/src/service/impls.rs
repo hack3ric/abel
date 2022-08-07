@@ -1,7 +1,6 @@
 use super::ServiceName;
 use crate::path::PathMatcher;
 use crate::source::Source;
-use crate::util::serialize_arc;
 use crate::ErrorKind::ServiceDropped;
 use crate::Result;
 use dashmap::mapref::multiple::RefMulti;
@@ -12,10 +11,8 @@ use std::ops::Deref;
 use std::sync::{Arc, Weak};
 use uuid::Uuid;
 
-#[derive(Serialize)]
-#[serde(untagged)]
 pub(super) enum ServiceState {
-  Running(#[serde(serialize_with = "serialize_arc")] Arc<ServiceImpl>),
+  Running(Arc<ServiceImpl>),
   Stopped(ServiceImpl),
 }
 
@@ -28,11 +25,9 @@ impl ServiceState {
   }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct ServiceImpl {
-  #[serde(flatten)]
   pub(crate) info: ServiceInfo,
-  #[serde(skip)]
   pub(crate) source: Source,
 }
 
@@ -106,12 +101,8 @@ impl Service<'_> {
   }
 }
 
-#[derive(Serialize)]
-#[serde(tag = "status")]
 pub enum ServiceGuard<'a> {
-  #[serde(rename = "running")]
   Running { service: RunningServiceGuard<'a> },
-  #[serde(rename = "stopped")]
   Stopped { service: &'a ServiceImpl },
 }
 

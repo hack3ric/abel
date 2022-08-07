@@ -1,9 +1,9 @@
+use crate::server::JsonError;
 use anyhow::{bail, Context};
 use hyper::http::HeaderValue;
 use owo_colors::OwoColorize;
 use reqwest::multipart::{Form, Part};
 use reqwest::{Body, Client};
-use serde::Deserialize;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 use tokio::fs::{self, File};
@@ -47,12 +47,6 @@ pub async fn deploy(path: PathBuf) -> anyhow::Result<()> {
     .send()
     .await?;
 
-  #[derive(Deserialize)]
-  struct JsonError {
-    error: String,
-    detail: Option<serde_json::Value>,
-  }
-
   let status = resp.status();
   if status.is_client_error() || status.is_server_error() {
     let JsonError { error, detail } = resp
@@ -68,7 +62,6 @@ pub async fn deploy(path: PathBuf) -> anyhow::Result<()> {
   }
 
   println!("{}", String::from_utf8_lossy(&resp.bytes().await?));
-  // resp.error_for_status_ref()?;
 
   Ok(())
 }

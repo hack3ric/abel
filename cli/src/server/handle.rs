@@ -1,14 +1,16 @@
 use super::error::ErrorKind::Unauthorized;
 use super::error::{method_not_allowed, ErrorAuthWrapper};
+use super::types::{OwnedServiceWithStatus, ServiceWithStatus};
 use super::upload::upload;
 use super::{authenticate, json_response, Metadata, Result, ServerState};
-use abel_core::service::Service;
+use crate::server::types::ServiceStatus::{Running, Stopped};
 use abel_core::ErrorKind::{ServiceDropped, ServiceNotFound};
 use hyper::{Body, Method, Request, Response, StatusCode};
 use log::{error, info};
 use owo_colors::OwoColorize;
 use serde::Deserialize;
 use serde_json::json;
+use std::borrow::Cow;
 use std::convert::Infallible;
 use std::sync::Arc;
 
@@ -98,14 +100,20 @@ async fn hello_world() -> Result<Response<Body>> {
 }
 
 fn list(state: &ServerState) -> Result<Response<Body>> {
-  let services = state.abel.list_services().collect::<Vec<_>>();
-  let services = (services.iter()).map(Service::upgrade).collect::<Vec<_>>();
+  let services = state
+    .abel
+    .list_services()
+    .map(OwnedServiceWithStatus::from)
+    .collect::<Vec<_>>();
   json_response(StatusCode::OK, services)
 }
 
 fn get(state: &ServerState, name: &str) -> Result<Response<Body>> {
   let service = state.abel.get_service(name)?;
-  json_response(StatusCode::OK, service.upgrade())
+  json_response(
+    StatusCode::OK,
+    ServiceWithStatus::from_guard(&service.upgrade()),
+  )
 }
 
 async fn start_stop(state: &ServerState, name: &str, query: &str) -> Result<Response<Body>> {
@@ -123,23 +131,28 @@ async fn start_stop(state: &ServerState, name: &str, query: &str) -> Result<Resp
   }
 
   let Query { op } = serde_qs::from_str(query)?;
-  let metadata_path = (state.abel_path)
-    .join("services")
-    .join(name)
-    .join("metadata.json");
+  let metadata_path = state
+    .abel_path
+    .join(format!("services/{name}/metadata.json"));
 
   match op {
     Operation::Start => {
       let service = state.abel.start_service(name).await?;
       Metadata::modify(&metadata_path, |m| m.started = true).await?;
-      json_response(StatusCode::OK, json!({ "started": service.upgrade() }))
+      json_response(StatusCode::OK, ServiceWithStatus {
+        status: Running,
+        service: Cow::Borrowed(service.upgrade().info()),
+      })
     }
     Operation::Stop => {
       let result = state.abel.stop_service(name).await;
       Metadata::modify(&metadata_path, |m| m.started = false).await?;
-      result
-        .map_err(From::from)
-        .and_then(|x| json_response(StatusCode::OK, json!({ "stopped": &*x })))
+      result.map_err(From::from).and_then(|x| {
+        json_response(StatusCode::OK, ServiceWithStatus {
+          status: Stopped,
+          service: Cow::Borrowed(x.info()),
+        })
+      })
     }
   }
 }
@@ -148,5 +161,5 @@ async fn remove(state: &ServerState, service_name: &str) -> Result<Response<Body
   let removed = state.abel.remove_service(service_name).await?;
   tokio::fs::remove_dir_all(state.abel_path.join("services").join(service_name)).await?;
   info!("Removed service '{}' ({})", removed.name(), removed.uuid());
-  json_response(StatusCode::OK, json!({ "removed_service": removed }))
+  json_response(StatusCode::OK, removed.info())
 }

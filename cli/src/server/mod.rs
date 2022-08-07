@@ -1,10 +1,13 @@
 pub mod config;
 pub mod metadata;
+pub mod types;
 pub mod upload;
 
 mod error;
 mod handle;
 mod source;
+
+pub use error::JsonError;
 
 use abel_core::service::Service;
 use abel_core::source::Source;
