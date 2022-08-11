@@ -1,18 +1,18 @@
-use crate::lua::error::{resolve_callback_error, rt_error_fmt, CustomError};
+use crate::lua::error::rt_error_fmt;
 use crate::lua::http::{LuaRequest, LuaResponse};
 use crate::lua::isolate::Isolate;
 use crate::lua::sandbox::Sandbox;
-use crate::lua::LuaTableExt;
+use crate::lua::{sanitize_error, LuaTableExt};
 use crate::path::PathMatcher;
 use crate::service::{get_local_storage_path, RunningService};
 use crate::source::Source;
 use crate::task::TaskContext;
-use crate::ErrorKind::{self, *};
-use crate::{AbelState, Error, Result};
+use crate::ErrorKind::*;
+use crate::{AbelState, Result};
 use clru::CLruCache;
 use hyper::{Body, Request};
 use log::{debug, info};
-use mlua::{self, ExternalError, FromLuaMulti, Function, Table, TableExt, ToLuaMulti};
+use mlua::{self, FromLuaMulti, Function, Table, TableExt, ToLuaMulti};
 use nonzero_ext::nonzero;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -48,31 +48,6 @@ impl Runtime {
     T: ToLuaMulti<'a>,
     R: FromLuaMulti<'a>,
   {
-    fn sanitize_error(error: mlua::Error) -> Error {
-      fn extract_custom_error(
-        error: &Arc<dyn std::error::Error + Send + Sync + 'static>,
-      ) -> Option<Error> {
-        let maybe_custom = error.downcast_ref::<CustomError>();
-        maybe_custom.map(|x| ErrorKind::Custom(x.clone()).into())
-      }
-
-      match error {
-        mlua::Error::CallbackError { traceback, cause } => {
-          let cause = resolve_callback_error(&cause);
-          if let mlua::Error::ExternalError(error) = cause {
-            if let Some(error) = extract_custom_error(error) {
-              return error;
-            }
-          }
-          format!("{cause}\n{traceback}").to_lua_err().into()
-        }
-        mlua::Error::ExternalError(error) => {
-          extract_custom_error(&error).unwrap_or_else(|| mlua::Error::ExternalError(error).into())
-        }
-        _ => error.into(),
-      }
-    }
-
     let result = match f {
       mlua::Value::Function(f) => f.call_async(v).await,
       mlua::Value::Table(f) => f.call_async(v).await,
@@ -178,7 +153,7 @@ impl Runtime {
         .raw_get_path("<local_env>", &["abel", "start"])?
     };
     if let Some(f) = start_fn {
-      f.call_async(()).await?;
+      f.call_async(()).await.map_err(sanitize_error)?;
     }
     Ok(())
   }
@@ -191,7 +166,7 @@ impl Runtime {
         .raw_get_path("<local_env>", &["abel", "stop"])?
     };
     if let Some(f) = stop_fn {
-      f.call_async(()).await?;
+      f.call_async(()).await.map_err(sanitize_error)?;
     }
     // Call modules' `stop`
     Ok(())

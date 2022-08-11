@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 use deploy::deploy;
 use dev::init_watcher;
 use futures::Future;
+use hyper::Uri;
 use log::{info, warn};
 use owo_colors::OwoColorize;
 use server::config::{Config, ConfigArgs, ServerArgs, HALF_NUM_CPUS};
@@ -14,6 +15,7 @@ use server::{init_logger, init_state, init_state_with_stored_config, load_saved_
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::tempdir;
+use uuid::Uuid;
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about)]
@@ -35,6 +37,10 @@ enum Command {
     services: Vec<PathBuf>,
   },
   Deploy {
+    #[clap(short, long)]
+    server: Option<Uri>,
+    #[clap(short, long)]
+    auth_token: Option<Uuid>,
     path: PathBuf,
   },
 }
@@ -98,8 +104,12 @@ fn main() -> anyhow::Result<()> {
         server_handle.await?
       })
     }
-    Command::Deploy { path } => {
-      if let Err(error) = block_on(deploy(path)) {
+    Command::Deploy {
+      server,
+      auth_token,
+      path,
+    } => {
+      if let Err(error) = block_on(deploy(server, auth_token, path)) {
         println!("{} {error:?}", "error:".red().bold());
         std::process::exit(1);
       }

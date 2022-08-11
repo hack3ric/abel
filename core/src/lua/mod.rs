@@ -15,12 +15,15 @@ mod logging;
 #[cfg(test)]
 mod tests;
 
+use crate::{Error, ErrorKind};
+use error::{resolve_callback_error, CustomError};
 use futures::Future;
 use hyper::client::HttpConnector;
 use hyper::Client;
 use hyper_tls::HttpsConnector;
 use mlua::{ExternalError, FromLua, FromLuaMulti, Function, Lua, Table, ToLua, ToLuaMulti};
 use once_cell::sync::Lazy;
+use std::sync::Arc;
 
 static LUA_HTTP_CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> =
   Lazy::new(|| Client::builder().build(HttpsConnector::new()));
@@ -142,5 +145,30 @@ impl LuaCacheExt for Lua {
     Fut: Future<Output = mlua::Result<R>> + 'lua,
   {
     self.create_cached_value(key, || self.create_async_function(f))
+  }
+}
+
+pub fn sanitize_error(error: mlua::Error) -> Error {
+  fn extract_custom_error(
+    error: &Arc<dyn std::error::Error + Send + Sync + 'static>,
+  ) -> Option<Error> {
+    let maybe_custom = error.downcast_ref::<CustomError>();
+    maybe_custom.map(|x| ErrorKind::Custom(x.clone()).into())
+  }
+
+  match error {
+    mlua::Error::CallbackError { traceback, cause } => {
+      let cause = resolve_callback_error(&cause);
+      if let mlua::Error::ExternalError(error) = cause {
+        if let Some(error) = extract_custom_error(error) {
+          return error;
+        }
+      }
+      format!("{cause}\n{traceback}").to_lua_err().into()
+    }
+    mlua::Error::ExternalError(error) => {
+      extract_custom_error(&error).unwrap_or_else(|| mlua::Error::ExternalError(error).into())
+    }
+    _ => error.into(),
   }
 }

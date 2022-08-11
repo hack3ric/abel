@@ -70,7 +70,7 @@ pub struct ErrorPayload<'a> {
 }
 
 impl ErrorPayload<'_> {
-  fn is_empty(&self) -> bool {
+  pub fn is_empty(&self) -> bool {
     self.start.is_none() && self.stop.is_none()
   }
 }

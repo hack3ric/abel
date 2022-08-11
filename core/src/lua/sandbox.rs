@@ -10,6 +10,7 @@ use super::lua_std::{
   create_preload_coroutine, create_preload_math, create_preload_os, create_preload_string,
   create_preload_table, create_preload_utf8, side_effect_global_whitelist,
 };
+use super::sanitize_error;
 use super::stream::create_preload_stream;
 use crate::source::Source;
 use crate::Result;
@@ -79,7 +80,8 @@ impl Sandbox {
       .load(&self.lua, path, env)
       .await?
       .call_async(args)
-      .await?;
+      .await
+      .map_err(sanitize_error)?;
     Ok(result)
   }
 

@@ -22,7 +22,11 @@ pub struct CustomError {
 
 impl Display for CustomError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{} {:?}", self.error, self.detail)
+    if self.detail.is_null() {
+      write!(f, "({}) {}", self.status, self.error)
+    } else {
+      write!(f, "({}) {} {:?}", self.status, self.error, self.detail)
+    }
   }
 }
 
