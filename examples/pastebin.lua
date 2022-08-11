@@ -34,7 +34,7 @@ local function gen_uid()
 end
 
 function abel.start()
-  fs.mkdir "files"
+  pcall(fs.mkdir, "files")
 end
 
 -- Upload file
