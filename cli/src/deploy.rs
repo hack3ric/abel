@@ -10,7 +10,7 @@ use reqwest::{Body, Client};
 use std::borrow::Cow;
 use std::env::var;
 use std::ffi::OsStr;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use tokio::fs::{self, File};
 use uuid::Uuid;
 
@@ -40,6 +40,7 @@ pub async fn deploy(
 
   let metadata = fs::metadata(&path).await?;
   let form = if metadata.is_dir() {
+    check_folder(&path)?;
     let asar_stream = hive_asar::pack_dir_into_stream(path)
       .await
       .context("failed to pack directory into asar")?;
@@ -119,5 +120,13 @@ pub async fn deploy(
 
   debug!("Response: {resp:#?}");
 
+  Ok(())
+}
+
+fn check_folder(path: &Path) -> anyhow::Result<()> {
+  let main_lua_path = path.join("main.lua");
+  if main_lua_path.exists() {
+    bail!("main.lua not found in {}", path.display());
+  }
   Ok(())
 }
