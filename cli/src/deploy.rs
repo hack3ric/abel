@@ -110,25 +110,32 @@ pub async fn deploy(
     resp.new_service.service.name(),
     resp.new_service.service.uuid()
   );
-  println!("Errors:");
-  println!(
-    "  - Start: {}",
-    resp
-      .errors
-      .start
-      .as_deref()
-      .map(|x| Cow::Owned(x.replace('\n', "\n    ")))
-      .unwrap_or(Cow::Borrowed("None"))
-  );
-  println!(
-    "  - Stop: {}",
-    resp
-      .errors
-      .stop
-      .as_deref()
-      .map(|x| Cow::Owned(x.replace('\n', "\n    ")))
-      .unwrap_or(Cow::Borrowed("None"))
-  );
+
+  if !resp.errors.is_empty() {
+    println!("Errors:");
+    if resp.errors.start.is_some() {
+      println!(
+        "  - Start: {}",
+        resp
+          .errors
+          .start
+          .as_deref()
+          .map(|x| Cow::Owned(x.replace('\n', "\n    ")))
+          .unwrap_or(Cow::Borrowed("None"))
+      );
+    }
+    if resp.errors.stop.is_some() {
+      println!(
+        "  - Stop: {}",
+        resp
+          .errors
+          .stop
+          .as_deref()
+          .map(|x| Cow::Owned(x.replace('\n', "\n    ")))
+          .unwrap_or(Cow::Borrowed("None"))
+      );
+    }
+  }
 
   debug!("Response: {resp:#?}");
 
