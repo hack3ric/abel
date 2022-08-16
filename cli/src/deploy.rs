@@ -1,4 +1,5 @@
 use crate::server::types::HttpUploadResponse;
+use crate::server::upload::UploadMode;
 use crate::server::JsonError;
 use anyhow::{bail, Context};
 use hyper::http::HeaderValue;
@@ -10,7 +11,7 @@ use reqwest::{Body, Client};
 use std::borrow::Cow;
 use std::env::var;
 use std::ffi::OsStr;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 use tokio::fs::{self, File};
 use uuid::Uuid;
 
@@ -18,7 +19,9 @@ pub async fn deploy(
   server: Option<Uri>,
   auth_token: Option<Uuid>,
   path: PathBuf,
+  mode: UploadMode,
 ) -> anyhow::Result<()> {
+  let path = fs::canonicalize(path).await?;
   let server = server.map(Ok).unwrap_or_else(|| {
     var("ABEL_SERVER")
       .context("you need to specify either the env ABEL_SERVER or the argument --server")?
@@ -27,16 +30,26 @@ pub async fn deploy(
   })?;
   let name = path.file_stem().context("no filename found")?;
   let name = name.to_str().context("filename contains non-UTF-8 bytes")?;
-  let server = format!("{server}/services/{name}?mode=cold");
+  let server = format!("{server}/services/{name}?mode={mode}");
 
-  let auth_token = auth_token.map(Ok).unwrap_or_else(|| {
-    var("ABEL_AUTH_TOKEN")
-      .context("you need to specify either the env ABEL_AUTH_TOKEN or the argument --auth-token")?
-      .parse()
-      .context("failed to parse env ABEL_AUTH_TOKEN")
-  })?;
-  let mut auth_token = HeaderValue::try_from(format!("Abel {auth_token}"))?;
-  auth_token.set_sensitive(true);
+  let auth_token = auth_token
+    .map(|x| Ok(Some(x)))
+    .unwrap_or_else(|| {
+      std::env::var_os("ABEL_AUTH_TOKEN")
+        .map(|x| {
+          x.to_str()
+            .context("failed to parse ABEL_AUTH_TOKEN as UTF-8")?
+            .parse()
+            .context("failed to parse env ABEL_AUTH_TOKEN into UUID")
+        })
+        .transpose()
+    })?
+    .map(|x| {
+      let mut x = HeaderValue::try_from(format!("Abel {x}"))?;
+      x.set_sensitive(true);
+      anyhow::Ok(x)
+    })
+    .transpose()?;
 
   let metadata = fs::metadata(&path).await?;
   let form = if metadata.is_dir() {
@@ -61,12 +74,11 @@ pub async fn deploy(
     Form::new().part(kind, Part::stream_with_length(file, metadata.len()))
   };
 
-  let resp = Client::new()
-    .put(server)
-    .header("authorization", auth_token)
-    .multipart(form)
-    .send()
-    .await?;
+  let mut builder = Client::new().put(server);
+  if let Some(x) = auth_token {
+    builder = builder.header("authorization", x);
+  }
+  let resp = builder.multipart(form).send().await?;
 
   let status = resp.status();
   if status.is_client_error() || status.is_server_error() {

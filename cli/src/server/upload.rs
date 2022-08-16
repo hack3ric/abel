@@ -17,28 +17,43 @@ use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
+use strum::{Display, EnumString, IntoStaticStr};
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncReadExt};
 use tokio_util::io::StreamReader;
 use uuid::Uuid;
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+  Debug,
+  Display,
+  Default,
+  Clone,
+  Copy,
+  PartialEq,
+  Eq,
+  Serialize,
+  Deserialize,
+  EnumString,
+  IntoStaticStr,
+  clap::ValueEnum,
+)]
 pub enum UploadMode {
   #[default]
   #[serde(rename = "create")]
+  #[strum(serialize = "create")]
   Create,
-
   #[serde(rename = "hot")]
+  #[strum(serialize = "hot")]
   Hot,
-
   #[serde(rename = "cold")]
+  #[strum(serialize = "cold")]
   Cold,
-
   #[serde(rename = "load")]
+  #[strum(serialize = "load")]
   Load,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct UploadQuery {
   #[serde(default)]
   mode: UploadMode,
