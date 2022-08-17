@@ -11,12 +11,13 @@ use std::time::Duration;
 use tokio::sync::oneshot::error::RecvError;
 
 pub fn side_effect_abel(lua: &Lua, local_env: Table, internal: Table) -> mlua::Result<()> {
+  use mlua::Value::Function as Func;
   let abel = lua.create_table_from([
-    ("listen", create_fn_listen(lua, internal)?),
-    ("current_worker", create_fn_current_worker(lua)?),
-    ("spawn", create_fn_spawn(lua)?),
-    ("await_all", create_fn_await_all(lua)?),
-    ("sleep", create_fn_sleep(lua)?),
+    ("listen", Func(create_fn_listen(lua, internal)?)),
+    ("spawn", Func(create_fn_spawn(lua)?)),
+    ("await_all", Func(create_fn_await_all(lua)?)),
+    ("sleep", Func(create_fn_sleep(lua)?)),
+    ("current_worker", lua.pack(std::thread::current().name())?),
   ])?;
   local_env.raw_set("abel", abel.clone())?;
   Ok(())
@@ -47,12 +48,6 @@ fn create_fn_listen<'a>(lua: &'a Lua, internal: Table<'a>) -> mlua::Result<Funct
     lua.load(SRC).set_name("@[abel.listen]")?.into_function()
   })?;
   f.bind(internal)
-}
-
-fn create_fn_current_worker(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_cached_function("abel:abel.current_worker", |lua, ()| {
-    lua.pack(std::thread::current().name())
-  })
 }
 
 pub struct LuaPromise {
