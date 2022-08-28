@@ -44,8 +44,6 @@ impl Sandbox {
     self
       .isolate_builder(source.clone())?
       .add_side_effect(side_effect_global_whitelist)?
-      // .add_side_effect(side_effect_abel)?
-      // .add_side_effect(side_effect_log(name))?
       // Lua std, modified
       .add_lib("math", create_preload_math)?
       .add_lib("string", create_preload_string)?

@@ -7,7 +7,6 @@ mod lua;
 mod path;
 mod runtime;
 mod task;
-mod util;
 
 pub use config::Config;
 pub use error::{Error, ErrorKind, Result};
