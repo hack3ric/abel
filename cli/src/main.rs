@@ -16,6 +16,7 @@ use server::{init_logger, init_state, init_state_with_stored_config, load_saved_
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::tempdir;
+use tokio::io;
 use uuid::Uuid;
 
 #[derive(Debug, Parser)]
@@ -93,7 +94,10 @@ fn main() -> anyhow::Result<()> {
         auth_token: None,
         ..Default::default()
       };
-      let services = Arc::<[_]>::from(services);
+      let services = services
+        .into_iter()
+        .map(std::fs::canonicalize)
+        .collect::<io::Result<Arc<[_]>>>()?;
 
       block_on(async {
         let (_, config, state) = init_state(server_args, default_config).await?;
