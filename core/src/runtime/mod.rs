@@ -1,6 +1,8 @@
+use crate::lua::abel::side_effect_abel;
 use crate::lua::error::rt_error_fmt;
 use crate::lua::http::{LuaRequest, LuaResponse};
 use crate::lua::isolate::Isolate;
+use crate::lua::logging::side_effect_log;
 use crate::lua::sandbox::Sandbox;
 use crate::lua::{sanitize_error, LuaTableExt};
 use crate::path::PathMatcher;
@@ -175,8 +177,10 @@ impl Runtime {
   async fn run_source<'a>(&'a self, name: &str, source: Source) -> Result<(Isolate, Table<'a>)> {
     let local_storage_path = get_local_storage_path(&self.state, name);
     let isolate = self
-      .create_isolate(name, source.clone(), local_storage_path)
-      .await?;
+      .isolate_builder_with_stdlib(source.clone(), local_storage_path)?
+      .add_side_effect(side_effect_abel)?
+      .add_side_effect(side_effect_log(name))?
+      .build()?;
     self.run_isolate(&isolate, "main.lua", ()).await?;
 
     let internal = self.get_internal(&isolate)?;

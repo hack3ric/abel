@@ -1,11 +1,9 @@
-use super::abel::side_effect_abel;
 use super::crypto::create_preload_crypto;
 use super::fs::create_preload_fs;
 use super::global_env::modify_global_env;
 use super::http::create_preload_http;
 use super::isolate::{Isolate, IsolateBuilder};
 use super::json::create_preload_json;
-use super::logging::side_effect_log;
 use super::lua_std::{
   create_preload_coroutine, create_preload_math, create_preload_os, create_preload_string,
   create_preload_table, create_preload_utf8, side_effect_global_whitelist,
@@ -33,18 +31,21 @@ impl Sandbox {
     &self.lua
   }
 
-  pub async fn create_isolate(
+  pub fn isolate_builder(&self, source: Source) -> mlua::Result<IsolateBuilder> {
+    IsolateBuilder::new(&self.lua, source)
+  }
+
+  pub fn isolate_builder_with_stdlib(
     &self,
-    name: &str,
     source: Source,
     lsp: impl Into<PathBuf>,
-  ) -> mlua::Result<Isolate> {
+  ) -> mlua::Result<IsolateBuilder> {
     let lsp: Arc<Path> = lsp.into().into();
     self
-      .create_isolate_builder(source.clone())?
+      .isolate_builder(source.clone())?
       .add_side_effect(side_effect_global_whitelist)?
-      .add_side_effect(side_effect_abel)?
-      .add_side_effect(side_effect_log(name))?
+      // .add_side_effect(side_effect_abel)?
+      // .add_side_effect(side_effect_log(name))?
       // Lua std, modified
       .add_lib("math", create_preload_math)?
       .add_lib("string", create_preload_string)?
@@ -60,12 +61,7 @@ impl Sandbox {
       .add_lib("stream", create_preload_stream)?
       .add_lua_lib("testing", include_str!("testing.lua"))?
       // ...and load some of then into local env
-      .load_libs(["math", "string", "table", "coroutine", "os", "utf8"])?
-      .build()
-  }
-
-  pub fn create_isolate_builder(&self, source: Source) -> mlua::Result<IsolateBuilder> {
-    IsolateBuilder::new(&self.lua, source)
+      .load_libs(["math", "string", "table", "coroutine", "os", "utf8"])
   }
 
   pub async fn run_isolate<'lua, A: ToLuaMulti<'lua>, R: FromLuaMulti<'lua>>(

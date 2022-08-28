@@ -41,8 +41,8 @@ macro_rules! run_lua_test {
       let sandbox = Sandbox::new()?;
       let local_storage = TempDir::new()?;
       let isolate = sandbox
-        .create_isolate($test_name, Source::new(EmptySource), local_storage.path())
-        .await?;
+        .isolate_builder_with_stdlib($test_name, Source::new(EmptySource), local_storage.path())
+        .build()?;
       sandbox
         .run_isolate_ext::<_, _, ()>(&isolate, $code, $test_name, ())
         .await

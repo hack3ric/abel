@@ -20,7 +20,7 @@ pub struct IsolateBuilder<'lua> {
 }
 
 impl<'lua> IsolateBuilder<'lua> {
-  pub(crate) fn new(lua: &'lua Lua, source: Source) -> mlua::Result<Self> {
+  pub(super) fn new(lua: &'lua Lua, source: Source) -> mlua::Result<Self> {
     let (local_env, internal): (_, Table) = isolate_bootstrap(lua, source.clone())?;
     let preload = internal.raw_get_path("<internal>", &["package", "preload"])?;
     Ok(Self {

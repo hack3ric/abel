@@ -9,8 +9,8 @@ pub mod lua_std;
 pub mod sandbox;
 pub mod stream;
 
-mod abel;
-mod logging;
+pub mod abel;
+pub mod logging;
 
 #[cfg(test)]
 mod tests;
@@ -79,7 +79,7 @@ impl<'lua, T: FromLua<'lua>, U: FromLua<'lua>> FromLua<'lua> for LuaEither<T, U>
 /// Note that only values that does not rely on other arguments (say, a
 /// closure that captures nothing) should be cached. A counterexample is
 /// `fs.open`, which captures `source` and `local_storage_path` as argument.
-trait LuaCacheExt {
+pub trait LuaCacheExt {
   fn create_cached_value<'lua, R, F>(&'lua self, key: &str, gen: F) -> mlua::Result<R>
   where
     R: FromLua<'lua> + ToLua<'lua> + Clone,
