@@ -1,4 +1,5 @@
 use super::http::{create_fn_http_create_uri, create_fn_http_request};
+use super::require::RemoteInterface;
 use super::LuaCacheExt;
 use crate::lua::LuaTableExt;
 use crate::source::{Source, SourceUserData};
@@ -20,8 +21,8 @@ pub struct IsolateBuilder<'lua> {
 }
 
 impl<'lua> IsolateBuilder<'lua> {
-  pub(super) fn new(lua: &'lua Lua, source: Source) -> mlua::Result<Self> {
-    let (local_env, internal): (_, Table) = isolate_bootstrap(lua, source.clone())?;
+  pub(super) fn new(lua: &'lua Lua, source: Source, remote: RemoteInterface) -> mlua::Result<Self> {
+    let (local_env, internal): (_, Table) = isolate_bootstrap(lua, source.clone(), remote)?;
     let preload = internal.raw_get_path("<internal>", &["package", "preload"])?;
     Ok(Self {
       lua,
@@ -82,7 +83,11 @@ impl<'lua> IsolateBuilder<'lua> {
   }
 }
 
-fn isolate_bootstrap(lua: &Lua, source: Source) -> mlua::Result<(Table, Table)> {
+fn isolate_bootstrap(
+  lua: &Lua,
+  source: Source,
+  remote: RemoteInterface,
+) -> mlua::Result<(Table, Table)> {
   let bootstrap = lua.create_cached_value("abel:isolate_bootstrap", || {
     lua
       .load(include_str!("isolate_bootstrap.lua"))
@@ -93,5 +98,6 @@ fn isolate_bootstrap(lua: &Lua, source: Source) -> mlua::Result<(Table, Table)> 
     SourceUserData(source),
     create_fn_http_request(lua)?,
     create_fn_http_create_uri(lua)?,
+    remote,
   ))
 }

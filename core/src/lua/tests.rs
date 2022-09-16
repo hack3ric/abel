@@ -1,4 +1,5 @@
 use super::error::resolve_callback_error;
+use super::require::RemoteInterface;
 use super::sandbox::Sandbox;
 use crate::source::{Metadata, Source, SourceVfs};
 use async_trait::async_trait;
@@ -38,7 +39,7 @@ macro_rules! run_lua_test {
         std::env::set_var("RUST_LOG", "INFO");
       }
       let _ = pretty_env_logger::try_init();
-      let sandbox = Sandbox::new()?;
+      let sandbox = Sandbox::new(RemoteInterface::new(None))?;
       let local_storage = TempDir::new()?;
       let isolate = sandbox
         .isolate_builder_with_stdlib(Source::new(EmptySource), local_storage.path())?

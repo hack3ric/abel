@@ -1,4 +1,4 @@
-local source, request, Uri = ...
+local source, request, Uri, remote = ...
 local local_env, paths, loaded, preload = {}, {}, {}, {}
 
 local package = {
@@ -103,44 +103,46 @@ local function remote_searcher(modname)
     local real_modname = string.sub(modname, 1, a - 1)
     local uri_string = string.sub(modname, z + 1)
 
-    local success, uri = pcall(Uri, uri_string)
-    if not success then
-      error("invalid uri '" .. uri_string .. "' (" .. uri .. ")")
-    end
+    -- local success, uri = pcall(Uri, uri_string)
+    -- if not success then
+    --   error("invalid uri '" .. uri_string .. "' (" .. uri .. ")")
+    -- end
 
-    local path = ""
-    for str in string.gmatch(real_modname, "([^%.]+)") do
-      path = path .. "/" .. str
-    end
+    -- local path = ""
+    -- for str in string.gmatch(real_modname, "([^%.]+)") do
+    --   path = path .. "/" .. str
+    -- end
 
-    local uri_params = {
-      scheme = uri.scheme,
-      authority = uri.authority,
-      query = uri.query_string,
-    }
-    local base_path = uri.path == "/" and path or uri.path .. path
-    uri_params.path = base_path .. "/init.lua"
-    local init_uri = Uri(uri_params)
-    local init_resp, init_err = _request_ok(init_uri)
-    uri_params.path = #path == 0 and base_path or base_path .. ".lua"
-    local file_uri = Uri(uri_params)
-    local file_resp, file_err = _request_ok(file_uri)
+    -- local uri_params = {
+    --   scheme = uri.scheme,
+    --   authority = uri.authority,
+    --   query = uri.query_string,
+    -- }
+    -- local base_path = uri.path == "/" and path or uri.path .. path
+    -- uri_params.path = base_path .. "/init.lua"
+    -- local init_uri = Uri(uri_params)
+    -- local init_resp, init_err = _request_ok(init_uri)
+    -- uri_params.path = base_path .. ".lua"
+    -- local file_uri = Uri(uri_params)
+    -- local file_resp, file_err = _request_ok(file_uri)
 
-    local resp = init_resp or file_resp
-    local req_uri = tostring(init_resp and init_uri or file_uri)
-    if not resp then
-      error(
-        "module '" .. modname .. "' not found\n" ..
-        "\tfailed to load '" .. tostring(init_uri) .. "' (" .. init_err .. ")\n" ..
-        "\tfailed to load '" .. tostring(file_uri) .. "' (" .. file_err .. ")\n"
-      )
-    elseif file_resp and init_resp then
-      error(
-        "module '" .. modname .. "' not found\n" ..
-        "\tfile '" .. tostring(init_uri) .. "' and '" .. tostring(file_uri) .. "' conflicts"
-      )
-    end
-    local code = resp.body:to_string()
+    -- local resp = init_resp or file_resp
+    -- local req_uri = tostring(init_resp and init_uri or file_uri)
+    -- if not resp then
+    --   error(
+    --     "module '" .. modname .. "' not found\n" ..
+    --     "\tfailed to load '" .. tostring(init_uri) .. "' (" .. init_err .. ")\n" ..
+    --     "\tfailed to load '" .. tostring(file_uri) .. "' (" .. file_err .. ")\n"
+    --   )
+    -- elseif file_resp and init_resp then
+    --   error(
+    --     "module '" .. modname .. "' not found\n" ..
+    --     "\tfile '" .. tostring(init_uri) .. "' and '" .. tostring(file_uri) .. "' conflicts"
+    --   )
+    -- end
+    -- local code = resp.body:read_all()
+
+    local req_uri, code = remote:get(real_modname, uri_string)
 
     local remote_local_env = setmetatable({
       require = function(...)

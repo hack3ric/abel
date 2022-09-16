@@ -6,6 +6,7 @@ pub mod http;
 pub mod isolate;
 pub mod json;
 pub mod lua_std;
+pub mod require;
 pub mod sandbox;
 pub mod stream;
 

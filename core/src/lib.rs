@@ -16,6 +16,7 @@ pub use runtime::check_name;
 pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 
 use hyper::{Body, Request, Response};
+use lua::require::RemoteInterface;
 use runtime::Runtime;
 use service::{ErrorPayload, Service, ServiceName, ServicePool, StoppedService};
 use source::Source;
@@ -33,6 +34,7 @@ pub struct Abel {
 #[derive(Debug)]
 pub struct AbelState {
   pub local_storage_path: PathBuf,
+  pub remote: RemoteInterface,
 }
 
 pub struct AbelOptions {
@@ -44,6 +46,7 @@ impl Abel {
   pub fn new(options: AbelOptions) -> Result<Self> {
     let state = Arc::new(AbelState {
       local_storage_path: options.local_storage_path,
+      remote: RemoteInterface::new(None),
     });
     Ok(Self {
       runtime_pool: Pool::new(options.runtime_pool_size, {

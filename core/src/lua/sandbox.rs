@@ -8,6 +8,7 @@ use super::lua_std::{
   create_preload_coroutine, create_preload_math, create_preload_os, create_preload_string,
   create_preload_table, create_preload_utf8, side_effect_global_whitelist,
 };
+use super::require::RemoteInterface;
 use super::sanitize_error;
 use super::stream::create_preload_stream;
 use crate::source::Source;
@@ -18,13 +19,14 @@ use std::sync::Arc;
 
 pub struct Sandbox {
   lua: Lua,
+  remote: RemoteInterface,
 }
 
 impl Sandbox {
-  pub fn new() -> mlua::Result<Self> {
+  pub fn new(remote: RemoteInterface) -> mlua::Result<Self> {
     let lua = Lua::new();
     modify_global_env(&lua)?;
-    Ok(Self { lua })
+    Ok(Self { lua, remote })
   }
 
   pub fn lua(&self) -> &Lua {
@@ -32,7 +34,7 @@ impl Sandbox {
   }
 
   pub fn isolate_builder(&self, source: Source) -> mlua::Result<IsolateBuilder> {
-    IsolateBuilder::new(&self.lua, source)
+    IsolateBuilder::new(&self.lua, source, self.remote.clone())
   }
 
   pub fn isolate_builder_with_stdlib(
