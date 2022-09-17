@@ -1,7 +1,7 @@
-use super::error::{
+use crate::lua::error::{
   arg_error, check_integer, check_userdata_mut, check_value, rt_error, tag_error, tag_handler,
 };
-use super::LuaCacheExt;
+use crate::lua::LuaCacheExt;
 use crate::task::{LocalTask, TaskContext};
 use futures::future::BoxFuture;
 use futures::{Future, FutureExt};

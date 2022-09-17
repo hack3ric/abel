@@ -1,10 +1,9 @@
-use super::error::{arg_error, check_truthiness, check_userdata_mut, rt_error, tag_error};
 use super::stream::create_table_stream;
-use super::LuaCacheExt;
 use crate::lua::error::{
-  check_integer, check_string, check_userdata, rt_error_fmt, tag_handler, UserDataRef,
-  UserDataRefMut,
+  arg_error, check_integer, check_string, check_truthiness, check_userdata, check_userdata_mut,
+  rt_error, rt_error_fmt, tag_error, tag_handler, UserDataRef, UserDataRefMut,
 };
+use crate::lua::LuaCacheExt;
 use crate::path::normalize_path_str;
 use crate::source::{Metadata, ReadOnlyFile, Source};
 use crate::task::TaskContext;

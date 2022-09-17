@@ -1,6 +1,6 @@
-use super::error::{check_userdata_mut, rt_error, tag_handler};
 use super::json::create_fn_json_parse;
-use super::LuaCacheExt;
+use crate::lua::error::{check_userdata_mut, rt_error, tag_handler};
+use crate::lua::LuaCacheExt;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
 use hyper::body::Bytes;

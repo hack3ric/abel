@@ -1,8 +1,9 @@
-use crate::lua::abel::side_effect_abel;
+mod abel;
+mod logging;
+
 use crate::lua::error::rt_error_fmt;
 use crate::lua::http::{LuaRequest, LuaResponse};
 use crate::lua::isolate::Isolate;
-use crate::lua::logging::side_effect_log;
 use crate::lua::sandbox::Sandbox;
 use crate::lua::{sanitize_error, LuaTableExt};
 use crate::path::PathMatcher;
@@ -11,9 +12,11 @@ use crate::source::Source;
 use crate::task::TaskContext;
 use crate::ErrorKind::*;
 use crate::{AbelState, Result};
+use abel::side_effect_abel;
 use clru::CLruCache;
 use hyper::{Body, Request};
 use log::{debug, info};
+use logging::side_effect_log;
 use mlua::{self, FromLuaMulti, Function, Table, TableExt, ToLuaMulti};
 use nonzero_ext::nonzero;
 use once_cell::sync::Lazy;

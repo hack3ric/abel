@@ -1,5 +1,6 @@
 use mlua::Value::Nil;
 use mlua::{Function, Lua, MultiValue, Table};
+use paste::paste;
 
 fn apply_whitelist<'lua>(
   from: Table<'lua>,
@@ -14,7 +15,7 @@ fn apply_whitelist<'lua>(
 
 macro_rules! create_whitelist_preloads {
   ($($module:ident => $wl:expr;)*) => {
-    paste::paste! {
+    paste! {
       $(pub fn [<create_preload_ $module>](lua: &Lua) -> mlua::Result<Function> {
         lua.create_function(|lua, ()| {
           let module = lua.create_table()?;

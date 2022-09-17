@@ -1,5 +1,7 @@
-use super::error::{arg_error, check_string, check_truthiness, check_value, rt_error, tag_handler};
-use super::LuaCacheExt;
+use crate::lua::error::{
+  arg_error, check_string, check_truthiness, check_value, rt_error, tag_handler,
+};
+use crate::lua::LuaCacheExt;
 use mlua::{Function, Lua, LuaSerdeExt, MultiValue, Table};
 
 pub fn create_preload_json(lua: &Lua) -> mlua::Result<Function> {

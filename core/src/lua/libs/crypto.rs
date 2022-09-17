@@ -1,5 +1,5 @@
-use super::error::{arg_error, check_integer, check_userdata_mut, tag_handler};
-use super::LuaCacheExt;
+use crate::lua::error::{arg_error, check_integer, check_userdata_mut, tag_handler};
+use crate::lua::LuaCacheExt;
 use mlua::{Function, Lua, MultiValue, UserData};
 use rand::{thread_rng, Rng, RngCore};
 

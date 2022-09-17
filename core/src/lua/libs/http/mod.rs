@@ -8,10 +8,8 @@ pub use request::LuaRequest;
 pub use response::LuaResponse;
 pub(crate) use uri::LuaUri;
 
-use super::error::rt_error_fmt;
-use super::LuaCacheExt;
-use crate::lua::error::{arg_error, check_value, rt_error, tag_error, tag_handler};
-use crate::lua::{LuaEither, LUA_HTTP_CLIENT};
+use crate::lua::error::{arg_error, check_value, rt_error, rt_error_fmt, tag_error, tag_handler};
+use crate::lua::{LuaCacheExt, LuaEither, LUA_HTTP_CLIENT};
 use bstr::ByteSlice;
 use hyper::header::{HeaderName, HeaderValue};
 use hyper::HeaderMap;
