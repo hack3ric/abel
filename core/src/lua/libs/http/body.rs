@@ -1,5 +1,5 @@
 use super::LuaResponse;
-use crate::lua::abel::{abel_spawn, create_fn_spawn};
+use crate::runtime::abel::{abel_spawn, create_fn_spawn};
 use crate::lua::error::rt_error;
 use crate::lua::fs::LuaFile;
 use crate::lua::stream::{is_stream, ByteStream};

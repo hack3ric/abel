@@ -72,12 +72,7 @@ local remote_env_mt = {
 }
 
 local function _check_remote(modname)
-  local a, z = string.find(modname, "%s*@")
-  if a then
-    local path = string.sub(modname, 1, a - 1)
-    local uri = string.sub(modname, z + 1)
-    return path, uri
-  end
+  return modname:match "^%s*(.-)%s*@(.-)%s*$"
 end
 
 local function _remote_searcher(path, uri)
@@ -101,7 +96,9 @@ end
 local function source_searcher(modname)
   local path = ""
   for str in string.gmatch(modname, "([^%.]+)") do
-    path = path .. "/" .. str
+    if #str > 0 then
+      path = path .. "/" .. str
+    end
   end
 
   local file_exists = source:exists(path .. ".lua")

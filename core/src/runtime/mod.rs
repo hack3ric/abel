@@ -1,4 +1,5 @@
-mod abel;
+pub(super) mod abel;
+
 mod logging;
 
 use crate::lua::error::rt_error_fmt;

@@ -53,7 +53,6 @@ impl RemoteInterface {
       .chain(path.split('.'))
       .filter(|x| !x.is_empty());
     let base_path: String = itertools::intersperse(segments, "/").collect();
-    dbg!(&base_path);
 
     let init_uri = Uri::builder()
       .scheme(scheme.clone())
