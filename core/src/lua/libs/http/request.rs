@@ -6,7 +6,7 @@ use crate::lua::http::check_headers;
 use crate::path::Params;
 use crate::task::close_value;
 use hyper::http::request::Parts;
-use hyper::{Body, HeaderMap, Method, Request};
+use hyper::{Body, HeaderMap, Method, Request, Uri};
 use mlua::{AnyUserData, Lua, Table, UserData};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -14,7 +14,7 @@ use std::rc::Rc;
 pub struct LuaRequest {
   pub(crate) method: Method,
   /// Must be absolute
-  pub(crate) uri: hyper::Uri,
+  pub(crate) uri: Uri,
   pub(crate) headers: Rc<RefCell<HeaderMap>>,
   pub(crate) body: Option<LuaBody>,
   /// Only used in Abel core
@@ -42,7 +42,7 @@ impl LuaRequest {
       .transpose()?
       .unwrap_or(Method::GET);
 
-    let uri: hyper::Uri = table
+    let uri: Uri = table
       .check_raw_get::<mlua::String>(lua, "uri", "string")?
       .as_bytes()
       .try_into()
@@ -54,7 +54,7 @@ impl LuaRequest {
       .transpose()?
       .unwrap_or_else(HeaderMap::new);
 
-    let body = LuaBody::from_value(lua, table.raw_get::<_, mlua::Value>("body")?)?
+    let body = LuaBody::from_lua_with_error_msg(lua, table.raw_get::<_, mlua::Value>("body")?)?
       .map_err(|error| bad_field("body", error))?;
 
     Ok(LuaRequest {
@@ -70,7 +70,7 @@ impl LuaRequest {
     let mut u: LuaRequest = userdata.take()?;
     if u.body.is_none() {
       let t = userdata.get_named_user_value::<_, mlua::Value>("body")?;
-      let body = LuaBody::from_value(lua, t)?
+      let body = LuaBody::from_lua_with_error_msg(lua, t)?
         .map_err(|error| rt_error_fmt!("failed to get body from request ({error})"))?;
       u.body = Some(body);
     }

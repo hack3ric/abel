@@ -52,7 +52,7 @@ impl<'lua> FromLua<'lua> for LuaResponse {
     use mlua::Value::*;
     match value {
       x @ Table(_) | x @ Nil | x @ String(_) => Ok(
-        LuaBody::from_value(lua, x)?
+        LuaBody::from_lua_with_error_msg(lua, x)?
           .map_err(|error| rt_error_fmt!("failed to read body ({error})"))?
           .into_default_response(),
       ),
@@ -60,14 +60,14 @@ impl<'lua> FromLua<'lua> for LuaResponse {
         if let Ok(mut u) = x.take::<Self>() {
           if u.body.is_none() {
             let t = x.get_named_user_value::<_, mlua::Value>("body")?;
-            let body = LuaBody::from_value(lua, t)?
+            let body = LuaBody::from_lua_with_error_msg(lua, t)?
               .map_err(|error| rt_error_fmt!("failed to get body from response ({error})"))?;
             u.body = Some(body);
           }
           Ok(u)
         } else {
           Ok(
-            LuaBody::from_value(lua, UserData(x))?
+            LuaBody::from_lua_with_error_msg(lua, UserData(x))?
               .map_err(|error| rt_error_fmt!("failed to read body ({error})"))?
               .into_default_response(),
           )
@@ -97,7 +97,7 @@ pub fn create_fn_http_create_response(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_function("abel:http.Response", |lua, mut args: MultiValue| {
     let params: Table =
       check_value(lua, args.pop_front(), "table").map_err(tag_handler(lua, 1, 0))?;
-    let body = LuaBody::from_value(lua, params.raw_get::<_, mlua::Value>("body")?)?
+    let body = LuaBody::from_lua_with_error_msg(lua, params.raw_get::<_, mlua::Value>("body")?)?
       .map_err(|error| bad_field("body", error))?;
     let mut response = body.into_default_response();
 

@@ -1,9 +1,9 @@
 use super::LuaResponse;
-use crate::runtime::abel::{abel_spawn, create_fn_spawn};
 use crate::lua::error::rt_error;
 use crate::lua::fs::LuaFile;
 use crate::lua::stream::{is_stream, ByteStream};
 use crate::lua::LuaCacheExt;
+use crate::runtime::abel::{abel_spawn, create_fn_spawn, is_in_abel_context};
 use hyper::body::Bytes;
 use hyper::header::HeaderValue;
 use hyper::{Body, HeaderMap, StatusCode};
@@ -36,7 +36,7 @@ impl LuaBody {
     }
   }
 
-  pub(crate) fn from_value<'a>(
+  pub(crate) fn from_lua_with_error_msg<'a>(
     lua: &'a Lua,
     value: mlua::Value<'a>,
   ) -> mlua::Result<Result<Self, String>> {
@@ -91,6 +91,10 @@ fn body_from_lua_stream(lua: &Lua, stream: mlua::Value) -> mlua::Result<LuaBody>
         },
       );
     }
+  }
+
+  if !is_in_abel_context(lua) {
+    return Err(rt_error("cannot send stream outside Abel context"));
   }
 
   let (tx, body) = Body::channel();

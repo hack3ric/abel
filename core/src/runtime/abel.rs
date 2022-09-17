@@ -23,6 +23,10 @@ pub fn side_effect_abel(lua: &Lua, local_env: Table, internal: Table) -> mlua::R
   Ok(())
 }
 
+pub fn is_in_abel_context(lua: &Lua) -> bool {
+  lua.app_data_mut::<Vec<LocalTask>>().is_some()
+}
+
 fn create_fn_listen<'a>(lua: &'a Lua, internal: Table<'a>) -> mlua::Result<Function<'a>> {
   const SRC: &str = r#"
     local internal, path, handler = ...
