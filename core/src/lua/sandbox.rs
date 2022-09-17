@@ -1,4 +1,4 @@
-use super::crypto::create_preload_crypto;
+use super::rand::create_preload_rand;
 use super::fs::create_preload_fs;
 use super::global_env::modify_global_env;
 use super::http::create_preload_http;
@@ -57,7 +57,7 @@ impl Sandbox {
       .add_lib("fs", create_preload_fs(source, lsp))?
       .add_lib("http", create_preload_http)?
       .add_lib("json", create_preload_json)?
-      .add_lib("crypto", create_preload_crypto)?
+      .add_lib("rand", create_preload_rand)?
       .add_lib("stream", create_preload_stream)?
       .add_lua_lib("testing", include_str!("libs/testing.lua"))?
       // ...and load some of then into local env

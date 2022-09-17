@@ -28,15 +28,15 @@ impl UserData for LuaRng {
   }
 }
 
-pub fn create_preload_crypto(lua: &Lua) -> mlua::Result<Function> {
-  lua.create_cached_function("abel:preload_crypto", |lua, ()| {
-    let crypto_table = lua.create_table()?;
-    crypto_table.raw_set(
+pub fn create_preload_rand(lua: &Lua) -> mlua::Result<Function> {
+  lua.create_cached_function("abel:preload_rand", |lua, ()| {
+    let rand_table = lua.create_table()?;
+    rand_table.raw_set(
       "ThreadRng",
-      lua.create_cached_value("abel:crypto.ThreadRng", || {
+      lua.create_cached_value("abel:rand.ThreadRng", || {
         lua.create_userdata(LuaRng(Box::new(thread_rng())))
       })?,
     )?;
-    Ok(crypto_table)
+    Ok(rand_table)
   })
 }

@@ -2,7 +2,7 @@
 --
 -- This example will keep updating with upcoming new features of Abel.
 
-local crypto = require "crypto"
+local rand = require "rand"
 local fs = require "fs"
 local http = require "http"
 
@@ -27,7 +27,7 @@ local FileTooLarge = HttpError {
 local function gen_uid()
   local result = ""
   for _ = 1, 8 do
-    local v = crypto.ThreadRng:gen_range(0, 0xf)
+    local v = rand.ThreadRng:gen_range(0, 0xf)
     result = result .. ("%x"):format(v)
   end
   return result

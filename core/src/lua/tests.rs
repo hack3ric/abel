@@ -118,9 +118,9 @@ lua_tests! {
     t.assert_eq(query.baz, " ")
   "#
 
-  test_crypto_random r#"
-    local crypto = require "crypto"
-    local rng = crypto.ThreadRng
+  test_rand r#"
+    local rand = require "rand"
+    local rng = rand.ThreadRng
     local t = require "testing"
 
     t.assert_eq(type(rng:random()), "number")
