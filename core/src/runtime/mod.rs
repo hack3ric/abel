@@ -197,7 +197,7 @@ impl Runtime {
       if let Some(loaded) = self_loaded.pop(name) {
         if !loaded.service.is_dropped() && loaded.service.ptr_eq(&service) {
           debug!(
-            "service {name} cache hit on '{}'",
+            "service '{name}' cache hit on '{}'",
             std::thread::current().name().unwrap_or("<unnamed>")
           );
           self_loaded.put(name.into(), loaded);

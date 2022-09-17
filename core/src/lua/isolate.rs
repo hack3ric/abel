@@ -1,4 +1,3 @@
-use super::http::{create_fn_http_create_uri, create_fn_http_request};
 use super::require::RemoteInterface;
 use super::LuaCacheExt;
 use crate::lua::LuaTableExt;
@@ -94,10 +93,5 @@ fn isolate_bootstrap(
       .set_name("@[isolate_bootstrap]")?
       .into_function()
   })?;
-  bootstrap.call((
-    SourceUserData(source),
-    create_fn_http_request(lua)?,
-    create_fn_http_create_uri(lua)?,
-    remote,
-  ))
+  bootstrap.call((SourceUserData(source), remote))
 }

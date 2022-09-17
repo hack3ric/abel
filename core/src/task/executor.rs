@@ -6,7 +6,7 @@ use futures::future::Either::*;
 use futures::stream::FuturesUnordered;
 use futures::task::{waker, ArcWake};
 use futures::{pin_mut, Stream};
-use log::{debug, error};
+use log::{error, trace};
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Release;
@@ -94,7 +94,7 @@ impl Executor {
             );
             match select.await {
               Left((Left(_), _)) | Right((Right((None, _)), _)) => {
-                debug!("{} stopping", std::thread::current().name().unwrap());
+                trace!("{} stopping", std::thread::current().name().unwrap());
                 break;
               }
               Left((Right(_), _)) => waker_poll(&waker, &mut tasks),

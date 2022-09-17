@@ -127,7 +127,8 @@ pub fn init_watcher(
                 });
 
                 if let Err(error) = result {
-                  warn!("Error updating service '{name}': {error}; maybe check '{path:?}'?")
+                  warn!("Error updating service '{name}': {error}");
+                  warn!("maybe check '{}'?", path.display());
                 }
 
                 continue 'services;

@@ -75,14 +75,14 @@ pub async fn init_state(
 ) -> anyhow::Result<(PathBuf, Config, Arc<ServerState>)> {
   let ServerArgs { config, abel_path } = args;
 
-  let local_storage_path = init_paths(&abel_path).await;
-
+  let (local_storage_path, remote_cache_path) = init_paths(&abel_path).await;
   let config = init_config.merge(config);
 
   let state = Arc::new(ServerState {
     abel: Abel::new(AbelOptions {
       runtime_pool_size: config.pool_size(),
       local_storage_path,
+      remote_cache_path: Some(remote_cache_path),
     })?,
     abel_path: abel_path.clone(),
     auth_token: config.auth_token,
@@ -97,7 +97,7 @@ pub async fn init_state_with_stored_config(
   init_state(args, Config::load(config_path).await?).await
 }
 
-async fn init_paths(abel_path: &Path) -> PathBuf {
+async fn init_paths(abel_path: &Path) -> (PathBuf, PathBuf) {
   async fn create_dir_path(path: impl AsRef<Path>) -> io::Result<()> {
     if !path.as_ref().exists() {
       fs::create_dir(&path).await?;
@@ -105,7 +105,7 @@ async fn init_paths(abel_path: &Path) -> PathBuf {
     Ok(())
   }
 
-  let local_storage_path = async {
+  let result = async {
     create_dir_path(abel_path).await?;
     create_dir_path(abel_path.join("services")).await?;
 
@@ -118,12 +118,15 @@ async fn init_paths(abel_path: &Path) -> PathBuf {
 
     let local_storage_path = abel_path.join("storage");
     create_dir_path(&local_storage_path).await?;
-    io::Result::Ok(local_storage_path)
+    let remote_cache_path = abel_path.join("cache");
+    create_dir_path(&remote_cache_path).await?;
+
+    io::Result::Ok((local_storage_path, remote_cache_path))
   }
   .await
   .expect("failed to create Abel config directory");
 
-  local_storage_path
+  result
 }
 
 pub async fn load_saved_services(state: &ServerState, services_path: &Path) -> anyhow::Result<()> {
@@ -198,10 +201,8 @@ pub async fn load_saved_services(state: &ServerState, services_path: &Path) -> a
       }
       .await;
       if let Err(error) = result {
-        warn!(
-          "Error preloading service '{name}': {error}; maybe check {:?}?",
-          service_folder.path()
-        )
+        warn!("Error preloading service '{name}': {error}");
+        warn!("maybe check '{}'?", service_folder.path().display());
       }
     }
   }

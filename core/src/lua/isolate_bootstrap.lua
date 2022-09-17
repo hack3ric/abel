@@ -1,4 +1,4 @@
-local source, request, Uri, remote = ...
+local source, remote = ...
 local local_env, paths, loaded, preload = {}, {}, {}, {}
 
 local package = {
@@ -9,7 +9,6 @@ local package = {
 local internal = {
   paths = paths,
   sealed = false,
-  source = source,
   package = package,
 }
 
@@ -23,13 +22,13 @@ local function _require_check_modname_type(modname)
   )
 end
 
-local function _require_load_module(modname, searchers)
+local function _require_load_module(searchers, modname, ...)
   if loaded[modname] then
     return table.unpack(loaded[modname])
   else
     local error_msgs = {}
     for _, searcher in ipairs(searchers) do
-      local loader, data = searcher(modname)
+      local loader, data = searcher(modname, ...)
       if loader then
         local result = { loader(modname, data) }
         loaded[modname] = result
@@ -44,21 +43,15 @@ end
 
 function local_env.require(modname)
   _require_check_modname_type(modname)
-  return _require_load_module(modname, package.searchers)
-end
-
-local function _modify_modname(modname, uri)
-  if preload[modname] or string.find(modname, "%s*@") then
-    return modname
-  else
-    return modname .. " @" .. uri
-  end
+  return _require_load_module(package.searchers, modname)
 end
 
 local function require_remote(uri, modname)
   _require_check_modname_type(modname)
-  local modified = _modify_modname(modname, uri)
-  return _require_load_module(modified, package.searchers_remote)
+  if not preload[modname] and not string.find(modname, "%s*@") then
+    modname = modname .. " @" .. uri
+  end
+  return _require_load_module(package.searchers_remote, modname)
 end
 
 -- Searchers --
@@ -72,92 +65,37 @@ local function preload_searcher(modname)
   end
 end
 
-local function _request_ok(...)
-  local resp, err = request(...)
-  local status = resp.status
-  local content_type = resp.headers["content-type"]
-
-  if err then
-    return nil, err
-  elseif status ~= 200 then
-    return nil, "server responded with status code " .. status
-  elseif not content_type then
-    return nil, "content type missing"
-  elseif not string.find(content_type, "lua", 1, true) then
-    return nil, "content type '" .. content_type .. "' does not include 'lua'"
-  else
-    return resp
-  end
-end
-
-local remote_local_env_mt = {
+local remote_env_mt = {
   __index = local_env,
   __newindex = local_env,
   __metatable = false
 }
 
--- TODO: add cache
-local function remote_searcher(modname)
+local function _check_remote(modname)
   local a, z = string.find(modname, "%s*@")
   if a then
-    local real_modname = string.sub(modname, 1, a - 1)
-    local uri_string = string.sub(modname, z + 1)
+    local path = string.sub(modname, 1, a - 1)
+    local uri = string.sub(modname, z + 1)
+    return path, uri
+  end
+end
 
-    -- local success, uri = pcall(Uri, uri_string)
-    -- if not success then
-    --   error("invalid uri '" .. uri_string .. "' (" .. uri .. ")")
-    -- end
+local function _remote_searcher(path, uri)
+  local remote_env = setmetatable({
+    require = function(...)
+      -- TODO: This passes unparsed URI. Maybe reuse parsed one?
+      return require_remote(uri, ...)
+    end
+  }, remote_env_mt)
+  return remote:get(path, uri, remote_env)
+end
 
-    -- local path = ""
-    -- for str in string.gmatch(real_modname, "([^%.]+)") do
-    --   path = path .. "/" .. str
-    -- end
-
-    -- local uri_params = {
-    --   scheme = uri.scheme,
-    --   authority = uri.authority,
-    --   query = uri.query_string,
-    -- }
-    -- local base_path = uri.path == "/" and path or uri.path .. path
-    -- uri_params.path = base_path .. "/init.lua"
-    -- local init_uri = Uri(uri_params)
-    -- local init_resp, init_err = _request_ok(init_uri)
-    -- uri_params.path = base_path .. ".lua"
-    -- local file_uri = Uri(uri_params)
-    -- local file_resp, file_err = _request_ok(file_uri)
-
-    -- local resp = init_resp or file_resp
-    -- local req_uri = tostring(init_resp and init_uri or file_uri)
-    -- if not resp then
-    --   error(
-    --     "module '" .. modname .. "' not found\n" ..
-    --     "\tfailed to load '" .. tostring(init_uri) .. "' (" .. init_err .. ")\n" ..
-    --     "\tfailed to load '" .. tostring(file_uri) .. "' (" .. file_err .. ")\n"
-    --   )
-    -- elseif file_resp and init_resp then
-    --   error(
-    --     "module '" .. modname .. "' not found\n" ..
-    --     "\tfile '" .. tostring(init_uri) .. "' and '" .. tostring(file_uri) .. "' conflicts"
-    --   )
-    -- end
-    -- local code = resp.body:read_all()
-
-    local req_uri, code = remote:get(real_modname, uri_string)
-
-    local remote_local_env = setmetatable({
-      require = function(...)
-        -- TODO: This passes unparsed URI. Maybe reuse parsed one?
-        return require_remote(uri_string, ...)
-      end
-    }, remote_local_env_mt)
-
-    local loader, err = load(code, "@" .. req_uri, "t", remote_local_env)
-    assert(loader, err)
-
-    return loader, req_uri
-  else
+local function remote_searcher(modname)
+  local path, uri = _check_remote(modname)
+  if not path then
     return nil, "'" .. modname .. "' does not seem to have a URI"
   end
+  return _remote_searcher(path, uri)
 end
 
 local function source_searcher(modname)
@@ -176,8 +114,9 @@ local function source_searcher(modname)
   else
     path = path .. (file_exists and ".lua" or "/init.lua")
     local function source_loader(modname, path)
-      return source:load(path, local_env)()
+      return source:load(path, local_env)(modname, path)
     end
+
     return source_loader, path
   end
 end

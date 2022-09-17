@@ -40,13 +40,14 @@ pub struct AbelState {
 pub struct AbelOptions {
   pub runtime_pool_size: usize,
   pub local_storage_path: PathBuf,
+  pub remote_cache_path: Option<PathBuf>,
 }
 
 impl Abel {
   pub fn new(options: AbelOptions) -> Result<Self> {
     let state = Arc::new(AbelState {
       local_storage_path: options.local_storage_path,
-      remote: RemoteInterface::new(None),
+      remote: RemoteInterface::new(options.remote_cache_path),
     });
     Ok(Self {
       runtime_pool: Pool::new(options.runtime_pool_size, {
