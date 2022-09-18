@@ -8,7 +8,7 @@ mod libs;
 #[cfg(test)]
 mod tests;
 
-pub use libs::{rand, fs, http, json, lua_std, stream};
+pub use libs::{fs, http, json, lua_std, rand, stream};
 
 use crate::{Error, ErrorKind};
 use error::{resolve_callback_error, CustomError};

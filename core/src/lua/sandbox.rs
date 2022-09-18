@@ -1,13 +1,14 @@
-use super::rand::create_preload_rand;
 use super::fs::create_preload_fs;
 use super::global_env::modify_global_env;
 use super::http::create_preload_http;
 use super::isolate::{Isolate, IsolateBuilder};
 use super::json::create_preload_json;
+use super::libs::crypto::create_preload_crypto;
 use super::lua_std::{
   create_preload_coroutine, create_preload_math, create_preload_os, create_preload_string,
   create_preload_table, create_preload_utf8, side_effect_global_whitelist,
 };
+use super::rand::create_preload_rand;
 use super::require::RemoteInterface;
 use super::sanitize_error;
 use super::stream::create_preload_stream;
@@ -58,6 +59,7 @@ impl Sandbox {
       .add_lib("http", create_preload_http)?
       .add_lib("json", create_preload_json)?
       .add_lib("rand", create_preload_rand)?
+      .add_lib("crypto", create_preload_crypto)?
       .add_lib("stream", create_preload_stream)?
       .add_lua_lib("testing", include_str!("libs/testing.lua"))?
       // ...and load some of then into local env
