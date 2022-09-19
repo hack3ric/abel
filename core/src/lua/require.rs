@@ -1,5 +1,5 @@
 use super::http::LuaUri;
-use super::LUA_HTTP_CLIENT;
+use super::{LuaCacheExt, LUA_HTTP_CLIENT};
 use crate::rt_error_fmt;
 use anyhow::{anyhow, bail, Context};
 use bstr::ByteSlice;
@@ -9,7 +9,7 @@ use hyper::body::Bytes;
 use hyper::http::uri::{Parts, Scheme};
 use hyper::{Body, Response, Uri};
 use log::debug;
-use mlua::{ExternalResult, Table, UserData};
+use mlua::{ExternalResult, Function, Lua, Table, UserData};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
@@ -176,4 +176,13 @@ impl UserData for RemoteInterface {
 #[derive(Debug, Serialize, Deserialize)]
 struct CacheMetadata<'a> {
   uri: &'a str,
+}
+
+pub fn load_create_require(lua: &Lua) -> mlua::Result<Function> {
+  lua.create_cached_value("abel:create_require", || {
+    lua
+      .load(include_str!("create_require.lua"))
+      .set_name("@[isolate_bootstrap]")?
+      .into_function()
+  })
 }

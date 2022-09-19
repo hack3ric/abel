@@ -1,4 +1,4 @@
-use super::require::RemoteInterface;
+use super::require::{load_create_require, RemoteInterface};
 use super::LuaCacheExt;
 use crate::lua::LuaTableExt;
 use crate::source::{Source, SourceUserData};
@@ -93,5 +93,6 @@ fn isolate_bootstrap(
       .set_name("@[isolate_bootstrap]")?
       .into_function()
   })?;
-  bootstrap.call((SourceUserData(source), remote))
+  let create_require = load_create_require(lua)?;
+  bootstrap.call((SourceUserData(source), remote, create_require))
 }
