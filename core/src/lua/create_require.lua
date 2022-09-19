@@ -75,7 +75,7 @@ local function _remote_searcher(path, uri)
       return require_remote(uri, ...)
     end
   }, remote_env_mt)
-  return remote:get(path, uri, remote_env)
+  return remote:load(path, uri, remote_env)
 end
 
 local function remote_searcher(modname)

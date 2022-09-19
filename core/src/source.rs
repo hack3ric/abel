@@ -114,7 +114,7 @@ impl Debug for Source {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct SourceUserData(pub(crate) Source);
+pub struct SourceUserData(pub Source);
 
 // TODO: impl UserData for any type that implements Source
 impl UserData for SourceUserData {

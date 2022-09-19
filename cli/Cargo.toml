@@ -16,6 +16,7 @@ async-trait = "0.1.56"
 backtrace = "0.3.63"
 bytes = "1.2.0"
 clap = { version = "3.2.5", features = ["derive"] }
+data-encoding = "2.3.2"
 futures = "0.3.19"
 hive-asar = "0.4.0"
 home = "0.5.3"
@@ -34,6 +35,7 @@ serde = { version = "1.0.136", features = ["derive"] }
 serde_json = { version = "1.0.74", features = ["preserve_order"] }
 serde_qs = "0.10.1"
 serde_with = "2.0.0"
+sha2 = "0.10.6"
 slug = "0.1.4"
 strum = { version = "0.24.0", features = ["derive"] }
 tempfile = "3.3.0"

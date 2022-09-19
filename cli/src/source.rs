@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use hive_asar::header::Entry;
 use hive_asar::{Archive, DuplicableFile};
 use std::io::Cursor;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io;
 
@@ -72,6 +73,36 @@ impl SourceVfs for SingleSource {
         io::ErrorKind::NotFound,
         "No such file or directory",
       )),
+    }
+  }
+}
+
+pub struct DirSource(pub(crate) PathBuf);
+
+#[async_trait]
+impl SourceVfs for DirSource {
+  type File = tokio::fs::File;
+
+  async fn get(&self, path: &str) -> io::Result<Self::File> {
+    tokio::fs::File::open(self.0.join(normalize_path_str(path))).await
+  }
+
+  async fn exists(&self, path: &str) -> io::Result<bool> {
+    Ok(
+      tokio::fs::metadata(self.0.join(normalize_path_str(path)))
+        .await
+        .is_ok(),
+    )
+  }
+
+  async fn metadata(&self, path: &str) -> io::Result<Metadata> {
+    let metadata = tokio::fs::metadata(self.0.join(normalize_path_str(path))).await?;
+    if metadata.is_file() {
+      Ok(Metadata::File {
+        size: metadata.len(),
+      })
+    } else {
+      Ok(Metadata::Dir)
     }
   }
 }

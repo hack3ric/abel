@@ -1,6 +1,8 @@
 mod deploy;
 mod dev;
+mod resolve;
 mod server;
+mod source;
 
 use crate::dev::save_services_from_paths;
 use clap::{Parser, Subcommand};
@@ -10,6 +12,7 @@ use futures::Future;
 use hyper::Uri;
 use log::{info, warn};
 use owo_colors::OwoColorize;
+use resolve::resolve_dep;
 use server::config::{Config, ConfigArgs, ServerArgs, HALF_NUM_CPUS};
 use server::upload::UploadMode;
 use server::{init_logger, init_state, init_state_with_stored_config, load_saved_services};
@@ -46,6 +49,9 @@ enum Command {
     path: PathBuf,
     #[clap(short, long, value_enum, default_value_t)]
     mode: UploadMode,
+  },
+  Resolve {
+    path: PathBuf,
   },
 }
 
@@ -121,6 +127,10 @@ fn main() -> anyhow::Result<()> {
         println!("{} {error:?}", "error:".red().bold());
         std::process::exit(1);
       }
+      Ok(())
+    }
+    Command::Resolve { path } => {
+      block_on(resolve_dep(path))?;
       Ok(())
     }
   }

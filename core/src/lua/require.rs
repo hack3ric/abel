@@ -137,8 +137,8 @@ async fn request_ok(uri: Uri) -> anyhow::Result<(Uri, Response<Body>)> {
       let ct = ct
         .to_str()
         .context("failed to parse content-type as UTF-8")?;
-      if !ct.contains("lua") {
-        bail!("content type '{ct}' does not contain 'lua'")
+      if !ct.contains("lua") && !ct.starts_with("text/plain") {
+        bail!("content type '{ct}' mismatch")
       }
     }
     None => bail!("content-type missing"),
@@ -169,7 +169,23 @@ impl UserData for RemoteInterface {
             Ok((loader, LuaUri(uri)))
           })
       },
-    )
+    );
+
+    methods.add_async_method(
+      "get",
+      |lua, this, (path, uri): (mlua::String, mlua::String)| async move {
+        let path = path.to_str().map_err(|error| {
+          rt_error_fmt!("invalid path '{}' ({error})", path.as_bytes().as_bstr())
+        })?;
+        let uri = Uri::try_from(uri.as_bytes())
+          .map_err(|error| rt_error_fmt!("invalid uri '{}' ({error})", uri.as_bytes().as_bstr()))?;
+        this
+          .get_cached(path, uri)
+          .await
+          .to_lua_err()
+          .and_then(|(bytes, uri)| Ok((lua.create_string(&bytes)?, LuaUri(uri))))
+      },
+    );
   }
 }
 
@@ -182,7 +198,7 @@ pub fn load_create_require(lua: &Lua) -> mlua::Result<Function> {
   lua.create_cached_value("abel:create_require", || {
     lua
       .load(include_str!("create_require.lua"))
-      .set_name("@[isolate_bootstrap]")?
+      .set_name("@[create_require]")?
       .into_function()
   })
 }

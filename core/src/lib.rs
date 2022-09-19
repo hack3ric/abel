@@ -10,13 +10,14 @@ mod task;
 
 pub use config::Config;
 pub use error::{Error, ErrorKind, Result};
+pub use lua::require::{load_create_require, RemoteInterface};
+pub use mlua;
 pub use mlua::Error as LuaError;
 pub use path::normalize_path_str;
 pub use runtime::check_name;
 pub use service::{RunningService, RunningServiceGuard, ServiceImpl};
 
 use hyper::{Body, Request, Response};
-use lua::require::RemoteInterface;
 use runtime::Runtime;
 use service::{ErrorPayload, Service, ServiceName, ServicePool, StoppedService};
 use source::Source;
