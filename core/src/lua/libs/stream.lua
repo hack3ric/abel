@@ -39,25 +39,30 @@ function stream.parse_json(st)
 end
 
 function stream.iter(st)
-  -- check_stream(st)
+  check_stream(st)
   return function() return st:read() end
 end
 
 function stream.from_iter(iter, state, ...)
   local var = { ... }
   return setmetatable({
-    read = function(self)
+    read = function(_)
       var = { iter(state, table.unpack(var)) }
       return table.unpack(var)
     end
   }, { __index = stream })
 end
 
-function stream.pipe_to(st, sink)
+function stream.pipe_to(st, ...)
+  local sinks = { ... }
   check_stream(st)
-  check_sink(sink)
+  for _, sink in ipairs(sinks) do
+    check_sink(sink)
+  end
   for item in stream.iter(st) do
-    sink:write(item)
+    for _, sink in ipairs(sinks) do
+      sink:write(item)
+    end
   end
 end
 
@@ -65,7 +70,7 @@ function stream.pipe_through(st, tr)
   check_stream(st)
   check_transform(tr)
   return setmetatable({
-    read = function(self)
+    read = function(_)
       local item = st:read()
       if item then
         return tr:transform(item)
@@ -84,7 +89,7 @@ function stream.recv_through(sink, tr)
   check_sink(sink)
   check_transform(tr)
   return setmetatable({
-    write = function(self, item)
+    write = function(_, item)
       local new_item = tr:transform(item)
       if new_item then
         sink:write(new_item)
