@@ -105,7 +105,7 @@ async fn init_paths(abel_path: &Path) -> (PathBuf, PathBuf) {
     Ok(())
   }
 
-  let result = async {
+  async {
     create_dir_path(abel_path).await?;
     create_dir_path(abel_path.join("services")).await?;
 
@@ -124,9 +124,7 @@ async fn init_paths(abel_path: &Path) -> (PathBuf, PathBuf) {
     io::Result::Ok((local_storage_path, remote_cache_path))
   }
   .await
-  .expect("failed to create Abel config directory");
-
-  result
+  .expect("failed to create Abel config directory")
 }
 
 pub async fn load_saved_services(state: &ServerState, services_path: &Path) -> anyhow::Result<()> {

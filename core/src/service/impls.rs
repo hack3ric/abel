@@ -111,7 +111,7 @@ impl Deref for ServiceGuard<'_> {
 
   fn deref(&self) -> &ServiceImpl {
     match self {
-      Self::Running { service } => &*service,
+      Self::Running { service } => &**service,
       Self::Stopped { service } => service,
     }
   }

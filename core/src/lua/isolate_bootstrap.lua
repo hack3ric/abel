@@ -1,5 +1,5 @@
 local source, remote = ...
-local local_env, paths, loaded, preload = {}, {}, {}, {}
+local local_env, loaded, preload = {}, {}, {}
 
 local package = {
   loaded = loaded,
@@ -7,7 +7,7 @@ local package = {
 }
 
 local internal = {
-  paths = paths,
+  paths = {},
   sealed = false,
   package = package,
 }
@@ -78,7 +78,6 @@ end
 local function _remote_searcher(path, uri)
   local remote_env = setmetatable({
     require = function(...)
-      -- TODO: This passes unparsed URI. Maybe reuse parsed one?
       return require_remote(uri, ...)
     end
   }, remote_env_mt)
@@ -110,11 +109,7 @@ local function source_searcher(modname)
     return nil, "no file 'source:" .. path .. ".lua'\n\tno file 'source:" .. path .. "/init.lua'"
   else
     path = path .. (file_exists and ".lua" or "/init.lua")
-    local function source_loader(modname, path)
-      return source:load(path, local_env)(modname, path)
-    end
-
-    return source_loader, path
+    return source:load(path, local_env), path
   end
 end
 

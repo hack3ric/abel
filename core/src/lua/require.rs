@@ -149,7 +149,7 @@ async fn request_ok(uri: Uri) -> anyhow::Result<(Uri, Response<Body>)> {
 impl UserData for RemoteInterface {
   fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
     methods.add_async_method(
-      "get",
+      "load",
       |lua, this, (path, uri, env): (mlua::String, mlua::String, Table)| async move {
         let path = path.to_str().map_err(|error| {
           rt_error_fmt!("invalid path '{}' ({error})", path.as_bytes().as_bstr())
